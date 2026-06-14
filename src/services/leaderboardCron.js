@@ -1,0 +1,210 @@
+// leaderboardCron.js
+// Cron job that writes daily/weekly/monthly leaderboard snapshots.
+// Triggered by Cloudflare Workers cron scheduler.
+// Reads live data from users + tips + challenges tables,
+// then writes ranked rows to leaderboard_snapshots.
+
+// ── Entry point (called from worker index.js scheduled handler) ───────────────
+
+export async function runLeaderboardSnapshot(env) {
+  const now = new Date();
+
+  const periods = buildPeriods(now);
+
+  await Promise.all([
+    snapshotBoard(env, 'most_generous',  periods, buildMostGenerousQuery),
+    snapshotBoard(env, 'highest_earner', periods, buildHighestEarnerQuery),
+    snapshotBoard(env, 'most_wins',      periods, buildMostWinsQuery),
+    snapshotBoard(env, 'aurum_score',    periods, buildAurumScoreQuery),
+  ]);
+
+  console.log(`[leaderboardCron] Snapshot complete at ${now.toISOString()}`);
+}
+
+// ── Core snapshot writer ──────────────────────────────────────────────────────
+
+async function snapshotBoard(env, boardType, periods, queryBuilder) {
+  for (const { period, periodKey, since } of periods) {
+    // Only run alltime on Sundays to avoid heavy queries daily
+    if (period === 'alltime' && new Date().getUTCDay() !== 0) continue;
+
+    const rows = await env.DB.prepare(queryBuilder(since))
+      .bind(...(since ? [since] : []))
+      .all();
+
+    if (!rows.results.length) continue;
+
+    // Delete existing snapshot for this board + period + periodKey
+    // so re-runs don't duplicate rows
+    await env.DB.prepare(`
+      DELETE FROM leaderboard_snapshots
+      WHERE board_type = ?
+        AND period     = ?
+        AND period_key = ?
+    `).bind(boardType, period, periodKey).run();
+
+    // Batch insert new snapshot rows
+    const insertStmt = env.DB.prepare(`
+      INSERT INTO leaderboard_snapshots
+        (id, board_type, league, period, period_key,
+         user_id, rank, score, display_name, avatar_url, league_at_snapshot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const batch = rows.results.map((row, index) =>
+      insertStmt.bind(
+        crypto.randomUUID(),
+        boardType,
+        row.league ?? 'all',
+        period,
+        periodKey,
+        row.user_id,
+        index + 1,          // rank is 1-based
+        row.score,
+        row.display_name,
+        row.avatar_url ?? null,
+        row.league ?? null,
+      )
+    );
+
+    await env.DB.batch(batch);
+  }
+}
+
+// ── Period builders ───────────────────────────────────────────────────────────
+
+function buildPeriods(now) {
+  return [
+    {
+      period:    'daily',
+      periodKey: now.toISOString().slice(0, 10),          // e.g. 2026-06-12
+      since:     startOfDay(now),
+    },
+    {
+      period:    'weekly',
+      periodKey: getWeekKey(now),                          // e.g. 2026-W24
+      since:     startOfWeek(now),
+    },
+    {
+      period:    'monthly',
+      periodKey: now.toISOString().slice(0, 7),            // e.g. 2026-06
+      since:     startOfMonth(now),
+    },
+    {
+      period:    'alltime',
+      periodKey: 'alltime',
+      since:     null,                                     // no date filter
+    },
+  ];
+}
+
+// ── Query builders ────────────────────────────────────────────────────────────
+// Each returns a SQL string.
+// If since is not null, caller binds it as first param.
+
+function buildMostGenerousQuery(since) {
+  const whereClause = since ? `WHERE t.created_at >= ?` : '';
+  return `
+    SELECT
+      t.sender_id                         as user_id,
+      u.username                          as display_name,
+      u.avatar_url,
+      u.league,
+      CAST(SUM(t.amount) AS INTEGER)      as score
+    FROM tips t
+    JOIN users u ON u.id = t.sender_id
+    ${whereClause}
+    GROUP BY t.sender_id
+    ORDER BY score DESC
+    LIMIT 100
+  `;
+}
+
+function buildHighestEarnerQuery(since) {
+  const whereClause = since ? `WHERE t.created_at >= ?` : '';
+  return `
+    SELECT
+      t.receiver_id                       as user_id,
+      u.username                          as display_name,
+      u.avatar_url,
+      u.league,
+      CAST(SUM(t.amount) AS INTEGER)      as score
+    FROM tips t
+    JOIN users u ON u.id = t.receiver_id
+    ${whereClause}
+    GROUP BY t.receiver_id
+    ORDER BY score DESC
+    LIMIT 100
+  `;
+}
+
+function buildMostWinsQuery(since) {
+  const whereClause = since ? `WHERE dc.updated_at >= ?` : '';
+  return `
+    SELECT
+      dc.winner_id                        as user_id,
+      u.username                          as display_name,
+      u.avatar_url,
+      u.league,
+      COUNT(*)                            as score
+    FROM drop_circles dc
+    JOIN users u ON u.id = dc.winner_id
+    WHERE dc.status = 'completed'
+      AND dc.winner_id IS NOT NULL
+      ${since ? 'AND dc.updated_at >= ?' : ''}
+    GROUP BY dc.winner_id
+    ORDER BY score DESC
+    LIMIT 100
+  `;
+}
+
+function buildAurumScoreQuery(since) {
+  // Aurum score is a live cumulative score — period filter not meaningful.
+  // For periodic snapshots we still capture current standing.
+  return `
+    SELECT
+      u.id                                as user_id,
+      u.username                          as display_name,
+      u.avatar_url,
+      u.league,
+      u.aurum_score                       as score
+    FROM users u
+    WHERE u.aurum_score > 0
+    ORDER BY score DESC
+    LIMIT 100
+  `;
+}
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
+function startOfDay(date) {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function startOfWeek(date) {
+  const d = new Date(date);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1); // Monday start
+  d.setUTCDate(diff);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function startOfMonth(date) {
+  const d = new Date(date);
+  d.setUTCDate(1);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function getWeekKey(date) {
+  const d = new Date(date);
+  const year = d.getUTCFullYear();
+  const startOfYear = new Date(Date.UTC(year, 0, 1));
+  const weekNum = Math.ceil(
+    ((d - startOfYear) / 86400000 + startOfYear.getUTCDay() + 1) / 7
+  );
+  return `${year}-W${String(weekNum).padStart(2, '0')}`;
+}

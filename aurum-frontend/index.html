@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AURUM — Where Ambition Meets Competition</title>
+  <meta name="description" content="A competitive achievement network where ambition is the entry point and wealth is the scoreboard." />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0A0A0A" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/landing.css" />
+</head>
+<body>
+
+  <!-- ===== TOP NAV ===== -->
+  <nav class="top-nav">
+    <span class="nav-logo">AURUM</span>
+    <div style="display:flex; gap: var(--space-3);">
+      <a href="app.html" class="btn btn-ghost btn-sm">Sign In</a>
+      <a href="app.html#signup" class="btn btn-primary btn-sm">Join</a>
+    </div>
+  </nav>
+
+  <!-- ===== HERO ===== -->
+  <section class="hero">
+    <div class="hero-bg-grid"></div>
+    <div class="hero-content container">
+      <div class="hero-eyebrow">
+        <span class="badge badge-gold shimmer">Private Beta — Limited Access</span>
+      </div>
+      <h1 class="hero-title">
+        Where Ambition<br/>
+        <em>Meets Competition.</em>
+      </h1>
+      <p class="hero-sub">
+        The competitive achievement network where verified wins earn real money,
+        status, and a place on the board.
+      </p>
+      <div class="hero-actions">
+        <a href="app.html#signup" class="btn btn-primary btn-lg">Request Access</a>
+        <a href="#leaderboard" class="btn btn-ghost btn-lg">View Leaderboard</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat-block">
+          <span class="stat-value mono" id="stat-members">—</span>
+          <span class="stat-label">Members</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-block">
+          <span class="stat-value mono" id="stat-treasury">—</span>
+          <span class="stat-label">In Treasury</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-block">
+          <span class="stat-value mono" id="stat-challenges">—</span>
+          <span class="stat-label">Active Challenges</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== PUBLIC LEADERBOARD ===== -->
+  <section class="leaderboard-section" id="leaderboard">
+    <div class="container">
+      <div class="section-header">
+        <div>
+          <p class="section-eyebrow">Live Rankings</p>
+          <h2 class="section-title">The Leaderboard</h2>
+        </div>
+        <span class="live-dot">
+          <span class="live-pulse"></span>
+          Live
+        </span>
+      </div>
+
+      <!-- Board type tabs -->
+      <div class="board-tabs">
+        <button class="board-tab active" data-board="earners">Top Earners</button>
+        <button class="board-tab" data-board="generous">Most Generous</button>
+        <button class="board-tab" data-board="champions">Challenge Wins</button>
+      </div>
+
+      <!-- Leaderboard list -->
+      <div class="leaderboard-list" id="leaderboard-list">
+        <!-- Skeleton loaders -->
+        <div class="lb-skeleton"></div>
+        <div class="lb-skeleton"></div>
+        <div class="lb-skeleton"></div>
+        <div class="lb-skeleton"></div>
+        <div class="lb-skeleton"></div>
+      </div>
+
+      <!-- Join CTA -->
+      <div class="lb-cta">
+        <p>Only members see full profiles and stats.</p>
+        <a href="app.html#signup" class="btn btn-outline btn-full">Claim Your Spot</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== HOW IT WORKS ===== -->
+  <section class="how-section">
+    <div class="container">
+      <div class="section-header">
+        <div>
+          <p class="section-eyebrow">The System</p>
+          <h2 class="section-title">How AURUM Works</h2>
+        </div>
+      </div>
+      <div class="how-grid">
+        <div class="how-card">
+          <span class="how-number mono">01</span>
+          <h4>Post Verified Wins</h4>
+          <p>Lock a stake against your achievement. Community verifies. Fake claims lose their stake.</p>
+        </div>
+        <div class="how-card">
+          <span class="how-number mono">02</span>
+          <h4>Earn Real Tips</h4>
+          <p>Others tip your wins with real money — not likes. Every reaction has a dollar value.</p>
+        </div>
+        <div class="how-card">
+          <span class="how-number mono">03</span>
+          <h4>Enter The Arena</h4>
+          <p>Join skill-based challenges with real prize pools. The best performer wins — not luck.</p>
+        </div>
+        <div class="how-card">
+          <span class="how-number mono">04</span>
+          <h4>Climb The Leagues</h4>
+          <p>Your Aurum Score determines your league. Bronze to Sovereign — earn your rank.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TIERS ===== -->
+  <section class="tiers-section">
+    <div class="container">
+      <div class="section-header">
+        <div>
+          <p class="section-eyebrow">Membership</p>
+          <h2 class="section-title">Choose Your Tier</h2>
+        </div>
+      </div>
+      <div class="tiers-grid">
+        <div class="tier-card">
+          <p class="tier-name">Explorer</p>
+          <p class="tier-price mono">Free</p>
+          <ul class="tier-features">
+            <li>View leaderboard</li>
+            <li>Post Wealth Journey milestones</li>
+            <li>Send micro-tips</li>
+            <li>Aurum Score tracking</li>
+          </ul>
+          <a href="app.html#signup" class="btn btn-ghost btn-full">Get Started</a>
+        </div>
+        <div class="tier-card tier-card-featured">
+          <div class="tier-badge">Most Popular</div>
+          <p class="tier-name gold">Contender</p>
+          <p class="tier-price mono">$29<span>/mo</span></p>
+          <ul class="tier-features">
+            <li>Everything in Explorer</li>
+            <li>Join Drop Circles</li>
+            <li>Verified badge eligibility</li>
+            <li>Boosted post placement</li>
+            <li>Premium analytics</li>
+          </ul>
+          <a href="app.html#signup" class="btn btn-primary btn-full">Join as Contender</a>
+        </div>
+        <div class="tier-card">
+          <p class="tier-name">Sovereign</p>
+          <p class="tier-price mono">$99<span>/mo</span></p>
+          <ul class="tier-features">
+            <li>Everything in Contender</li>
+            <li>Featured leaderboard placement</li>
+            <li>Elite Rooms access</li>
+            <li>Stealth Mode</li>
+            <li>Private challenges</li>
+          </ul>
+          <a href="app.html#signup" class="btn btn-outline btn-full">Go Sovereign</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="landing-footer">
+    <div class="container">
+      <p class="nav-logo" style="margin-bottom: var(--space-2);">AURUM</p>
+      <p style="font-size: var(--text-xs); color: var(--color-text-dim);">
+        Where ambition meets competition. Delaware LLC.
+      </p>
+      <div class="footer-links">
+        <a href="#">Terms</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/api.js"></script>
+  <script>
+    /* --- Register Service Worker --- */
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
+    /* --- Leaderboard tabs --- */
+    const tabs = document.querySelectorAll('.board-tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        loadLeaderboard(tab.dataset.board);
+      });
+    });
+
+    /* --- Load public leaderboard --- */
+    async function loadLeaderboard(type = 'earners') {
+      const list = document.getElementById('leaderboard-list');
+
+      list.innerHTML = `
+        <div class="lb-skeleton"></div>
+        <div class="lb-skeleton"></div>
+        <div class="lb-skeleton"></div>
+        <div class="lb-skeleton"></div>
+        <div class="lb-skeleton"></div>
+      `;
+
+      try {
+        const data = await AURUM.LeaderboardAPI.getPublic();
+        const board = data[type] || getMockLeaderboard(type);
+        renderLeaderboard(board);
+      } catch (err) {
+        renderLeaderboard(getMockLeaderboard(type));
+      }
+    }
+
+    function renderLeaderboard(entries) {
+      const list = document.getElementById('leaderboard-list');
+      list.innerHTML = '';
+
+      entries.forEach((entry, index) => {
+        const rank = index + 1;
+        const isTop3 = rank <= 3;
+        const isStealth = entry.stealth;
+
+        const item = document.createElement('div');
+        item.className = `lb-item fade-in ${isTop3 ? 'lb-item-top' : ''}`;
+        item.style.animationDelay = `${index * 60}ms`;
+
+        item.innerHTML = `
+          <div class="lb-rank mono ${rank === 1 ? 'gold' : ''}">${rank}</div>
+          <div class="avatar avatar-sm ${isTop3 ? 'avatar-gold' : ''}">
+            ${isStealth ? '◈' : entry.initials || '?'}
+          </div>
+          <div class="lb-info">
+            <p class="lb-name ${isStealth ? 'muted' : ''}">
+              ${isStealth ? 'Anonymous' : entry.username || 'Unknown'}
+              ${entry.verified ? '<span class="lb-verified">✦</span>' : ''}
+            </p>
+            <span class="badge ${AURUM.getLeagueBadge(entry.league)}" style="font-size:10px">
+              ${entry.league || 'Bronze'}
+            </span>
+          </div>
+          <div class="lb-score">
+            <span class="lb-value mono">${AURUM.formatAmount(entry.value || 0)}</span>
+            <span class="lb-score-label">${entry.scoreLabel || 'Score'}</span>
+          </div>
+        `;
+
+        list.appendChild(item);
+      });
+    }
+
+    /* Mock data for when API isn't live yet */
+    function getMockLeaderboard(type) {
+      const labels = {
+        earners: 'earned',
+        generous: 'given',
+        champions: 'wins'
+      };
+      const label = labels[type] || 'score';
+
+      return [
+        { username: 'ShadowKing', initials: 'SK', league: 'Sovereign', value: 284000, verified: true, scoreLabel: label },
+        { username: 'NovaBuild', initials: 'NB', league: 'Gold', value: 197500, verified: true, scoreLabel: label },
+        { stealth: true, league: 'Sovereign', value: 156000, scoreLabel: label },
+        { username: 'IronFounder', initials: 'IF', league: 'Gold', value: 134200, verified: false, scoreLabel: label },
+        { username: 'ZeroToOne', initials: 'ZO', league: 'Silver', value: 98700, verified: false, scoreLabel: label },
+        { username: 'ApexStar', initials: 'AS', league: 'Gold', value: 87300, verified: true, scoreLabel: label },
+        { username: 'VaultMind', initials: 'VM', league: 'Silver', value: 65100, verified: false, scoreLabel: label },
+      ];
+    }
+
+    /* --- Load platform stats --- */
+    async function loadStats() {
+      /* Mock stats for now — replace with live API when ready */
+      animateCount('stat-members', 0, 847, '');
+      animateCount('stat-treasury', 0, 284000, '$', true);
+      animateCount('stat-challenges', 0, 23, '');
+    }
+
+    function animateCount(id, from, to, prefix, isAmount = false) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const duration = 1500;
+      const steps = 40;
+      const increment = (to - from) / steps;
+      let current = from;
+      let step = 0;
+
+      const timer = setInterval(() => {
+        current += increment;
+        step++;
+        if (step >= steps) {
+          current = to;
+          clearInterval(timer);
+        }
+        el.textContent = isAmount
+          ? AURUM.formatAmount(Math.floor(current))
+          : prefix + Math.floor(current).toLocaleString();
+      }, duration / steps);
+    }
+
+    /* --- Init --- */
+    loadLeaderboard('earners');
+    loadStats();
+  </script>
+</body>
+</html>

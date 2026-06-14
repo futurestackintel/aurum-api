@@ -1,0 +1,148 @@
+// ============================================================
+// CHALLENGER DUEL ROUTES
+// GET  /api/duels                   — list active/pending duels
+// POST /api/duels                   — create a duel challenge
+// GET  /api/duels/:id               — get single duel
+// POST /api/duels/:id/accept        — target accepts duel
+// POST /api/duels/:id/decline       — target declines duel
+// POST /api/duels/:id/proof         — submit achievement proof
+// POST /api/duels/:id/resolve       — admin: declare winner
+// ============================================================
+
+import {
+  createDuel,
+  acceptDuel,
+  declineDuel,
+  submitDuelProof,
+  resolveDuel,
+  getActiveDuels,
+  getDuelById,
+} from '../services/duel.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { streakMiddleware }          from '../services/streak.js';
+
+export async function handleDuelRoutes(path, method, request, env) {
+  const db = env.DB;
+
+  // ── GET /api/duels ──────────────────────────────────────
+  if (path === '/api/duels' && method === 'GET') {
+    try {
+      const url    = new URL(request.url);
+      const limit  = parseInt(url.searchParams.get('limit')  ?? '20');
+      const offset = parseInt(url.searchParams.get('offset') ?? '0');
+      const duels  = await getActiveDuels(limit, offset, db);
+      return jsonResponse({ duels });
+    } catch (err) {
+      console.error("Get duels error:", err);
+      return jsonResponse({ error: "Unable to load duels. Please try again." }, 500);
+    }
+  }
+
+  // ── POST /api/duels ─────────────────────────────────────
+  if (path === '/api/duels' && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      streakMiddleware(user.id, db);
+      const body   = await request.json();
+      const result = await createDuel(user.id, body, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error("Create duel error:", err);
+      return jsonResponse({ error: "Unable to create duel. Please try again." }, 500);
+    }
+  }
+
+  // ── GET /api/duels/:id ──────────────────────────────────
+  const singleMatch = path.match(/^\/api\/duels\/([^/]+)$/);
+  if (singleMatch && method === 'GET') {
+    try {
+      const duel = await getDuelById(singleMatch[1], db);
+      if (!duel) return jsonResponse({ error: 'Duel not found' }, 404);
+      return jsonResponse({ duel });
+    } catch (err) {
+      console.error("Get duel error:", err);
+      return jsonResponse({ error: "Unable to load duel. Please try again." }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/accept ──────────────────────────
+  const acceptMatch = path.match(/^\/api\/duels\/([^/]+)\/accept$/);
+  if (acceptMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      streakMiddleware(user.id, db);
+      const result = await acceptDuel(acceptMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error("Accept duel error:", err);
+      return jsonResponse({ error: "Unable to accept duel. Please try again." }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/decline ─────────────────────────
+  const declineMatch = path.match(/^\/api\/duels\/([^/]+)\/decline$/);
+  if (declineMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await declineDuel(declineMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error("Decline duel error:", err);
+      return jsonResponse({ error: "Unable to decline duel. Please try again." }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/proof ───────────────────────────
+  const proofMatch = path.match(/^\/api\/duels\/([^/]+)\/proof$/);
+  if (proofMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body   = await request.json();
+      const result = await submitDuelProof(proofMatch[1], user.id, body, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error("Submit duel proof error:", err);
+      return jsonResponse({ error: "Unable to submit proof. Please try again." }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/resolve — admin ─────────────────
+  const resolveMatch = path.match(/^\/api\/duels\/([^/]+)\/resolve$/);
+  if (resolveMatch && method === 'POST') {
+    const admin = await requireAdmin(request, env);
+    if (admin.error) return jsonResponse({ error: admin.error }, 403);
+
+    try {
+      const body = await request.json();
+      if (!body.winner_id) return jsonResponse({ error: 'winner_id is required' }, 400);
+      const result = await resolveDuel(resolveMatch[1], body.winner_id, admin.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error("Resolve duel error:", err);
+      return jsonResponse({ error: "Unable to resolve duel. Please try again." }, 500);
+    }
+  }
+
+  return null;
+}
+
+// ── Helper ──────────────────────────────────────────────────
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
