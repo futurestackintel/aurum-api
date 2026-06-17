@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — AURUM</title>
+  <meta name="description" content="AURUM Privacy Policy. How we collect, use, and protect your data." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0A0A0A;
+      --surface: #111111;
+      --gold:    #C9A84C;
+      --white:   #F5F5F0;
+      --muted:   #6B6B6B;
+      --subtle:  #1A1A1A;
+      --border:  rgba(201,168,76,0.12);
+      --font-display: 'Cormorant Garamond', Georgia, serif;
+      --font-body:    'DM Sans', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--white);
+      font-family: var(--font-body);
+      font-weight: 300;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 40px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      font-weight: 500;
+      letter-spacing: 0.25em;
+      color: var(--gold);
+      text-decoration: none;
+    }
+
+    .nav-back {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-decoration: none;
+      letter-spacing: 0.1em;
+      transition: color 0.2s;
+    }
+    .nav-back:hover { color: var(--white); }
+
+    .doc-wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 80px 24px 120px;
+    }
+
+    .doc-label {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      color: var(--gold);
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .doc-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      font-weight: 300;
+      line-height: 1.1;
+      margin-bottom: 12px;
+    }
+
+    .doc-date {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      margin-bottom: 56px;
+    }
+
+    .doc-intro {
+      font-size: 0.95rem;
+      color: var(--muted);
+      line-height: 1.8;
+      margin-bottom: 48px;
+      padding-bottom: 48px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2 {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 400;
+      margin-top: 52px;
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--white);
+      letter-spacing: 0.05em;
+      margin-top: 28px;
+      margin-bottom: 10px;
+    }
+
+    p {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+      line-height: 1.8;
+    }
+
+    ul { padding-left: 20px; margin-bottom: 16px; }
+
+    li {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+      line-height: 1.7;
+    }
+
+    .highlight-box {
+      background: var(--subtle);
+      border-left: 2px solid var(--gold);
+      padding: 20px 24px;
+      margin: 24px 0;
+    }
+
+    .highlight-box p { margin: 0; font-size: 0.85rem; color: var(--white); opacity: 0.85; }
+
+    strong { color: var(--white); font-weight: 500; }
+    a { color: var(--gold); text-decoration: none; }
+    a:hover { opacity: 0.8; }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 0.82rem;
+    }
+
+    .data-table th {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      color: var(--gold);
+      text-transform: uppercase;
+      text-align: left;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--subtle);
+    }
+
+    .data-table td {
+      padding: 12px 16px;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      vertical-align: top;
+    }
+
+    .data-table tr:last-child td { border-bottom: none; }
+
+    .section-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 48px 0;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: 0.75rem; color: var(--muted); text-decoration: none; }
+    .footer-links a:hover { color: var(--white); }
+    .footer-copy { font-size: 0.7rem; color: var(--muted); opacity: 0.5; }
+
+    @media (max-width: 600px) {
+      nav { padding: 20px; }
+      footer { padding: 24px 20px; flex-direction: column; align-items: flex-start; }
+      .data-table { font-size: 0.78rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="nav-logo">AURUM</a>
+    <a href="/" class="nav-back">← Back to site</a>
+  </nav>
+
+  <div class="doc-wrap">
+    <span class="doc-label">Legal</span>
+    <h1 class="doc-title">Privacy Policy</h1>
+    <div class="doc-date">Effective Date: June 1, 2025 &nbsp;·&nbsp; Last Updated: June 2025</div>
+
+    <div class="doc-intro">
+      This Privacy Policy explains how AURUM ("Company," "we," "us," or "our"), a Delaware LLC, collects, uses, stores, and protects your personal information when you use the AURUM platform at tryaurum.store (the "Platform"). Please read this carefully. By using the Platform, you agree to the practices described here.
+    </div>
+
+    <h2>1. Information We Collect</h2>
+
+    <h3>1.1 Information You Provide Directly</h3>
+    <ul>
+      <li><strong>Account information:</strong> Name, email address, username, and password (via Clerk authentication).</li>
+      <li><strong>Profile information:</strong> Biography, league tier, achievement badges, and Wealth Passport data you choose to share publicly.</li>
+      <li><strong>Achievement content:</strong> Posts, milestone updates, challenge submissions, and proof materials you submit to The Ledger or Arena.</li>
+      <li><strong>Payment information:</strong> Billing details submitted for subscriptions and transactions (processed and stored by our payment processors — we do not store full card details).</li>
+      <li><strong>Communications:</strong> Emails or messages you send to our support team at support@tryaurum.store.</li>
+    </ul>
+
+    <h3>1.2 Information Collected Automatically</h3>
+    <ul>
+      <li><strong>Usage data:</strong> Pages visited, features used, time spent on the Platform, and interaction patterns.</li>
+      <li><strong>Device and browser information:</strong> IP address, browser type, operating system, device identifiers, and referring URLs.</li>
+      <li><strong>Transaction data:</strong> Tip amounts sent and received, challenge entries, stake amounts, and subscription history.</li>
+      <li><strong>Aurum Score activity:</strong> Achievement posts, challenge participation, engagement metrics, and streak data used to calculate your score.</li>
+    </ul>
+
+    <h3>1.3 Information from Third Parties</h3>
+    <ul>
+      <li><strong>Authentication providers:</strong> Basic profile data from Clerk when you sign in (email, name, profile image if provided).</li>
+      <li><strong>Payment processors:</strong> Transaction status and confirmation data from Stripe and Paystack. We do not receive full payment card details.</li>
+    </ul>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Data Type</th>
+          <th>Source</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Email address</td>
+          <td>You / Clerk</td>
+          <td>Account access, notifications</td>
+        </tr>
+        <tr>
+          <td>Username & profile</td>
+          <td>You</td>
+          <td>Public leaderboard, platform identity</td>
+        </tr>
+        <tr>
+          <td>Payment data</td>
+          <td>Stripe / Paystack</td>
+          <td>Transaction processing only</td>
+        </tr>
+        <tr>
+          <td>Usage analytics</td>
+          <td>Plausible Analytics</td>
+          <td>Product improvement (anonymized)</td>
+        </tr>
+        <tr>
+          <td>Achievement content</td>
+          <td>You</td>
+          <td>Platform features, leaderboard</td>
+        </tr>
+        <tr>
+          <td>IP address</td>
+          <td>Cloudflare</td>
+          <td>Security, fraud prevention</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>2. How We Use Your Information</h2>
+    <p>We use your information only for the purposes stated below:</p>
+    <ul>
+      <li>To create and manage your account.</li>
+      <li>To operate the Platform and provide its core features: The Ledger, The Arena, leaderboards, tips, challenges, and the Treasury.</li>
+      <li>To calculate and update your Aurum Score.</li>
+      <li>To process payments, manage subscriptions, and hold and release Treasury funds.</li>
+      <li>To verify achievement claims and administer the Proof of Stake system.</li>
+      <li>To send transactional emails: account confirmations, payment receipts, challenge results, and notifications you have opted into.</li>
+      <li>To enforce our Terms of Service and detect and prevent fraud, abuse, or violations.</li>
+      <li>To analyze anonymized usage patterns to improve Platform performance and features.</li>
+      <li>To comply with applicable legal obligations.</li>
+    </ul>
+
+    <div class="highlight-box">
+      <p>We do not sell your personal data to third parties. We do not use your data to serve you third-party advertisements. AURUM products are ad-free.</p>
+    </div>
+
+    <h2>3. Third-Party Services</h2>
+    <p>The Platform relies on the following third-party services to operate. Each has its own privacy policy.</p>
+
+    <h3>3.1 Clerk (Authentication)</h3>
+    <p>We use <strong>Clerk</strong> to manage user authentication, session management, and email verification. Clerk processes your email address and authentication credentials. For details, see <a href="https://clerk.com/privacy" target="_blank" rel="noopener">clerk.com/privacy</a>.</p>
+
+    <h3>3.2 Stripe (Payment Processing)</h3>
+    <p><strong>Stripe</strong> processes all payment card transactions, including subscriptions and Treasury deposits. Stripe conducts KYC (Know Your Customer) verification for applicable transactions and handles full payment card data on our behalf. AURUM does not store your full card number, CVV, or card expiry date. See <a href="https://stripe.com/privacy" target="_blank" rel="noopener">stripe.com/privacy</a>.</p>
+
+    <h3>3.3 Paystack (Regional Payment Processing)</h3>
+    <p><strong>Paystack</strong> is available as a regional payment processing option. Paystack's data handling is subject to its own privacy policy at <a href="https://paystack.com/privacy" target="_blank" rel="noopener">paystack.com/privacy</a>. Payment data submitted through Paystack is governed by Paystack's terms and privacy controls.</p>
+
+    <h3>3.4 Cloudflare (Infrastructure)</h3>
+    <p>Our Platform is hosted on <strong>Cloudflare Pages and Workers</strong>. Cloudflare processes network traffic and may collect IP addresses and request logs as part of its standard infrastructure operations. See <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener">cloudflare.com/privacypolicy</a>.</p>
+
+    <h3>3.5 Resend (Email Delivery)</h3>
+    <p><strong>Resend</strong> handles transactional email delivery, including account notifications and platform alerts. Resend processes your email address for delivery purposes only.</p>
+
+    <h3>3.6 Plausible Analytics (Usage Analytics)</h3>
+    <p>We use <strong>Plausible Analytics</strong>, a privacy-first analytics tool that does not use cookies and does not collect personally identifiable information. Usage statistics are aggregated and anonymous. No cross-site tracking occurs. See <a href="https://plausible.io/privacy" target="_blank" rel="noopener">plausible.io/privacy</a>.</p>
+
+    <h3>3.7 Cloudflare R2 (File Storage)</h3>
+    <p>Achievement media, profile images, and other uploaded files are stored securely on <strong>Cloudflare R2</strong> object storage. Access to stored files is controlled through the Platform's authentication layer.</p>
+
+    <h2>4. Public Data</h2>
+    <p>The following information is visible to the public — including non-members — as part of the Platform's core design:</p>
+    <ul>
+      <li>Leaderboard rankings, usernames, and Aurum Scores.</li>
+      <li>League tier and verified achievement badges.</li>
+      <li>Achievement posts submitted to The Ledger (unless deleted by the user).</li>
+      <li>Total tips given (visible on your Wealth Passport).</li>
+      <li>Challenge participation history.</li>
+    </ul>
+    <p>Sovereign tier members who activate <strong>Stealth Mode</strong> compete under a verified pseudonym. Their real identity is not exposed on public leaderboards while Stealth Mode is active.</p>
+
+    <div class="highlight-box">
+      <p>By joining AURUM, you acknowledge that achievement posts and leaderboard data are public by design. Do not post information you wish to keep private.</p>
+    </div>
+
+    <h2>5. Payment Data Handling</h2>
+    <p>AURUM takes the following approach to payment data:</p>
+    <ul>
+      <li>All payment card processing is handled entirely by Stripe and/or Paystack. AURUM never receives or stores full card numbers, CVV codes, or card expiry dates.</li>
+      <li>Transaction amounts, dates, and statuses are stored in our database to operate the Treasury, maintain challenge records, and generate your transaction history.</li>
+      <li>AML (Anti-Money Laundering) compliance obligations are delegated to our payment processor partners, who conduct the required due diligence.</li>
+      <li>We may retain transaction records for up to seven (7) years to comply with financial recordkeeping obligations.</li>
+    </ul>
+
+    <h2>6. Data Retention</h2>
+    <ul>
+      <li><strong>Active accounts:</strong> Data is retained for as long as your account is active.</li>
+      <li><strong>Deleted accounts:</strong> Upon account deletion, your profile and public content are removed within 30 days. Transaction records, Treasury logs, and challenge records may be retained for up to 7 years for legal and financial compliance purposes.</li>
+      <li><strong>Anonymized analytics:</strong> Aggregated, anonymized usage data may be retained indefinitely for product development purposes.</li>
+    </ul>
+
+    <h2>7. Your Rights</h2>
+    <p>Depending on your jurisdiction, you may have the following rights regarding your personal data:</p>
+    <ul>
+      <li><strong>Access:</strong> Request a copy of the personal data we hold about you.</li>
+      <li><strong>Correction:</strong> Request correction of inaccurate or incomplete data.</li>
+      <li><strong>Deletion:</strong> Request deletion of your personal data, subject to legal retention requirements.</li>
+      <li><strong>Portability:</strong> Request your personal data in a structured, commonly used format.</li>
+      <li><strong>Objection:</strong> Object to processing of your personal data for certain purposes.</li>
+      <li><strong>Restriction:</strong> Request restriction of processing in certain circumstances.</li>
+    </ul>
+    <p>To exercise any of these rights, email us at <a href="mailto:support@tryaurum.store">support@tryaurum.store</a> with the subject line "Data Request." We will respond within 30 days. We may require identity verification before processing your request.</p>
+
+    <h2>8. Data Deletion Requests</h2>
+    <p>To request deletion of your account and personal data:</p>
+    <ul>
+      <li>Email <a href="mailto:support@tryaurum.store">support@tryaurum.store</a> with subject: "Account Deletion Request."</li>
+      <li>Include your registered email address and username.</li>
+      <li>We will confirm deletion within 30 days.</li>
+      <li>Note: deletion cannot be reversed. Any Treasury-held funds or active challenge entries must be resolved before account deletion is finalized.</li>
+    </ul>
+
+    <h2>9. GDPR — Information for EEA and UK Users</h2>
+    <p>If you are located in the European Economic Area (EEA) or the United Kingdom, the following additional information applies:</p>
+
+    <h3>9.1 Legal Basis for Processing</h3>
+    <ul>
+      <li><strong>Contract performance:</strong> Processing necessary to provide you with the Platform services you have subscribed to.</li>
+      <li><strong>Legitimate interests:</strong> Fraud detection, security, platform integrity, and product improvement.</li>
+      <li><strong>Legal obligation:</strong> Compliance with applicable financial and legal recordkeeping requirements.</li>
+      <li><strong>Consent:</strong> For optional communications, where we have obtained your express consent.</li>
+    </ul>
+
+    <h3>9.2 Data Transfers</h3>
+    <p>AURUM is operated from the United States. If you access the Platform from the EEA or UK, your data is transferred to the United States. We rely on Standard Contractual Clauses (SCCs) and the data transfer mechanisms provided by our third-party service providers (Clerk, Stripe, Cloudflare) to ensure adequate protection of your data during such transfers.</p>
+
+    <h3>9.3 Right to Lodge a Complaint</h3>
+    <p>If you believe our processing of your personal data infringes applicable data protection law, you have the right to lodge a complaint with your local data protection authority.</p>
+
+    <h2>10. Cookie Policy</h2>
+    <p>AURUM uses a minimal set of cookies and similar technologies:</p>
+    <ul>
+      <li><strong>Session cookies (essential):</strong> Set by Clerk to maintain your authenticated session. These are strictly necessary and cannot be disabled without breaking login functionality.</li>
+      <li><strong>Security cookies (essential):</strong> Used by Cloudflare to identify trusted traffic and protect against DDoS and bot attacks.</li>
+      <li><strong>Analytics:</strong> We use Plausible Analytics, which is <strong>cookieless</strong>. No tracking cookies are set for analytics purposes.</li>
+    </ul>
+    <p>We do not use advertising cookies, third-party tracking pixels, or social media tracking technologies.</p>
+
+    <h2>11. Children's Privacy</h2>
+    <p>AURUM is not intended for users under the age of 18. We do not knowingly collect personal data from minors. If we become aware that a user under 18 has created an account, we will delete it promptly. If you believe a minor is using the Platform, please contact us at <a href="mailto:support@tryaurum.store">support@tryaurum.store</a>.</p>
+
+    <h2>12. Security</h2>
+    <p>We implement industry-standard security measures to protect your data, including:</p>
+    <ul>
+      <li>TLS/SSL encryption for all data in transit (Full Strict mode via Cloudflare).</li>
+      <li>Encrypted storage for sensitive credentials.</li>
+      <li>HMAC-verified webhook signatures for payment events.</li>
+      <li>CORS restrictions limiting API access to authorized domains only.</li>
+      <li>Role-based access controls for Platform administration.</li>
+    </ul>
+    <p>Despite these measures, no system is fully secure. You use the Platform at your own risk. Report suspected security vulnerabilities to <a href="mailto:support@tryaurum.store">support@tryaurum.store</a>.</p>
+
+    <h2>13. Changes to This Privacy Policy</h2>
+    <p>We may update this Privacy Policy from time to time. When we do, we will update the "Last Updated" date at the top of this page and, where appropriate, notify registered users by email. Your continued use of the Platform after changes are posted constitutes your acceptance of the updated policy.</p>
+
+    <div class="section-divider"></div>
+
+    <h2>Contact Us</h2>
+    <p>For any privacy-related questions, data requests, or concerns, contact us at:</p>
+    <p>
+      <strong>AURUM — Privacy Inquiries</strong><br>
+      Email: <a href="mailto:support@tryaurum.store">support@tryaurum.store</a><br>
+      Subject line: "Privacy Request" or "Data Request"<br>
+      A Delaware Limited Liability Company, United States
+    </p>
+  </div>
+
+  <footer>
+    <a href="/" style="font-family: 'Cormorant Garamond', serif; font-size: 1.1rem; letter-spacing: 0.25em; color: var(--gold); text-decoration: none;">AURUM</a>
+    <div class="footer-links">
+      <a href="/tos.html">Terms</a>
+      <a href="/privacy.html">Privacy</a>
+      <a href="mailto:support@tryaurum.store">Support</a>
+    </div>
+    <span class="footer-copy">© 2025 AURUM. A Delaware LLC.</span>
+  </footer>
+
+</body>
+</html>

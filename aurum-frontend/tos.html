@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service — AURUM</title>
+  <meta name="description" content="AURUM Terms of Service. Read before using the platform." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0A0A0A;
+      --surface: #111111;
+      --gold:    #C9A84C;
+      --white:   #F5F5F0;
+      --muted:   #6B6B6B;
+      --subtle:  #1A1A1A;
+      --border:  rgba(201,168,76,0.12);
+      --font-display: 'Cormorant Garamond', Georgia, serif;
+      --font-body:    'DM Sans', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--white);
+      font-family: var(--font-body);
+      font-weight: 300;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 40px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      font-weight: 500;
+      letter-spacing: 0.25em;
+      color: var(--gold);
+      text-decoration: none;
+    }
+
+    .nav-back {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-decoration: none;
+      letter-spacing: 0.1em;
+      transition: color 0.2s;
+    }
+    .nav-back:hover { color: var(--white); }
+
+    .doc-wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 80px 24px 120px;
+    }
+
+    .doc-label {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      color: var(--gold);
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .doc-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      font-weight: 300;
+      line-height: 1.1;
+      margin-bottom: 12px;
+    }
+
+    .doc-date {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      margin-bottom: 56px;
+    }
+
+    .doc-intro {
+      font-size: 0.95rem;
+      color: var(--muted);
+      line-height: 1.8;
+      margin-bottom: 48px;
+      padding-bottom: 48px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2 {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 400;
+      margin-top: 52px;
+      margin-bottom: 16px;
+      color: var(--white);
+    }
+
+    h3 {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--white);
+      letter-spacing: 0.05em;
+      margin-top: 28px;
+      margin-bottom: 10px;
+    }
+
+    p {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+      line-height: 1.8;
+    }
+
+    ul, ol {
+      padding-left: 20px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+      line-height: 1.7;
+    }
+
+    .highlight-box {
+      background: var(--subtle);
+      border-left: 2px solid var(--gold);
+      padding: 20px 24px;
+      margin: 24px 0;
+      border-radius: 0;
+    }
+
+    .highlight-box p {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--white);
+      opacity: 0.85;
+    }
+
+    strong { color: var(--white); font-weight: 500; }
+
+    a { color: var(--gold); text-decoration: none; }
+    a:hover { opacity: 0.8; }
+
+    .section-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 48px 0;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: 0.75rem; color: var(--muted); text-decoration: none; }
+    .footer-links a:hover { color: var(--white); }
+    .footer-copy { font-size: 0.7rem; color: var(--muted); opacity: 0.5; }
+
+    @media (max-width: 600px) {
+      nav { padding: 20px; }
+      footer { padding: 24px 20px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="nav-logo">AURUM</a>
+    <a href="/" class="nav-back">← Back to site</a>
+  </nav>
+
+  <div class="doc-wrap">
+    <span class="doc-label">Legal</span>
+    <h1 class="doc-title">Terms of Service</h1>
+    <div class="doc-date">Effective Date: June 1, 2025 &nbsp;·&nbsp; Last Updated: June 2025</div>
+
+    <div class="doc-intro">
+      These Terms of Service ("Terms") constitute a binding legal agreement between you and AURUM ("Company," "we," "us," or "our"), a Delaware Limited Liability Company. By accessing or using the AURUM platform at tryaurum.store (the "Platform"), you agree to these Terms in full. If you do not agree, do not use the Platform.
+    </div>
+
+    <h2>1. Eligibility</h2>
+    <p>You must meet all of the following conditions to use the Platform:</p>
+    <ul>
+      <li>You must be at least <strong>18 years of age</strong>. The Platform is not intended for minors under any circumstances.</li>
+      <li>You must have the legal capacity to enter into binding agreements in your jurisdiction.</li>
+      <li>You must not be prohibited from using the Platform under applicable law, including sanctions lists or regulatory restrictions in your country of residence.</li>
+      <li>If you are using the Platform on behalf of a business entity, you represent that you have authority to bind that entity to these Terms.</li>
+    </ul>
+
+    <div class="highlight-box">
+      <p>By creating an account, you confirm that you are 18 years of age or older and legally permitted to participate in skill-based competitions and money transfers in your jurisdiction.</p>
+    </div>
+
+    <h2>2. Account Registration</h2>
+    <p>To access the Platform's features, you must register an account. You agree to:</p>
+    <ul>
+      <li>Provide accurate, current, and complete registration information.</li>
+      <li>Keep your login credentials confidential and not share them with any third party.</li>
+      <li>Notify us immediately at <a href="mailto:support@tryaurum.store">support@tryaurum.store</a> if you suspect unauthorized use of your account.</li>
+      <li>Take full responsibility for all activities that occur under your account.</li>
+    </ul>
+    <p>We reserve the right to suspend or terminate accounts that contain false information or that we reasonably believe are being operated by someone other than the registered user.</p>
+
+    <h2>3. Platform Rules and Prohibited Conduct</h2>
+    <p>AURUM is a merit-based achievement platform. The following conduct is strictly prohibited:</p>
+
+    <h3>3.1 Prohibited Actions</h3>
+    <ul>
+      <li>Submitting false, fabricated, or misleading achievement posts or Proof of Stake claims.</li>
+      <li>Creating multiple accounts or using proxy accounts to manipulate the Aurum Score or leaderboard rankings.</li>
+      <li>Engaging in market manipulation, coordinated tipping rings, or any form of gaming the platform's scoring systems.</li>
+      <li>Harassing, threatening, or targeting other members.</li>
+      <li>Using the Platform for money laundering, fraud, or any illegal purpose.</li>
+      <li>Attempting to reverse-engineer, scrape, or extract data from the Platform without written authorization.</li>
+      <li>Uploading or distributing malicious code, viruses, or any technology that disrupts Platform operations.</li>
+      <li>Impersonating another person, entity, or AURUM staff member.</li>
+    </ul>
+
+    <h3>3.2 Content Standards</h3>
+    <p>All content you post must be lawful, accurate to the best of your knowledge, and must not violate the rights of third parties. AURUM does not permit adult content, graphic violence, hate speech, or politically inflammatory content on the Platform.</p>
+
+    <h2>4. Proof of Stake System</h2>
+    <p>The Proof of Stake system requires users to lock a monetary deposit to back achievement claims posted to The Ledger:</p>
+    <ul>
+      <li>Stake amounts range from <strong>$5 to $1,000</strong> depending on the nature and scale of the claimed achievement.</li>
+      <li>Stakes are held in The Treasury until community verification or moderation review is complete.</li>
+      <li>If a claim is determined to be fraudulent or materially false through community vote or platform moderation, the stake is forfeited.</li>
+      <li>Verified claims result in the return of the full stake amount plus an Aurum Score boost.</li>
+      <li>AURUM's moderation decisions regarding Proof of Stake disputes are final and binding.</li>
+      <li>Forfeited stakes are distributed at AURUM's discretion and may be directed toward the community pool or platform operations.</li>
+    </ul>
+
+    <div class="highlight-box">
+      <p>The Proof of Stake system is a fraud-deterrence mechanism. It is not a bet, wager, or gambling activity. Staked funds are returned upon legitimate verified achievement, not upon a probabilistic outcome.</p>
+    </div>
+
+    <h2>5. Drop Circle Challenges — Skill-Based Competitions</h2>
+
+    <div class="highlight-box">
+      <p><strong>IMPORTANT:</strong> Drop Circle challenges are skill-based, achievement-verified competitions. They are not games of chance, lotteries, or gambling. Winners are determined exclusively by verifiable, measurable performance outcomes — not by random draw, luck, or any probabilistic mechanism.</p>
+    </div>
+
+    <h3>5.1 How Challenges Work</h3>
+    <ul>
+      <li>Members create or join Drop Circles by contributing an entry fee ranging from <strong>$5 to $1,000+</strong>.</li>
+      <li>Challenges are time-bound: 24 hours, 48 hours, 7 days, or 30 days.</li>
+      <li>Winners are determined by verifiable, measurable performance outcomes: highest revenue generated, most deals closed, greatest documented growth, or other objective criteria defined in the challenge terms.</li>
+      <li>All challenge determinations require submission of verifiable proof by participants.</li>
+      <li>AURUM's moderation team has final authority on winner determination in disputed challenges.</li>
+    </ul>
+
+    <h3>5.2 Charity Brawl Format</h3>
+    <p>Charity Brawl challenges direct prize pools to a designated charitable cause. In this format, the Platform collects a hosting fee, and the winner receives the #1 leaderboard position for 30 days. Participants in Charity Brawl challenges acknowledge that their contribution is effectively a charitable donation with an associated hosting fee.</p>
+
+    <h3>5.3 Entry Fees and Prize Distribution</h3>
+    <ul>
+      <li>AURUM retains a <strong>5% platform fee</strong> from all challenge pool amounts.</li>
+      <li>The remaining 95% is distributed to the verified winner upon challenge completion.</li>
+      <li>Entry fees are non-refundable once a challenge has commenced, except in cases of platform error as determined by AURUM.</li>
+    </ul>
+
+    <h3>5.4 Participant Obligations</h3>
+    <p>By entering a challenge, you represent that you will compete in good faith, submit only genuine and verifiable proof of achievement, and accept the outcome determination made by AURUM's moderation team as final.</p>
+
+    <h2>6. Money Movement and Payments</h2>
+
+    <h3>6.1 Payment Processing</h3>
+    <p>All payments on the Platform are processed through third-party payment processors, including Stripe and Paystack. By making any payment on the Platform, you agree to the terms of service of the applicable payment processor. AURUM does not store your full payment card details.</p>
+
+    <h3>6.2 Platform Fees</h3>
+    <ul>
+      <li><strong>Transaction fee:</strong> 5% on all tips and challenge pool contributions.</li>
+      <li><strong>Pro (Contender) subscription:</strong> $29/month.</li>
+      <li><strong>Sovereign subscription:</strong> $99/month.</li>
+      <li>Additional optional features, including Boost Tokens, are priced as displayed at point of purchase.</li>
+    </ul>
+
+    <h3>6.3 The Treasury</h3>
+    <p>Challenge pool funds and staked amounts are held in escrow through The Treasury, a secure escrow structure managed via our payment processor infrastructure. Funds are released only upon verified challenge completion or stake resolution. AURUM does not commingle Treasury funds with operating funds.</p>
+
+    <h3>6.4 Subscriptions and Cancellations</h3>
+    <p>Subscriptions renew automatically on a monthly billing cycle. You may cancel at any time through your account settings. Cancellations take effect at the end of the current billing period. No partial refunds are issued for unused subscription time.</p>
+
+    <h3>6.5 Refund Policy</h3>
+    <p>Subscription fees are generally non-refundable. Tips sent to other members are final and non-reversible. Disputed Proof of Stake or challenge entries are subject to AURUM's moderation process, and any refund determination is made solely at AURUM's discretion.</p>
+
+    <h3>6.6 Taxes</h3>
+    <p>You are solely responsible for determining and satisfying any tax obligations arising from your use of the Platform, including income taxes on tips received, challenge winnings, or any other monetary benefits received through AURUM.</p>
+
+    <h2>7. Subscription Tiers and Access</h2>
+    <p>AURUM offers three membership tiers: Explorer (free), Contender (Pro, $29/month), and Sovereign ($99/month). Features available at each tier are described on the Platform and may change with reasonable notice. AURUM reserves the right to modify tier pricing or included features upon 30 days' written notice to subscribers. Downgrading your tier takes effect at the end of the current billing period.</p>
+
+    <h2>8. Intellectual Property</h2>
+    <p>All content, design, trademarks, logos, and technology on the Platform are the property of AURUM or its licensors and are protected by applicable intellectual property law. You are granted a limited, non-exclusive, non-transferable license to access and use the Platform for personal, non-commercial purposes.</p>
+    <p>By posting content to the Platform, you grant AURUM a worldwide, royalty-free, non-exclusive license to display, distribute, and promote that content in connection with Platform operations and marketing activities.</p>
+
+    <h2>9. Privacy</h2>
+    <p>Your use of the Platform is subject to our <a href="/privacy.html">Privacy Policy</a>, which is incorporated into these Terms by reference. Please read it carefully before using the Platform.</p>
+
+    <h2>10. Account Termination</h2>
+
+    <h3>10.1 Termination by You</h3>
+    <p>You may close your account at any time by contacting <a href="mailto:support@tryaurum.store">support@tryaurum.store</a>. Upon account closure, your profile will be removed from the public leaderboard. Any outstanding Treasury-held funds will be resolved per applicable challenge or stake rules before account deletion is finalized.</p>
+
+    <h3>10.2 Termination by AURUM</h3>
+    <p>AURUM may suspend or permanently terminate your account, with or without prior notice, if you:</p>
+    <ul>
+      <li>Violate any provision of these Terms.</li>
+      <li>Engage in fraudulent, deceptive, or manipulative conduct on the Platform.</li>
+      <li>Are found to have submitted materially false achievement claims.</li>
+      <li>Engage in conduct that AURUM reasonably determines to be harmful to other members or to the Platform community.</li>
+    </ul>
+    <p>Upon termination for cause, any outstanding staked or challenge funds may be forfeited. AURUM's determination of termination grounds is final.</p>
+
+    <h2>11. Disclaimers and Limitation of Liability</h2>
+
+    <h3>11.1 Platform Provided As-Is</h3>
+    <p>THE PLATFORM IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT. AURUM DOES NOT WARRANT THAT THE PLATFORM WILL BE UNINTERRUPTED, ERROR-FREE, OR FREE OF HARMFUL COMPONENTS.</p>
+
+    <h3>11.2 No Financial Advice</h3>
+    <p>Nothing on the Platform constitutes financial, investment, tax, or legal advice. Achievement posts, challenge results, and leaderboard rankings are user-generated content and do not represent endorsements or recommendations by AURUM.</p>
+
+    <h3>11.3 Limitation of Liability</h3>
+    <p>TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, AURUM SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR GOODWILL, ARISING FROM YOUR USE OF OR INABILITY TO USE THE PLATFORM, EVEN IF AURUM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</p>
+    <p>IN NO EVENT SHALL AURUM'S TOTAL LIABILITY TO YOU EXCEED THE GREATER OF (A) THE TOTAL AMOUNT YOU PAID TO AURUM IN THE THREE MONTHS PRECEDING THE CLAIM OR (B) ONE HUNDRED US DOLLARS ($100).</p>
+
+    <h2>12. Indemnification</h2>
+    <p>You agree to indemnify, defend, and hold harmless AURUM, its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses, including reasonable attorneys' fees, arising from or relating to: (a) your use of the Platform; (b) your violation of these Terms; (c) content you submit to the Platform; or (d) your violation of any third-party rights.</p>
+
+    <h2>13. Dispute Resolution</h2>
+
+    <h3>13.1 Informal Resolution</h3>
+    <p>Before filing any formal claim, you agree to contact AURUM at <a href="mailto:support@tryaurum.store">support@tryaurum.store</a> and attempt to resolve the dispute informally for at least 30 days.</p>
+
+    <h3>13.2 Binding Arbitration</h3>
+    <p>If informal resolution fails, any dispute, claim, or controversy arising from or relating to these Terms or the Platform shall be resolved by binding individual arbitration administered under the rules of the American Arbitration Association (AAA). You waive any right to participate in a class action lawsuit or class-wide arbitration.</p>
+
+    <h3>13.3 Exceptions</h3>
+    <p>Notwithstanding the above, either party may seek emergency injunctive relief in a court of competent jurisdiction to prevent irreparable harm pending arbitration. Small claims court actions within applicable jurisdictional limits are also excluded from this arbitration requirement.</p>
+
+    <h2>14. Governing Law</h2>
+    <p>These Terms are governed by and construed in accordance with the laws of the <strong>State of Delaware, United States of America</strong>, without regard to its conflict of law provisions. To the extent any dispute is not subject to arbitration, you consent to exclusive jurisdiction in the state and federal courts located in Delaware.</p>
+
+    <h2>15. Modifications to These Terms</h2>
+    <p>AURUM reserves the right to modify these Terms at any time. We will provide notice of material changes by posting the updated Terms to the Platform and, where possible, notifying registered users by email. Your continued use of the Platform after changes take effect constitutes acceptance of the revised Terms.</p>
+
+    <h2>16. Miscellaneous</h2>
+    <ul>
+      <li><strong>Severability:</strong> If any provision of these Terms is held invalid or unenforceable, the remaining provisions continue in full force.</li>
+      <li><strong>Waiver:</strong> AURUM's failure to enforce any right or provision shall not constitute a waiver of that right or provision.</li>
+      <li><strong>Entire Agreement:</strong> These Terms, together with the Privacy Policy, constitute the entire agreement between you and AURUM regarding the Platform.</li>
+      <li><strong>Assignment:</strong> You may not assign your rights under these Terms without AURUM's prior written consent. AURUM may assign its rights without restriction.</li>
+    </ul>
+
+    <div class="section-divider"></div>
+
+    <h2>Contact</h2>
+    <p>For questions about these Terms, contact us at:</p>
+    <p>
+      <strong>AURUM</strong><br>
+      A Delaware Limited Liability Company<br>
+      Email: <a href="mailto:support@tryaurum.store">support@tryaurum.store</a>
+    </p>
+  </div>
+
+  <footer>
+    <a href="/" style="font-family: 'Cormorant Garamond', serif; font-size: 1.1rem; letter-spacing: 0.25em; color: var(--gold); text-decoration: none;">AURUM</a>
+    <div class="footer-links">
+      <a href="/tos.html">Terms</a>
+      <a href="/privacy.html">Privacy</a>
+      <a href="mailto:support@tryaurum.store">Support</a>
+    </div>
+    <span class="footer-copy">© 2025 AURUM. A Delaware LLC.</span>
+  </footer>
+
+</body>
+</html>
