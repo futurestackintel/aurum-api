@@ -5,7 +5,7 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
 
   // POST /subscriptions/upgrade
   if (pathname === "/subscriptions/upgrade" && request.method === "POST") {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(request, env);
     if (auth.error) {
       return new Response(JSON.stringify({ error: auth.error }), {
         status: auth.status,
@@ -16,17 +16,17 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
     const body = await request.json();
     const { tier } = body;
 
-    if (!["pro", "sovereign"].includes(tier)) {
+    if (!["contender", "sovereign"].includes(tier)) {
       return new Response(
-        JSON.stringify({ error: "tier must be 'pro' or 'sovereign'" }),
+        JSON.stringify({ error: "tier must be 'contender' or 'sovereign'" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
     try {
-      const user = await env.aurum_db
+      const user = await env.DB
         .prepare(`SELECT id, email FROM users WHERE clerk_id = ?`)
-        .bind(auth.user.sub)
+        .bind(auth.id)
         .first();
 
       if (!user) {
@@ -36,19 +36,22 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
         });
       }
 
-      const amount = tier === "pro" ? 29 : 99;
+      const amount = tier === "contender" ? 29 : 99;
       const payments = new PaymentService(env);
 
-      const result = await payments.initializeChallengePayment({
+      // Uses dedicated subscription method — sets type: "subscription" in metadata
+      const result = await payments.initializeSubscriptionPayment({
         email: user.email,
         amount,
-        challengeId: `sub_${tier}`,
         userId: user.id,
+        tier,
         callbackUrl: `https://tryaurum.store/subscription/callback?tier=${tier}`,
       });
 
       const now = new Date().toISOString();
-      await env.aurum_db
+
+      // Store tier in subscription record at initialization
+      await env.DB
         .prepare(
           `INSERT OR REPLACE INTO subscriptions (user_id, tier, status, payment_reference, created_at)
            VALUES (?, ?, 'pending', ?, ?)`
@@ -76,7 +79,7 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
 
   // POST /subscriptions/verify
   if (pathname === "/subscriptions/verify" && request.method === "POST") {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(request, env);
     if (auth.error) {
       return new Response(JSON.stringify({ error: auth.error }), {
         status: auth.status,
@@ -105,9 +108,9 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
         });
       }
 
-      const user = await env.aurum_db
+      const user = await env.DB
         .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
-        .bind(auth.user.sub)
+        .bind(auth.id)
         .first();
 
       if (!user) {
@@ -117,17 +120,31 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
         });
       }
 
-      const tier = reference.includes("sovereign") ? "sovereign" : "pro";
+      // Retrieve tier from subscription record — never guess from reference string
+      const subscription = await env.DB
+        .prepare(`SELECT tier FROM subscriptions WHERE payment_reference = ?`)
+        .bind(reference)
+        .first();
+
+      if (!subscription) {
+        return new Response(
+          JSON.stringify({ error: "Subscription record not found for this reference" }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const tier = subscription.tier;
       const now = new Date().toISOString();
 
-      await env.aurum_db
+      await env.DB
         .prepare(`UPDATE users SET tier = ? WHERE id = ?`)
         .bind(tier, user.id)
         .run();
 
-      await env.aurum_db
+      await env.DB
         .prepare(
-          `UPDATE subscriptions SET status = 'active', activated_at = ? WHERE payment_reference = ?`
+          `UPDATE subscriptions SET status = 'active', activated_at = ?
+           WHERE payment_reference = ?`
         )
         .bind(now, reference)
         .run();
