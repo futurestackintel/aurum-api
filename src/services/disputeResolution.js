@@ -5,6 +5,8 @@
 //   - slash:   stake forfeited to treasury + Aurum Score penalty + notification
 // Integrates with existing proofOfStake.js logic from Chat 5.
 
+import { addScoreEvent } from "./aurumScore.js";
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STAKE_VERIFY_SCORE_BOOST  =  50;
@@ -68,13 +70,14 @@ export async function verifyDisputedPost(postId, adminId, env) {
     WHERE id = ?
   `).bind(postId).run();
 
-  // Boost Aurum Score
-  await adjustAurumScore(env, {
-    userId:      post.user_id,
-    delta:       STAKE_VERIFY_SCORE_BOOST,
-    eventType:   'achievement_verified',
-    referenceId: postId,
-  });
+  // Boost Aurum Score via score engine
+  await addScoreEvent(
+    post.user_id,
+    "achievement_verified",
+    STAKE_VERIFY_SCORE_BOOST,
+    { post_id: postId },
+    env.DB
+  );
 
   // Resolve all pending flags on this post
   await resolvePostFlags(postId, adminId, 'dismissed', 'Post verified by admin — stake returned', env);
@@ -128,13 +131,14 @@ export async function slashDisputedPost(postId, adminId, reason, env) {
     reason:      reason.trim(),
   });
 
-  // Apply Aurum Score penalty
-  await adjustAurumScore(env, {
-    userId:      post.user_id,
-    delta:       STAKE_SLASH_SCORE_PENALTY,
-    eventType:   'stake_forfeited_penalty',
-    referenceId: postId,
-  });
+  // Apply Aurum Score penalty via score engine
+  await addScoreEvent(
+    post.user_id,
+    "post_flagged_fake",
+    STAKE_SLASH_SCORE_PENALTY,
+    { post_id: postId },
+    env.DB
+  );
 
   // Resolve all pending flags on this post as actioned
   await resolvePostFlags(postId, adminId, 'actioned', reason.trim(), env);
@@ -222,37 +226,14 @@ async function resolvePostFlags(postId, adminId, decision, actionTaken, env) {
   `).bind(decision, adminId, now, actionTaken, postId).run();
 }
 
-async function adjustAurumScore(env, { userId, delta, eventType, referenceId }) {
-  // Fetch current score
-  const user = await env.DB.prepare(`
-    SELECT aurum_score FROM users WHERE id = ?
-  `).bind(userId).first();
-
-  if (!user) throw new Error('User not found');
-
-  const newScore = Math.max(0, user.aurum_score + delta);
-
-  // Update user score
-  await env.DB.prepare(`
-    UPDATE users SET aurum_score = ? WHERE id = ?
-  `).bind(newScore, userId).run();
-
-  // Write to audit log
-  const eventId = crypto.randomUUID();
-  await env.DB.prepare(`
-    INSERT INTO aurum_score_events
-      (id, user_id, event_type, delta, score_after, reference_id)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).bind(eventId, userId, eventType, delta, newScore, referenceId ?? null).run();
-}
-
 async function recordTreasuryForfeiture(env, { postId, userId, amountCents, adminId, reason }) {
   const id = crypto.randomUUID();
+  const now = new Date().toISOString();
   await env.DB.prepare(`
     INSERT INTO treasury_ledger
-      (id, challenge_id, total_held, status, released_at)
-    VALUES (?, ?, ?, 'forfeited', ?)
-  `).bind(id, postId, amountCents, new Date().toISOString()).run();
+      (id, post_id, user_id, amount, status, admin_id, reason, created_at)
+    VALUES (?, ?, ?, ?, 'forfeited', ?, ?, ?)
+  `).bind(id, postId, userId, amountCents, adminId, reason, now).run();
 }
 
 async function sendNotification(env, { userId, type, title, body, actionUrl, metadata }) {
@@ -262,4 +243,4 @@ async function sendNotification(env, { userId, type, title, body, actionUrl, met
       (id, user_id, type, title, body, action_url, metadata)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).bind(id, userId, type, title, body, actionUrl ?? null, metadata ?? null).run();
-}
+		}
