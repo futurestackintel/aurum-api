@@ -59,7 +59,7 @@ async function snapshotBoard(env, boardType, periods, queryBuilder) {
         period,
         periodKey,
         row.user_id,
-        index + 1,          // rank is 1-based
+        index + 1,
         row.score,
         row.display_name,
         row.avatar_url ?? null,
@@ -77,23 +77,23 @@ function buildPeriods(now) {
   return [
     {
       period:    'daily',
-      periodKey: now.toISOString().slice(0, 10),          // e.g. 2026-06-12
+      periodKey: now.toISOString().slice(0, 10),
       since:     startOfDay(now),
     },
     {
       period:    'weekly',
-      periodKey: getWeekKey(now),                          // e.g. 2026-W24
+      periodKey: getWeekKey(now),
       since:     startOfWeek(now),
     },
     {
       period:    'monthly',
-      periodKey: now.toISOString().slice(0, 7),            // e.g. 2026-06
+      periodKey: now.toISOString().slice(0, 7),
       since:     startOfMonth(now),
     },
     {
       period:    'alltime',
       periodKey: 'alltime',
-      since:     null,                                     // no date filter
+      since:     null,
     },
   ];
 }
@@ -139,7 +139,8 @@ function buildHighestEarnerQuery(since) {
 }
 
 function buildMostWinsQuery(since) {
-  const whereClause = since ? `WHERE dc.updated_at >= ?` : '';
+  const baseWhere = `WHERE dc.status = 'completed' AND dc.winner_id IS NOT NULL`;
+  const sinceClause = since ? `AND dc.updated_at >= ?` : '';
   return `
     SELECT
       dc.winner_id                        as user_id,
@@ -149,9 +150,8 @@ function buildMostWinsQuery(since) {
       COUNT(*)                            as score
     FROM drop_circles dc
     JOIN users u ON u.id = dc.winner_id
-    WHERE dc.status = 'completed'
-      AND dc.winner_id IS NOT NULL
-      ${since ? 'AND dc.updated_at >= ?' : ''}
+    ${baseWhere}
+    ${sinceClause}
     GROUP BY dc.winner_id
     ORDER BY score DESC
     LIMIT 100
@@ -159,8 +159,6 @@ function buildMostWinsQuery(since) {
 }
 
 function buildAurumScoreQuery(since) {
-  // Aurum score is a live cumulative score — period filter not meaningful.
-  // For periodic snapshots we still capture current standing.
   return `
     SELECT
       u.id                                as user_id,
@@ -186,7 +184,7 @@ function startOfDay(date) {
 function startOfWeek(date) {
   const d = new Date(date);
   const day = d.getUTCDay();
-  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1); // Monday start
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
   d.setUTCDate(diff);
   d.setUTCHours(0, 0, 0, 0);
   return d.toISOString();
@@ -207,4 +205,4 @@ function getWeekKey(date) {
     ((d - startOfYear) / 86400000 + startOfYear.getUTCDay() + 1) / 7
   );
   return `${year}-W${String(weekNum).padStart(2, '0')}`;
-}
+			}
