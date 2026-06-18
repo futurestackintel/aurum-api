@@ -5,7 +5,7 @@ export async function handleAuthRoutes(pathname, request, env) {
 
   // POST /auth/register
   if (pathname === "/auth/register" && request.method === "POST") {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(request, env);
     if (auth.error) {
       return new Response(JSON.stringify({ error: auth.error }), {
         status: auth.status,
@@ -13,7 +13,7 @@ export async function handleAuthRoutes(pathname, request, env) {
       });
     }
 
-    const clerkUserId = auth.user.sub;
+    const clerkUserId = auth.id;
     const body = await request.json();
     const { email, username, firstName, lastName } = body;
 
@@ -25,7 +25,7 @@ export async function handleAuthRoutes(pathname, request, env) {
     }
 
     try {
-      const existing = await env.aurum_db
+      const existing = await env.DB
         .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
         .bind(clerkUserId)
         .first();
@@ -53,10 +53,10 @@ export async function handleAuthRoutes(pathname, request, env) {
       }
 
       const now = new Date().toISOString();
-      const result = await env.aurum_db
+      const result = await env.DB
         .prepare(
           `INSERT INTO users (clerk_id, email, username, first_name, last_name, tier, league, aurum_score, paystack_customer_code, created_at)
-           VALUES (?, ?, ?, ?, ?, 'free', 'bronze', 0, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, 'explorer', 'bronze', 0, ?, ?)`
         )
         .bind(clerkUserId, email, username, firstName, lastName, paystackCustomerCode, now)
         .run();
@@ -79,7 +79,7 @@ export async function handleAuthRoutes(pathname, request, env) {
 
   // GET /auth/me
   if (pathname === "/auth/me" && request.method === "GET") {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(request, env);
     if (auth.error) {
       return new Response(JSON.stringify({ error: auth.error }), {
         status: auth.status,
@@ -88,12 +88,12 @@ export async function handleAuthRoutes(pathname, request, env) {
     }
 
     try {
-      const user = await env.aurum_db
+      const user = await env.DB
         .prepare(
           `SELECT id, username, email, tier, league, aurum_score, verified_badges, streak, created_at
            FROM users WHERE clerk_id = ?`
         )
-        .bind(auth.user.sub)
+        .bind(auth.id)
         .first();
 
       if (!user) {
