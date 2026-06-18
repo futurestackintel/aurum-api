@@ -1,11 +1,12 @@
 import { requireAuth } from "../middleware/auth.js";
 import { PaymentService } from "../services/payments.js";
+import { addScoreEvent } from "../services/aurumScore.js";
 
 export async function handleTipsRoutes(pathname, request, env) {
 
   // POST /tips/initialize
   if (pathname === "/tips/initialize" && request.method === "POST") {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(request, env);
     if (auth.error) {
       return new Response(JSON.stringify({ error: auth.error }), {
         status: auth.status,
@@ -24,9 +25,9 @@ export async function handleTipsRoutes(pathname, request, env) {
     }
 
     try {
-      const sender = await env.aurum_db
+      const sender = await env.DB
         .prepare(`SELECT id, email FROM users WHERE clerk_id = ?`)
-        .bind(auth.user.sub)
+        .bind(auth.id)
         .first();
 
       if (!sender) {
@@ -61,7 +62,7 @@ export async function handleTipsRoutes(pathname, request, env) {
 
   // POST /tips/verify
   if (pathname === "/tips/verify" && request.method === "POST") {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(request, env);
     if (auth.error) {
       return new Response(JSON.stringify({ error: auth.error }), {
         status: auth.status,
@@ -90,27 +91,44 @@ export async function handleTipsRoutes(pathname, request, env) {
         });
       }
 
+      // Idempotency check — prevent duplicate tip recording
+      const existingTip = await env.DB
+        .prepare(`SELECT id FROM tips WHERE paystack_reference = ?`)
+        .bind(reference)
+        .first();
+
+      if (existingTip) {
+        return new Response(
+          JSON.stringify({ message: "Tip already recorded", tip_id: existingTip.id }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       const { sender_id, receiver_id, post_id, platform_fee } = transaction.metadata;
       const amount = transaction.amount / 100;
       const now = new Date().toISOString();
 
-      await env.aurum_db
+      const tipResult = await env.DB
         .prepare(
-          `INSERT INTO tips (sender_id, receiver_id, post_id, amount, fee_taken, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
+          `INSERT INTO tips (sender_id, receiver_id, post_id, amount, fee_taken, paystack_reference, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
         )
-        .bind(sender_id, receiver_id, post_id, amount, platform_fee, now)
+        .bind(sender_id, receiver_id, post_id, amount, platform_fee, reference, now)
         .run();
 
-      await env.aurum_db
+      await env.DB
         .prepare(`UPDATE posts SET tips_received = tips_received + ? WHERE id = ?`)
         .bind(amount - platform_fee, post_id)
         .run();
 
-      await env.aurum_db
-        .prepare(`UPDATE users SET aurum_score = aurum_score + 2 WHERE id = ?`)
-        .bind(sender_id)
-        .run();
+      // Score event — replaces raw SQL score update
+      await addScoreEvent(
+        sender_id,
+        "tip_sent",
+        null,
+        { tip_id: tipResult.meta.last_row_id },
+        env.DB
+      );
 
       return new Response(
         JSON.stringify({ message: "Tip verified and recorded", amount, fee: platform_fee }),
