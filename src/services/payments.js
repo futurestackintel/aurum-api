@@ -66,6 +66,28 @@ export class PaymentService {
     };
   }
 
+  async initializeSubscriptionPayment({ email, amount, tier, userId, callbackUrl }) {
+    const reference = `sub_${tier}_${userId}_${Date.now()}`;
+
+    const result = await this.provider.initializeTransaction({
+      email,
+      amount,
+      callback_url: callbackUrl,
+      metadata: {
+        type: "subscription",
+        tier,
+        user_id: userId,
+        reference,
+      },
+    });
+
+    return {
+      authorization_url: result.authorization_url,
+      reference: result.reference || reference,
+      tier,
+    };
+  }
+
   async payoutWinner({ amount, recipientCode, challengeId }) {
     const fee = parseFloat((amount * this.PLATFORM_FEE_PERCENT).toFixed(2));
     const payout = amount - fee;
@@ -79,7 +101,7 @@ export class PaymentService {
 
   getSubscriptionPlans() {
     return {
-      pro: "PLN_pro_contender",
+      contender: "PLN_pro_contender",
       sovereign: "PLN_sovereign",
     };
   }
