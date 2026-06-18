@@ -1,4 +1,4 @@
-const JWKS_URL = "https://desired-frog-66.clerk.accounts.dev/.well-known/jwks.json";
+const JWKS_URL = "https://clerk.tryaurum.store/.well-known/jwks.json";
 
 async function getJWKS() {
   const res = await fetch(JWKS_URL);
