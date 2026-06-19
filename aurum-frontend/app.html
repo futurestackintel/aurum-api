@@ -22,12 +22,12 @@
 
   <!-- Clerk Auth -->
   <script
-    async
-    crossorigin="anonymous"
-    data-clerk-publishable-key="pk_live_Y2xlcmsudHJ5YXVydW0uc3RvcmUk"
-    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
-    type="text/javascript"
-  ></script>
+    <script
+  crossorigin="anonymous"
+  data-clerk-publishable-key="pk_live_Y2xlcmsudHJ5YXVydW0uc3RvcmUk"
+  src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  type="text/javascript"
+></script>
 
   <style>
     .app-shell {
@@ -366,10 +366,19 @@
     currentView: 'ledger',
 
     async init() {
-      await this.waitForClerk();
-      await this.checkAuth();
-      this.hideLoading();
-    },
+  // Disable auth buttons until Clerk is ready
+  document.getElementById('btn-signin').disabled = true;
+  document.getElementById('btn-signup').disabled = true;
+
+  await this.waitForClerk();
+
+  // Re-enable now that Clerk is loaded
+  document.getElementById('btn-signin').disabled = false;
+  document.getElementById('btn-signup').disabled = false;
+
+  await this.checkAuth();
+  this.hideLoading();
+},
 
     waitForClerk() {
       return new Promise(resolve => {
