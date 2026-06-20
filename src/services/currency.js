@@ -8,7 +8,7 @@
 const SUPPORTED_CURRENCIES = ['USD', 'NGN', 'GHS', 'KES', 'ZAR'];
 
 const CURRENCY_SYMBOLS = {
-  USD: '$',
+  USD: '₳',
   NGN: '₦',
   GHS: 'GH₵',
   KES: 'KSh',
