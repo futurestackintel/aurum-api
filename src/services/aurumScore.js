@@ -27,6 +27,7 @@ const SCORE_WEIGHTS = {
   badge_earned:               20,   // one-time per badge
   post_flagged_fake:         -60,   // stake slashed + score penalty
   challenge_forfeit:         -20,
+  founding_member:           100,   // Build 1 — one-time founding member bonus
 };
 
 // League thresholds — locked. Adjust only here.
@@ -47,7 +48,7 @@ export async function recalculateScore(userId, db) {
     .bind(userId)
     .all();
 
-  const raw = results[0]?.total ?? 0;
+  const raw   = results[0]?.total ?? 0;
   const score = Math.max(0, Math.round(raw)); // score never goes below 0
 
   await db
@@ -85,10 +86,10 @@ export async function addScoreEvent(userId, eventType, delta, meta = {}, db) {
       userId,
       eventType,
       points,
-      meta.post_id    ?? null,
+      meta.post_id      ?? null,
       meta.challenge_id ?? null,
-      meta.tip_id     ?? null,
-      meta.note       ?? null,
+      meta.tip_id       ?? null,
+      meta.note         ?? null,
       new Date().toISOString(),
     )
     .run();
