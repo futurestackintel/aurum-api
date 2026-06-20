@@ -4,12 +4,21 @@
 // GET  /api/posts              — get ledger feed
 // POST /api/posts/:id/flag     — flag a post as fake
 // POST /api/posts/:id/resolve  — admin: resolve verdict
+// POST /api/posts/:id/appeal   — user: submit appeal
+// POST /api/posts/:id/appeal/resolve — admin: resolve appeal
 // GET  /api/posts/:id/flags    — admin: view flags on a post
 // ============================================================
 
-import { createPost, flagPost, resolvePost, getLedgerPosts } from '../services/proofOfStake.js';
-import { requireAuth, requireAdmin }                          from '../middleware/auth.js';
-import { streakMiddleware }                                   from '../services/streak.js';
+import {
+  createPost,
+  flagPost,
+  resolvePost,
+  getLedgerPosts,
+  appealPost,
+  resolveAppeal,
+} from '../services/proofOfStake.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { streakMiddleware }          from '../services/streak.js';
 
 export async function handlePostRoutes(path, method, request, env) {
   const db = env.DB;
@@ -20,14 +29,16 @@ export async function handlePostRoutes(path, method, request, env) {
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
-      streakMiddleware(user.id, db);
+      // Fix 5 — await streakMiddleware
+      await streakMiddleware(user.id, db);
+
       const body   = await request.json();
       const result = await createPost(user.id, body, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result, 201);
     } catch (err) {
-      console.error("Create post error:", err);
-      return jsonResponse({ error: "Unable to create post. Please try again." }, 500);
+      console.error('Create post error:', err);
+      return jsonResponse({ error: 'Unable to create post. Please try again.' }, 500);
     }
   }
 
@@ -40,8 +51,8 @@ export async function handlePostRoutes(path, method, request, env) {
       const posts  = await getLedgerPosts(limit, offset, db);
       return jsonResponse({ posts });
     } catch (err) {
-      console.error("Get posts error:", err);
-      return jsonResponse({ error: "Unable to load posts. Please try again." }, 500);
+      console.error('Get posts error:', err);
+      return jsonResponse({ error: 'Unable to load posts. Please try again.' }, 500);
     }
   }
 
@@ -58,8 +69,8 @@ export async function handlePostRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Flag post error:", err);
-      return jsonResponse({ error: "Unable to flag post. Please try again." }, 500);
+      console.error('Flag post error:', err);
+      return jsonResponse({ error: 'Unable to flag post. Please try again.' }, 500);
     }
   }
 
@@ -77,8 +88,45 @@ export async function handlePostRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Resolve post error:", err);
-      return jsonResponse({ error: "Unable to resolve post. Please try again." }, 500);
+      console.error('Resolve post error:', err);
+      return jsonResponse({ error: 'Unable to resolve post. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/posts/:id/appeal — user submits appeal ────
+  const appealMatch = path.match(/^\/api\/posts\/([^/]+)\/appeal$/);
+  if (appealMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const postId = appealMatch[1];
+      const body   = await request.json().catch(() => ({}));
+      const result = await appealPost(postId, user.id, body.appeal_reason, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Appeal post error:', err);
+      return jsonResponse({ error: 'Unable to submit appeal. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/posts/:id/appeal/resolve — admin resolves appeal ──
+  const appealResolveMatch = path.match(/^\/api\/posts\/([^/]+)\/appeal\/resolve$/);
+  if (appealResolveMatch && method === 'POST') {
+    const admin = await requireAdmin(request, env);
+    if (admin.error) return jsonResponse({ error: admin.error }, 403);
+
+    try {
+      const postId = appealResolveMatch[1];
+      const body   = await request.json();
+      if (!body.decision) return jsonResponse({ error: 'decision is required' }, 400);
+      const result = await resolveAppeal(postId, body.decision, admin.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Resolve appeal error:', err);
+      return jsonResponse({ error: 'Unable to resolve appeal. Please try again.' }, 500);
     }
   }
 
@@ -102,8 +150,8 @@ export async function handlePostRoutes(path, method, request, env) {
         .all();
       return jsonResponse({ post_id: postId, flags: results });
     } catch (err) {
-      console.error("Get flags error:", err);
-      return jsonResponse({ error: "Unable to load flags. Please try again." }, 500);
+      console.error('Get flags error:', err);
+      return jsonResponse({ error: 'Unable to load flags. Please try again.' }, 500);
     }
   }
 
