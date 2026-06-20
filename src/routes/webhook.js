@@ -1,6 +1,9 @@
 // ============================================================
-// PAYSTACK WEBHOOK
+// AURUM Webhook Handler
 // POST /webhook/paystack
+// Handles: wallet_deposit, challenge_entry, subscription
+// Note: tip type removed — tips are now internal wallet
+//       transfers and never go through Paystack checkout
 // ============================================================
 
 import { addScoreEvent } from "../services/aurumScore.js";
@@ -9,7 +12,7 @@ export async function handleWebhookRoutes(pathname, request, env) {
 
   if (pathname === "/webhook/paystack" && request.method === "POST") {
 
-    // Verify signature
+    // ── Signature verification ────────────────────────────────
     const signature = request.headers.get("x-paystack-signature");
     if (!signature) {
       return new Response(JSON.stringify({ error: "No signature" }), {
@@ -46,7 +49,7 @@ export async function handleWebhookRoutes(pathname, request, env) {
       });
     }
 
-    // Parse event
+    // ── Parse event ───────────────────────────────────────────
     let event;
     try {
       event = JSON.parse(rawBody);
@@ -57,7 +60,7 @@ export async function handleWebhookRoutes(pathname, request, env) {
       });
     }
 
-    // Handle charge.success
+    // ── Handle charge.success ─────────────────────────────────
     if (event.event === "charge.success") {
       const data        = event.data;
       const reference   = data.reference;
@@ -67,96 +70,131 @@ export async function handleWebhookRoutes(pathname, request, env) {
       const now         = new Date().toISOString();
 
       try {
-        if (type === "tip") {
-          const { sender_id, receiver_id, post_id, platform_fee } = metadata;
-          const platformFeeCents  = Math.round(platform_fee * 100);
-          const receiverNetCents  = amountCents - platformFeeCents;
 
-          // Avoid duplicate processing
+        // ── wallet_deposit ──────────────────────────────────
+        if (type === "wallet_deposit") {
+          const { user_id } = metadata;
+          const amountUsd = amountCents / 100;
+
+          // Idempotency check
           const existing = await env.DB
-            .prepare(`SELECT id FROM tips WHERE paystack_reference = ?`)
+            .prepare(`SELECT id FROM wallet_transactions WHERE reference = ?`)
             .bind(reference)
             .first();
 
           if (!existing) {
-            const tipResult = await env.DB
-              .prepare(
-                `INSERT INTO tips
-                  (sender_id, receiver_id, post_id, amount_cents, platform_fee_cents,
-                   receiver_net_cents, stripe_payment_intent_id, status, paystack_reference, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`
-              )
-              .bind(
-                sender_id, receiver_id, post_id,
-                amountCents, platformFeeCents, receiverNetCents,
-                reference, reference, now
-              )
-              .run();
+            const wallet = await env.DB
+              .prepare(`SELECT id, balance_usd FROM wallets WHERE user_id = ?`)
+              .bind(user_id)
+              .first();
 
-            await env.DB
-              .prepare(`UPDATE posts SET tips_received = tips_received + ? WHERE id = ?`)
-              .bind(receiverNetCents, post_id)
-              .run();
+            if (wallet) {
+              const newBalance = wallet.balance_usd + amountUsd;
 
-            // Score event — replaces raw SQL score update
-            await addScoreEvent(
-              sender_id,
-              "tip_sent",
-              null,
-              { tip_id: tipResult.meta.last_row_id },
-              env.DB
-            );
+              await env.DB
+                .prepare(`
+                  UPDATE wallets
+                  SET balance_usd = ?,
+                      total_deposited_usd = total_deposited_usd + ?,
+                      updated_at = ?
+                  WHERE user_id = ?
+                `)
+                .bind(newBalance, amountUsd, now, user_id)
+                .run();
+
+              await env.DB
+                .prepare(`
+                  INSERT INTO wallet_transactions
+                    (id, wallet_id, user_id, type, amount_usd,
+                     balance_after_usd, reference, description, created_at)
+                  VALUES (?, ?, ?, 'deposit', ?, ?, ?, 'Wallet deposit via Paystack', ?)
+                `)
+                .bind(
+                  crypto.randomUUID(), wallet.id, user_id,
+                  amountUsd, newBalance, reference, now
+                )
+                .run();
+            }
           }
 
+        // ── challenge_entry ─────────────────────────────────
         } else if (type === "challenge_entry") {
           const { challenge_id, user_id } = metadata;
 
           const existing = await env.DB
-            .prepare(`SELECT id FROM challenge_entries WHERE paystack_reference = ?`)
+            .prepare(`
+              SELECT id FROM challenge_entries
+              WHERE challenge_id = ? AND user_id = ?
+            `)
+            .bind(challenge_id, user_id)
+            .first();
+
+          if (!existing) {
+            await env.DB
+              .prepare(`
+                INSERT INTO challenge_entries
+                  (id, challenge_id, user_id, entry_fee_paid_cents,
+                   status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'entered', ?, ?)
+              `)
+              .bind(
+                crypto.randomUUID(), challenge_id, user_id,
+                amountCents, now, now
+              )
+              .run();
+
+            await env.DB
+              .prepare(`
+                UPDATE challenges
+                SET pool_total_cents = pool_total_cents + ?,
+                    participant_count = participant_count + 1
+                WHERE id = ?
+              `)
+              .bind(amountCents, challenge_id)
+              .run();
+          }
+
+        // ── subscription ────────────────────────────────────
+        } else if (type === "subscription") {
+          const { user_id, tier } = metadata;
+
+          // Idempotency — only activate once
+          const existing = await env.DB
+            .prepare(`
+              SELECT id FROM subscriptions
+              WHERE payment_reference = ? AND status = 'active'
+            `)
             .bind(reference)
             .first();
 
           if (!existing) {
             await env.DB
-              .prepare(
-                `INSERT INTO challenge_entries
-                  (challenge_id, user_id, entry_fee_paid_cents, stripe_payment_intent,
-                   status, paystack_reference, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, 'entered', ?, ?, ?)`
-              )
-              .bind(challenge_id, user_id, amountCents, reference, reference, now, now)
+              .prepare(`UPDATE users SET tier = ?, updated_at = ? WHERE id = ?`)
+              .bind(tier, now, user_id)
               .run();
 
             await env.DB
-              .prepare(`UPDATE challenges SET pool_amount = pool_amount + ? WHERE id = ?`)
-              .bind(amountCents, challenge_id)
+              .prepare(`
+                UPDATE subscriptions
+                SET status = 'active', activated_at = ?, updated_at = ?
+                WHERE payment_reference = ?
+              `)
+              .bind(now, now, reference)
               .run();
           }
 
-        } else if (type === "subscription") {
-          const { user_id, tier } = metadata;
-
-          await env.DB
-            .prepare(`UPDATE users SET tier = ? WHERE id = ?`)
-            .bind(tier, user_id)
-            .run();
-
-          await env.DB
-            .prepare(
-              `UPDATE subscriptions SET status = 'active', activated_at = ?
-               WHERE payment_reference = ?`
-            )
-            .bind(now, reference)
-            .run();
+        } else {
+          // Unknown payment type — log and ignore
+          console.warn("Webhook received unknown payment type:", type, reference);
         }
 
       } catch (err) {
         console.error("Webhook processing error:", err);
-        // Return 200 anyway — prevent Paystack infinite retries
+        // Always return 200 — prevent Paystack infinite retries
       }
     }
 
-    // Always 200 to Paystack
+    // ── Always 200 to Paystack ────────────────────────────────
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -164,4 +202,4 @@ export async function handleWebhookRoutes(pathname, request, env) {
   }
 
   return null;
-}
+								}
