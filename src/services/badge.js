@@ -12,32 +12,40 @@ import { addScoreEvent } from './aurumScore.js';
 // type must match badge_type column in badges table.
 export const BADGE_DEFINITIONS = [
   {
-    type:        'verified_builder',
-    label:       '🥉 Verified Builder',
-    description: 'Owns a verified business',
-    score_threshold: 100,   // minimum Aurum Score to be eligible
-    manual_verify:   true,  // requires admin approval — not auto-awarded on score alone
+    type:             'verified_builder',
+    label:            '🥉 Verified Builder',
+    description:      'Owns a verified business',
+    score_threshold:  100,
+    manual_verify:    true,  // requires admin approval
   },
   {
-    type:        'verified_founder',
-    label:       '🥈 Verified Founder',
-    description: 'Verified startup or exit',
-    score_threshold: 400,
-    manual_verify:   true,
+    type:             'verified_founder',
+    label:            '🥈 Verified Founder',
+    description:      'Verified startup or exit',
+    score_threshold:  400,
+    manual_verify:    true,
   },
   {
-    type:        'verified_millionaire',
-    label:       '🥇 Verified Millionaire',
-    description: 'Verified high net worth',
-    score_threshold: 1000,
-    manual_verify:   true,  // always requires manual verification
+    type:             'verified_millionaire',
+    label:            '🥇 Verified Millionaire',
+    description:      'Verified high net worth',
+    score_threshold:  1000,
+    manual_verify:    true,
   },
   {
-    type:        'sovereign',
-    label:       '💎 Sovereign',
-    description: 'Platform elite status',
-    score_threshold: 2000,
-    manual_verify:   false, // auto-awarded when score hits Sovereign league
+    type:             'sovereign',
+    label:            '💎 Sovereign',
+    description:      'Platform elite status',
+    score_threshold:  2000,
+    manual_verify:    false, // auto-awarded when score hits Sovereign league
+  },
+  // Build 1 — Founding Member badge
+  {
+    type:             'founding_member',
+    label:            '⚡ Founding Member',
+    description:      'One of the first 100 AURUM members',
+    score_threshold:  0,
+    manual_verify:    false, // awarded by webhook on payment confirmation
   },
 ];
 
@@ -45,6 +53,7 @@ export const BADGE_DEFINITIONS = [
  * Check and auto-award badges a user qualifies for.
  * Only awards badges where manual_verify = false.
  * Manual badges are awarded via adminAwardBadge().
+ * founding_member is awarded directly by the webhook — not by score check.
  *
  * Returns array of newly awarded badges.
  */
@@ -62,15 +71,18 @@ export async function checkAndAwardBadges(userId, db) {
     .bind(userId)
     .all();
 
-  const alreadyHas = new Set(existing.map(b => b.badge_type));
+  const alreadyHas   = new Set(existing.map(b => b.badge_type));
   const newlyAwarded = [];
 
   for (const badge of BADGE_DEFINITIONS) {
     // Skip if already awarded
     if (alreadyHas.has(badge.type)) continue;
 
-    // Skip manual verification badges — those go through adminAwardBadge()
+    // Skip manual verification badges
     if (badge.manual_verify) continue;
+
+    // Skip founding_member here — awarded only by webhook on payment
+    if (badge.type === 'founding_member') continue;
 
     // Check score threshold
     if (user.aurum_score >= badge.score_threshold) {
@@ -111,7 +123,7 @@ export async function awardBadge(userId, badgeType, db) {
   await addScoreEvent(
     userId,
     'badge_earned',
-    null, // use weight table value (20 pts)
+    null, // uses weight table value (20 pts)
     { note: `Badge awarded: ${badgeType}` },
     db,
   );
@@ -135,7 +147,12 @@ export async function adminAwardBadge(userId, badgeType, db) {
  */
 export async function getUserBadges(userId, db) {
   const { results } = await db
-    .prepare(`SELECT badge_type, verified_at FROM badges WHERE user_id = ? ORDER BY verified_at ASC`)
+    .prepare(`
+      SELECT badge_type, verified_at
+      FROM badges
+      WHERE user_id = ?
+      ORDER BY verified_at ASC
+    `)
     .bind(userId)
     .all();
 
@@ -149,4 +166,4 @@ export async function getUserBadges(userId, db) {
       verified_at: row.verified_at,
     };
   });
-}
+					}
