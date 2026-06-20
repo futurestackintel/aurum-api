@@ -1,118 +1,139 @@
+// ============================================================
+// AURUM Auth Routes
+// POST /auth/register
+// GET  /auth/me
+// ============================================================
+
 import { requireAuth } from "../middleware/auth.js";
 import { PaymentService } from "../services/payments.js";
 
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export async function handleAuthRoutes(pathname, request, env) {
 
-  // POST /auth/register
+  // ── POST /auth/register ─────────────────────────────────────
   if (pathname === "/auth/register" && request.method === "POST") {
     const auth = await requireAuth(request, env);
-    if (auth.error) {
-      return new Response(JSON.stringify({ error: auth.error }), {
-        status: auth.status,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    if (auth.error) return json({ error: auth.error }, auth.status);
 
     const clerkUserId = auth.id;
     const body = await request.json();
-    const { email, username, firstName, lastName } = body;
+    const { email, username, display_name } = body;
 
     if (!email || !username) {
-      return new Response(JSON.stringify({ error: "email and username are required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return json({ error: "email and username are required" }, 400);
     }
 
     try {
+      // Idempotency — return early if already registered
       const existing = await env.DB
         .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
         .bind(clerkUserId)
         .first();
 
       if (existing) {
-        return new Response(
-          JSON.stringify({ message: "User already registered", user_id: existing.id }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
+        return json({ message: "User already registered", user_id: existing.id });
       }
 
-      // Create Paystack customer — non-blocking, failure is safe
-      let paystackCustomerCode = null;
-      try {
-        const payments = new PaymentService(env);
-        const customer = await payments.createCustomer({
-          email,
-          firstName,
-          lastName,
-          userId: clerkUserId,
-        });
-        paystackCustomerCode = customer.customer_code;
-      } catch (err) {
-        console.error("Paystack customer creation failed:", err.message);
-      }
+      const now    = new Date().toISOString();
+      const userId = crypto.randomUUID();
 
-      const now = new Date().toISOString();
-      const result = await env.DB
-        .prepare(
-          `INSERT INTO users (clerk_id, email, username, first_name, last_name, tier, league, aurum_score, paystack_customer_code, created_at)
-           VALUES (?, ?, ?, ?, ?, 'explorer', 'bronze', 0, ?, ?)`
+      // Insert user — only columns that exist in the schema
+      await env.DB
+        .prepare(`
+          INSERT INTO users
+            (id, clerk_id, email, username, display_name,
+             tier, league, aurum_score, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, 'explorer', 'bronze', 0, ?, ?)
+        `)
+        .bind(
+          userId, clerkUserId, email, username,
+          display_name || username,
+          now, now
         )
-        .bind(clerkUserId, email, username, firstName, lastName, paystackCustomerCode, now)
         .run();
 
-      return new Response(
-        JSON.stringify({
-          message: "User registered successfully",
-          user_id: result.meta.last_row_id,
-        }),
-        { status: 201, headers: { "Content-Type": "application/json" } }
+      // Auto-create wallet for new user
+      const walletId = crypto.randomUUID();
+      await env.DB
+        .prepare(`
+          INSERT INTO wallets
+            (id, user_id, balance_usd, total_deposited_usd,
+             total_withdrawn_usd, total_tips_sent_usd,
+             total_tips_received_usd, currency_preference,
+             created_at, updated_at)
+          VALUES (?, ?, 0, 0, 0, 0, 0, 'USD', ?, ?)
+        `)
+        .bind(walletId, userId, now, now)
+        .run();
+
+      // Create Paystack customer — non-blocking, failure is safe
+      try {
+        const payments = new PaymentService(env);
+        await payments.createCustomer({
+          email,
+          firstName: display_name || username,
+          lastName:  "",
+          userId,
+        });
+      } catch (err) {
+        console.error("Paystack customer creation failed (non-fatal):", err.message);
+      }
+
+      return json(
+        { message: "User registered successfully", user_id: userId },
+        201
       );
     } catch (err) {
       console.error("Register error:", err);
-      return new Response(
-        JSON.stringify({ error: "Registration failed. Please try again." }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+
+      // Surface duplicate username/email constraint errors clearly
+      if (err.message?.includes("UNIQUE constraint failed")) {
+        if (err.message.includes("username")) {
+          return json({ error: "Username already taken" }, 409);
+        }
+        if (err.message.includes("email")) {
+          return json({ error: "Email already registered" }, 409);
+        }
+      }
+
+      return json({ error: "Registration failed. Please try again." }, 500);
     }
   }
 
-  // GET /auth/me
+  // ── GET /auth/me ────────────────────────────────────────────
   if (pathname === "/auth/me" && request.method === "GET") {
     const auth = await requireAuth(request, env);
-    if (auth.error) {
-      return new Response(JSON.stringify({ error: auth.error }), {
-        status: auth.status,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    if (auth.error) return json({ error: auth.error }, auth.status);
 
     try {
       const user = await env.DB
-        .prepare(
-          `SELECT id, username, email, tier, league, aurum_score, verified_badges, streak, created_at
-           FROM users WHERE clerk_id = ?`
-        )
+        .prepare(`
+          SELECT
+            id, username, display_name, email, avatar_url, bio,
+            tier, league, aurum_score,
+            streak_current, streak_longest,
+            total_tips_sent_cents, total_tips_received_cents,
+            total_challenges_won, stealth_mode,
+            is_verified, is_founding_member,
+            kyc_status, created_at
+          FROM users
+          WHERE clerk_id = ? AND deleted_at IS NULL
+        `)
         .bind(auth.id)
         .first();
 
-      if (!user) {
-        return new Response(JSON.stringify({ error: "User not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
+      if (!user) return json({ error: "User not found" }, 404);
 
-      return new Response(JSON.stringify({ user }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return json({ user });
     } catch (err) {
       console.error("Auth me error:", err);
-      return new Response(
-        JSON.stringify({ error: "Unable to load profile. Please try again." }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+      return json({ error: "Unable to load profile. Please try again." }, 500);
     }
   }
 
