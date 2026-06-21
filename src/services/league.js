@@ -7,9 +7,18 @@
 
 import { scoreToLeague } from './aurumScore.js';
 
+// League rank order — higher index = higher rank
+const LEAGUE_RANK = {
+  Bronze:   0,
+  Silver:   1,
+  Gold:     2,
+  Sovereign: 3,
+};
+
 /**
  * Evaluate a user's current score and assign the correct league.
  * If league changed → write to users table + log the promotion/demotion.
+ * If promoted → fire notification to notifications table.
  *
  * Returns { previous_league, new_league, changed, score }
  */
@@ -47,6 +56,28 @@ export async function assignLeague(userId, db) {
         new Date().toISOString(),
       )
       .run();
+
+    // Fix 5 — fire promotion notification when moving to a higher league
+    const previousRank = LEAGUE_RANK[previousLeague] ?? -1;
+    const newRank      = LEAGUE_RANK[newLeague]      ?? -1;
+    const isPromotion  = newRank > previousRank;
+
+    if (isPromotion) {
+      await db
+        .prepare(`
+          INSERT INTO notifications
+            (id, user_id, type, message, read, created_at)
+          VALUES (?, ?, ?, ?, 0, ?)
+        `)
+        .bind(
+          crypto.randomUUID(),
+          userId,
+          'league_promotion',
+          `You've been promoted to ${newLeague} League. 🏆`,
+          new Date().toISOString(),
+        )
+        .run();
+    }
   }
 
   return {
@@ -68,6 +99,7 @@ export async function recalculateAllLeagues(db) {
     .all();
 
   let changed = 0;
+
   for (const user of users) {
     const result = await assignLeague(user.id, db);
     if (result.changed) changed++;
