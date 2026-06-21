@@ -5,8 +5,6 @@
 // - On approval: writes to badges table + fires notification
 // - On rejection: updates badge_requests + fires notification with reason
 
-import { nanoid } from 'nanoid';
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -23,7 +21,7 @@ export async function submitBadgeRequest(userId, badgeType, evidenceUrl, notes, 
     'verified_builder',
     'verified_founder',
     'verified_millionaire',
-    'sovereign_elite',
+    'sovereign',             // BUG-D-001: was 'sovereign_elite' — corrected to match canonical badge type
   ];
 
   if (!allowedTypes.includes(badgeType)) {
@@ -58,6 +56,33 @@ export async function submitBadgeRequest(userId, badgeType, evidenceUrl, notes, 
 
   if (pendingRequest) {
     throw new Error('You already have a pending request for this badge');
+  }
+
+  // Fix 2 — Block reapplication within 30 days of a rejection
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const recentRejection = await env.DB.prepare(`
+    SELECT decided_at FROM badge_requests
+    WHERE user_id    = ?
+      AND badge_type = ?
+      AND status     = 'rejected'
+      AND decided_at >= ?
+    ORDER BY decided_at DESC
+    LIMIT 1
+  `).bind(userId, badgeType, thirtyDaysAgo).first();
+
+  if (recentRejection) {
+    const rejectedAt   = new Date(recentRejection.decided_at);
+    const reapplyAfter = new Date(rejectedAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const msRemaining  = reapplyAfter.getTime() - Date.now();
+    const daysRemaining = Math.ceil(msRemaining / (24 * 60 * 60 * 1000));
+
+    const error = new Error(
+      `You may reapply for this badge in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`
+    );
+    error.status      = 429;
+    error.daysRemaining = daysRemaining;
+    throw error;
   }
 
   const id = crypto.randomUUID();
@@ -103,6 +128,7 @@ export async function getPendingBadgeRequests(env, limit = 50, offset = 0) {
 
 /**
  * Admin approves a badge request.
+ * - Checks user's aurum_score meets badge score_threshold (Fix 1)
  * - Writes to badges table
  * - Updates badge_request status
  * - Fires badge_awarded notification to user
@@ -120,7 +146,26 @@ export async function approveBadgeRequest(requestId, adminId, env) {
 
   if (!req) throw new Error('Badge request not found or already resolved');
 
-  const now = new Date().toISOString();
+  // Fix 1 — Enforce score threshold before writing badge
+  const { BADGE_DEFINITIONS } = await import('./badge.js');
+  const badgeDef = BADGE_DEFINITIONS.find(b => b.type === req.badge_type);
+
+  if (badgeDef && badgeDef.score_threshold > 0) {
+    const user = await env.DB.prepare(`
+      SELECT aurum_score FROM users WHERE id = ?
+    `).bind(req.user_id).first();
+
+    if (!user) throw new Error('User not found');
+
+    if (user.aurum_score < badgeDef.score_threshold) {
+      throw new Error(
+        `User's Aurum Score (${user.aurum_score}) does not meet the required threshold ` +
+        `(${badgeDef.score_threshold}) for the ${badgeDef.label} badge.`
+      );
+    }
+  }
+
+  const now    = new Date().toISOString();
   const badgeId = crypto.randomUUID();
 
   // Write the badge
@@ -237,7 +282,7 @@ function formatBadgeType(badgeType) {
     verified_builder:     'Verified Builder',
     verified_founder:     'Verified Founder',
     verified_millionaire: 'Verified Millionaire',
-    sovereign_elite:      'Sovereign Elite',
+    sovereign:            'Sovereign',         // BUG-D-001: was 'sovereign_elite'
   };
   return labels[badgeType] ?? badgeType;
 }
