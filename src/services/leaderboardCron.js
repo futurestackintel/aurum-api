@@ -18,6 +18,9 @@ export async function runLeaderboardSnapshot(env) {
     snapshotBoard(env, 'aurum_score',    periods, buildAurumScoreQuery),
   ]);
 
+  // Fix 3 — award account_age_week points to all eligible users
+  await awardAccountAgeWeeks(env);
+
   console.log(`[leaderboardCron] Snapshot complete at ${now.toISOString()}`);
 }
 
@@ -71,6 +74,60 @@ async function snapshotBoard(env, boardType, periods, queryBuilder) {
   }
 }
 
+// ── Fix 3 — Account age week scoring ─────────────────────────────────────────
+// Runs after every leaderboard snapshot (daily cron).
+// For each user, calculates how many complete weeks old their account is.
+// Compares against last awarded week stored in KV.
+// Awards 1 point per new week via addScoreEvent.
+
+async function awardAccountAgeWeeks(env) {
+  const { addScoreEvent } = await import('./aurumScore.js');
+  const db  = env.DB;
+  const kv  = env.KV;
+  const now = Date.now();
+
+  const { results: users } = await db
+    .prepare(`SELECT id, created_at FROM users WHERE created_at IS NOT NULL`)
+    .all();
+
+  for (const user of users) {
+    try {
+      const accountCreated  = new Date(user.created_at).getTime();
+      const msPerWeek       = 7 * 24 * 60 * 60 * 1000;
+      const weeksOld        = Math.floor((now - accountCreated) / msPerWeek);
+
+      if (weeksOld < 1) continue; // account not yet a week old
+
+      const kvKey           = `account_age_week:${user.id}`;
+      const stored          = await kv.get(kvKey);
+      const lastAwardedWeek = stored ? parseInt(stored, 10) : 0;
+      const newWeeks        = weeksOld - lastAwardedWeek;
+
+      if (newWeeks < 1) continue; // no new weeks to award
+
+      // Award 1 point per new week — each week gets its own event for auditability
+      for (let w = 1; w <= newWeeks; w++) {
+        await addScoreEvent(
+          user.id,
+          'account_age_week',
+          null, // uses SCORE_WEIGHTS value (1)
+          { note: `Account age week ${lastAwardedWeek + w}` },
+          db,
+        );
+      }
+
+      // Update KV with the new last awarded week
+      await kv.put(kvKey, String(weeksOld));
+
+    } catch (err) {
+      console.error(`[awardAccountAgeWeeks] Failed for user ${user.id}:`, err);
+      // Continue — don't let one user failure abort the whole batch
+    }
+  }
+
+  console.log(`[leaderboardCron] account_age_week awards complete for ${users.length} users`);
+}
+
 // ── Period builders ───────────────────────────────────────────────────────────
 
 function buildPeriods(now) {
@@ -101,16 +158,20 @@ function buildPeriods(now) {
 // ── Query builders ────────────────────────────────────────────────────────────
 // Each returns a SQL string.
 // If since is not null, caller binds it as first param.
+// Fix 4 — all queries use CASE WHEN stealth_mode to mask display_name.
 
 function buildMostGenerousQuery(since) {
   const whereClause = since ? `WHERE t.created_at >= ?` : '';
   return `
     SELECT
-      t.sender_id                         as user_id,
-      u.username                          as display_name,
+      t.sender_id                                       as user_id,
+      CASE WHEN u.stealth_mode = 1
+        THEN 'Anonymous'
+        ELSE u.username
+      END                                               as display_name,
       u.avatar_url,
       u.league,
-      CAST(SUM(t.amount) AS INTEGER)      as score
+      CAST(SUM(t.amount) AS INTEGER)                    as score
     FROM tips t
     JOIN users u ON u.id = t.sender_id
     ${whereClause}
@@ -124,11 +185,14 @@ function buildHighestEarnerQuery(since) {
   const whereClause = since ? `WHERE t.created_at >= ?` : '';
   return `
     SELECT
-      t.receiver_id                       as user_id,
-      u.username                          as display_name,
+      t.receiver_id                                     as user_id,
+      CASE WHEN u.stealth_mode = 1
+        THEN 'Anonymous'
+        ELSE u.username
+      END                                               as display_name,
       u.avatar_url,
       u.league,
-      CAST(SUM(t.amount) AS INTEGER)      as score
+      CAST(SUM(t.amount) AS INTEGER)                    as score
     FROM tips t
     JOIN users u ON u.id = t.receiver_id
     ${whereClause}
@@ -139,15 +203,18 @@ function buildHighestEarnerQuery(since) {
 }
 
 function buildMostWinsQuery(since) {
-  const baseWhere = `WHERE dc.status = 'completed' AND dc.winner_id IS NOT NULL`;
+  const baseWhere  = `WHERE dc.status = 'completed' AND dc.winner_id IS NOT NULL`;
   const sinceClause = since ? `AND dc.updated_at >= ?` : '';
   return `
     SELECT
-      dc.winner_id                        as user_id,
-      u.username                          as display_name,
+      dc.winner_id                                      as user_id,
+      CASE WHEN u.stealth_mode = 1
+        THEN 'Anonymous'
+        ELSE u.username
+      END                                               as display_name,
       u.avatar_url,
       u.league,
-      COUNT(*)                            as score
+      COUNT(*)                                          as score
     FROM drop_circles dc
     JOIN users u ON u.id = dc.winner_id
     ${baseWhere}
@@ -161,11 +228,14 @@ function buildMostWinsQuery(since) {
 function buildAurumScoreQuery(since) {
   return `
     SELECT
-      u.id                                as user_id,
-      u.username                          as display_name,
+      u.id                                              as user_id,
+      CASE WHEN u.stealth_mode = 1
+        THEN 'Anonymous'
+        ELSE u.username
+      END                                               as display_name,
       u.avatar_url,
       u.league,
-      u.aurum_score                       as score
+      u.aurum_score                                     as score
     FROM users u
     WHERE u.aurum_score > 0
     ORDER BY score DESC
@@ -182,7 +252,7 @@ function startOfDay(date) {
 }
 
 function startOfWeek(date) {
-  const d = new Date(date);
+  const d   = new Date(date);
   const day = d.getUTCDay();
   const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
   d.setUTCDate(diff);
@@ -198,11 +268,11 @@ function startOfMonth(date) {
 }
 
 function getWeekKey(date) {
-  const d = new Date(date);
-  const year = d.getUTCFullYear();
+  const d           = new Date(date);
+  const year        = d.getUTCFullYear();
   const startOfYear = new Date(Date.UTC(year, 0, 1));
-  const weekNum = Math.ceil(
-    ((d - startOfYear) / 86400000 + startOfYear.getUTCDay() + 1) / 7
+  const weekNum     = Math.ceil(
+    ((d - startOfYear) / 86400000 + startOfYear.getUTCDay() + 1) / 7,
   );
   return `${year}-W${String(weekNum).padStart(2, '0')}`;
-			}
+}
