@@ -122,7 +122,7 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
 
       // Retrieve tier from subscription record — never guess from reference string
       const subscription = await env.DB
-        .prepare(`SELECT tier FROM subscriptions WHERE payment_reference = ?`)
+        .prepare(`SELECT tier, status FROM subscriptions WHERE payment_reference = ?`)
         .bind(reference)
         .first();
 
@@ -133,8 +133,19 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
         );
       }
 
+      // Idempotency — if already active, return success without re-processing
+      if (subscription.status === "active") {
+        return new Response(
+          JSON.stringify({ message: `Already upgraded to ${subscription.tier}`, tier: subscription.tier }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       const tier = subscription.tier;
-      const now = new Date().toISOString();
+      const now  = new Date().toISOString();
+
+      // Fix 5 — set expires_at to 30 days from activation
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
       await env.DB
         .prepare(`UPDATE users SET tier = ? WHERE id = ?`)
@@ -142,15 +153,18 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
         .run();
 
       await env.DB
-        .prepare(
-          `UPDATE subscriptions SET status = 'active', activated_at = ?
-           WHERE payment_reference = ?`
-        )
-        .bind(now, reference)
+        .prepare(`
+          UPDATE subscriptions
+          SET status       = 'active',
+              activated_at = ?,
+              expires_at   = ?
+          WHERE payment_reference = ?
+        `)
+        .bind(now, expiresAt, reference)
         .run();
 
       return new Response(
-        JSON.stringify({ message: `Upgraded to ${tier}`, tier }),
+        JSON.stringify({ message: `Upgraded to ${tier}`, tier, expires_at: expiresAt }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     } catch (err) {
