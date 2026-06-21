@@ -49,11 +49,23 @@ export const BADGE_DEFINITIONS = [
   },
 ];
 
+// Fix 6 — Display priority order for getUserBadges.
+// Lower number = higher priority = appears first.
+const BADGE_DISPLAY_PRIORITY = {
+  sovereign:            1,
+  verified_millionaire: 2,
+  verified_founder:     3,
+  verified_builder:     4,
+  founding_member:      5,
+};
+
 /**
  * Check and auto-award badges a user qualifies for.
  * Only awards badges where manual_verify = false.
  * Manual badges are awarded via adminAwardBadge().
  * founding_member is awarded directly by the webhook — not by score check.
+ *
+ * Fix 4 — Sovereign badge additionally requires an active sovereign subscription.
  *
  * Returns array of newly awarded badges.
  */
@@ -85,10 +97,27 @@ export async function checkAndAwardBadges(userId, db) {
     if (badge.type === 'founding_member') continue;
 
     // Check score threshold
-    if (user.aurum_score >= badge.score_threshold) {
-      await awardBadge(userId, badge.type, db);
-      newlyAwarded.push(badge);
+    if (user.aurum_score < badge.score_threshold) continue;
+
+    // Fix 4 — Sovereign badge requires active sovereign subscription
+    // Score alone is not enough — must also hold a confirmed subscription
+    if (badge.type === 'sovereign') {
+      const activeSub = await db
+        .prepare(`
+          SELECT id FROM subscriptions
+          WHERE user_id = ?
+            AND status  = 'active'
+            AND tier    = 'sovereign'
+          LIMIT 1
+        `)
+        .bind(userId)
+        .first();
+
+      if (!activeSub) continue; // score qualifies but no active subscription — skip
     }
+
+    await awardBadge(userId, badge.type, db);
+    newlyAwarded.push(badge);
   }
 
   return newlyAwarded;
@@ -144,6 +173,8 @@ export async function adminAwardBadge(userId, badgeType, db) {
 
 /**
  * Get all badges for a user.
+ * Fix 6 — sorted by display priority:
+ * Sovereign → Verified Millionaire → Verified Founder → Verified Builder → Founding Member → others
  */
 export async function getUserBadges(userId, db) {
   const { results } = await db
@@ -151,13 +182,12 @@ export async function getUserBadges(userId, db) {
       SELECT badge_type, verified_at
       FROM badges
       WHERE user_id = ?
-      ORDER BY verified_at ASC
     `)
     .bind(userId)
     .all();
 
   // Enrich with badge metadata
-  return results.map(row => {
+  const enriched = results.map(row => {
     const def = BADGE_DEFINITIONS.find(b => b.type === row.badge_type);
     return {
       type:        row.badge_type,
@@ -166,4 +196,13 @@ export async function getUserBadges(userId, db) {
       verified_at: row.verified_at,
     };
   });
-					}
+
+  // Fix 6 — Sort by display priority; unknown badge types fall to the end
+  enriched.sort((a, b) => {
+    const pa = BADGE_DISPLAY_PRIORITY[a.type] ?? 999;
+    const pb = BADGE_DISPLAY_PRIORITY[b.type] ?? 999;
+    return pa - pb;
+  });
+
+  return enriched;
+}
