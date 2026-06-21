@@ -40,6 +40,7 @@
 // ============================================================
 
 import { requireAuth, requireAdmin }      from '../middleware/auth.js';
+import { addScoreEvent }                  from '../services/aurumScore.js';
 import {
   submitBadgeRequest,
   getPendingBadgeRequests,
@@ -84,7 +85,7 @@ export async function handleAdminRoutes(path, method, request, env) {
       const result = await submitBadgeRequest(user.id, badge_type, evidence_url, notes ?? null, env);
       return json(result, 201);
     } catch (err) {
-      return json({ error: err.message }, 400);
+      return json({ error: err.message }, err.status ?? 400);
     }
   }
 
@@ -336,6 +337,7 @@ export async function handleAdminRoutes(path, method, request, env) {
   }
 
   // ── POST /api/admin/users/:userId/tier ───────────────────
+  // Fix 8 — tier change to sovereign must create or validate subscription record
   const tierMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/tier$/);
   if (tierMatch && method === 'POST') {
     const { tier } = await request.json();
@@ -343,17 +345,54 @@ export async function handleAdminRoutes(path, method, request, env) {
     if (!allowed.includes(tier)) {
       return json({ error: `tier must be one of: ${allowed.join(', ')}` }, 400);
     }
+
+    const userId = tierMatch[1];
+
     try {
+      // Fix 8 — if setting sovereign, ensure an active subscription record exists
+      if (tier === 'sovereign') {
+        const existingSub = await env.DB.prepare(`
+          SELECT id, status FROM subscriptions
+          WHERE user_id = ? AND tier = 'sovereign'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `).bind(userId).first();
+
+        const now       = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        if (!existingSub) {
+          // No subscription record at all — create one marked as admin-granted
+          await env.DB.prepare(`
+            INSERT INTO subscriptions
+              (user_id, tier, status, payment_reference, activated_at, expires_at, created_at)
+            VALUES (?, 'sovereign', 'active', ?, ?, ?, ?)
+          `).bind(userId, `admin:${admin.id}:${crypto.randomUUID()}`, now, expiresAt, now).run();
+        } else if (existingSub.status !== 'active') {
+          // Record exists but is not active — reactivate it
+          await env.DB.prepare(`
+            UPDATE subscriptions
+            SET status       = 'active',
+                activated_at = ?,
+                expires_at   = ?
+            WHERE user_id = ? AND tier = 'sovereign'
+          `).bind(now, expiresAt, userId).run();
+        }
+        // If already active — leave it untouched
+      }
+
       await env.DB.prepare(`
         UPDATE users SET tier = ? WHERE id = ?
-      `).bind(tier, tierMatch[1]).run();
-      return json({ success: true, userId: tierMatch[1], tier });
+      `).bind(tier, userId).run();
+
+      return json({ success: true, userId, tier });
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
     }
   }
 
   // ── POST /api/admin/users/:userId/score ──────────────────
+  // Fix 7 — uses addScoreEvent instead of raw SQL update
   const scoreMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/score$/);
   if (scoreMatch && method === 'POST') {
     const { delta, reason } = await request.json();
@@ -361,27 +400,26 @@ export async function handleAdminRoutes(path, method, request, env) {
       return json({ error: 'delta must be a number (positive or negative)' }, 400);
     }
 
+    const userId = scoreMatch[1];
+
     try {
       const user = await env.DB.prepare(`
         SELECT aurum_score FROM users WHERE id = ?
-      `).bind(scoreMatch[1]).first();
+      `).bind(userId).first();
 
       if (!user) return json({ error: 'User not found' }, 404);
 
-      const newScore = Math.max(0, user.aurum_score + delta);
+      // Fix 7 — route through score engine, never raw SQL
+      // addScoreEvent handles the update, league reassignment, and badge checks
+      const newScore = await addScoreEvent(
+        userId,
+        'admin_adjustment',
+        delta,
+        { note: reason ? `Admin adjustment: ${reason}` : `Admin adjustment by ${admin.id}` },
+        env.DB,
+      );
 
-      await env.DB.prepare(`
-        UPDATE users SET aurum_score = ? WHERE id = ?
-      `).bind(newScore, scoreMatch[1]).run();
-
-      const eventId = crypto.randomUUID();
-      await env.DB.prepare(`
-        INSERT INTO aurum_score_events
-          (id, user_id, event_type, delta, score_after, reference_id)
-        VALUES (?, ?, 'achievement_verified', ?, ?, ?)
-      `).bind(eventId, scoreMatch[1], delta, newScore, `admin:${admin.id}`).run();
-
-      return json({ success: true, userId: scoreMatch[1], delta, newScore });
+      return json({ success: true, userId, delta, newScore });
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
     }
