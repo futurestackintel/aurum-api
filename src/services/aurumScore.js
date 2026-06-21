@@ -27,7 +27,13 @@ const SCORE_WEIGHTS = {
   badge_earned:               20,   // one-time per badge
   post_flagged_fake:         -60,   // stake slashed + score penalty
   challenge_forfeit:         -20,
-  founding_member:           100,   // Build 1 — one-time founding member bonus
+  founding_member:           100,   // one-time founding member bonus
+  // Fix 2 — new weights
+  gold_button_given:           2,
+  crew_battle_win:            35,
+  challenge_boost_purchased:   5,
+  audience_tip_sent:           3,
+  duel_audience_tip:           3,
 };
 
 // League thresholds — locked. Adjust only here.
@@ -59,6 +65,32 @@ export async function recalculateScore(userId, db) {
   return score;
 }
 
+// ── Fix 1 — Daily cap on tip_sent score events ───────────────────────────────
+// Before inserting a tip_sent event, count how many the user has today.
+// If >= 3, skip the insert. Prevents score farming.
+const TIP_SENT_DAILY_CAP       = 3;
+const TIP_SENT_CAPPED_EVENTS   = new Set(['tip_sent', 'audience_tip_sent', 'duel_audience_tip']);
+
+async function isTipSentCapped(userId, eventType, db) {
+  if (!TIP_SENT_CAPPED_EVENTS.has(eventType)) return false;
+
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  const { results } = await db
+    .prepare(`
+      SELECT COUNT(*) as count
+      FROM aurum_score_events
+      WHERE user_id    = ?
+        AND event_type IN ('tip_sent', 'audience_tip_sent', 'duel_audience_tip')
+        AND created_at >= ?
+    `)
+    .bind(userId, todayStart.toISOString())
+    .all();
+
+  return (results[0]?.count ?? 0) >= TIP_SENT_DAILY_CAP;
+}
+
 /**
  * Add a score event and update the cached score on the user row.
  * Returns the new score.
@@ -70,6 +102,13 @@ export async function recalculateScore(userId, db) {
  * @param {D1Database} db
  */
 export async function addScoreEvent(userId, eventType, delta, meta = {}, db) {
+  // Fix 1 — enforce daily cap on tip-type events before anything else
+  const capped = await isTipSentCapped(userId, eventType, db);
+  if (capped) {
+    console.log(`[aurumScore] Daily tip_sent cap reached for user ${userId} — skipping ${eventType}`);
+    return await recalculateScore(userId, db);
+  }
+
   const points = delta !== null && delta !== undefined
     ? delta
     : (SCORE_WEIGHTS[eventType] ?? 0);
