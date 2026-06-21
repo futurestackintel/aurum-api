@@ -169,6 +169,9 @@ export async function handleWebhookRoutes(pathname, request, env) {
             .first();
 
           if (!existing) {
+            // Fix 5 — set expires_at to 30 days from activation
+            const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
             await env.DB
               .prepare(`UPDATE users SET tier = ?, updated_at = ? WHERE id = ?`)
               .bind(tier, now, user_id)
@@ -177,10 +180,13 @@ export async function handleWebhookRoutes(pathname, request, env) {
             await env.DB
               .prepare(`
                 UPDATE subscriptions
-                SET status = 'active', activated_at = ?, updated_at = ?
+                SET status       = 'active',
+                    activated_at = ?,
+                    expires_at   = ?,
+                    updated_at   = ?
                 WHERE payment_reference = ?
               `)
-              .bind(now, now, reference)
+              .bind(now, expiresAt, now, reference)
               .run();
           }
 
@@ -221,8 +227,8 @@ export async function handleWebhookRoutes(pathname, request, env) {
             await env.KV.put(
               `notification:${user_id}:founding`,
               JSON.stringify({
-                type:    'founding_member',
-                message: '⚡ You are now a Founding Member of AURUM.',
+                type:       'founding_member',
+                message:    '⚡ You are now a Founding Member of AURUM.',
                 created_at: now,
               }),
               { expirationTtl: 7 * 24 * 60 * 60 },
