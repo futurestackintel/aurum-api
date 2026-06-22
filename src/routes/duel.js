@@ -1,12 +1,17 @@
 // ============================================================
-// CHALLENGER DUEL ROUTES
-// GET  /api/duels                   — list active/pending duels
-// POST /api/duels                   — create a duel challenge
-// GET  /api/duels/:id               — get single duel
-// POST /api/duels/:id/accept        — target accepts duel
-// POST /api/duels/:id/decline       — target declines duel
-// POST /api/duels/:id/proof         — submit achievement proof
-// POST /api/duels/:id/resolve       — admin: declare winner
+// CHALLENGER DUEL ROUTES — Module Chat F
+// GET  /api/duels                         — list active/pending duels
+// POST /api/duels                         — create a duel challenge
+// GET  /api/duels/:id                     — get single duel
+// POST /api/duels/:id/accept              — target accepts duel
+// POST /api/duels/:id/decline             — target declines duel
+// POST /api/duels/:id/proof               — submit achievement proof
+// POST /api/duels/:id/resolve             — admin: declare winner
+// POST /api/duels/:id/announce            — Feature 3: public announcement
+// POST /api/duels/:id/notify              — Feature 3: subscribe to updates
+// POST /api/duels/:id/stream/ready        — admin: set stream ready
+// POST /api/duels/:id/tip/:participantId  — Feature 4: audience tip
+// POST /api/duels/:id/vote/:participantId — Feature 5: community vote
 // ============================================================
 
 import {
@@ -17,6 +22,11 @@ import {
   resolveDuel,
   getActiveDuels,
   getDuelById,
+  announceDuel,
+  watchDuel,
+  setStreamReady,
+  audienceTip,
+  castDuelVote,
 } from '../services/duel.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { streakMiddleware }          from '../services/streak.js';
@@ -33,8 +43,8 @@ export async function handleDuelRoutes(path, method, request, env) {
       const duels  = await getActiveDuels(limit, offset, db);
       return jsonResponse({ duels });
     } catch (err) {
-      console.error("Get duels error:", err);
-      return jsonResponse({ error: "Unable to load duels. Please try again." }, 500);
+      console.error('Get duels error:', err);
+      return jsonResponse({ error: 'Unable to load duels. Please try again.' }, 500);
     }
   }
 
@@ -50,8 +60,8 @@ export async function handleDuelRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result, 201);
     } catch (err) {
-      console.error("Create duel error:", err);
-      return jsonResponse({ error: "Unable to create duel. Please try again." }, 500);
+      console.error('Create duel error:', err);
+      return jsonResponse({ error: 'Unable to create duel. Please try again.' }, 500);
     }
   }
 
@@ -63,8 +73,8 @@ export async function handleDuelRoutes(path, method, request, env) {
       if (!duel) return jsonResponse({ error: 'Duel not found' }, 404);
       return jsonResponse({ duel });
     } catch (err) {
-      console.error("Get duel error:", err);
-      return jsonResponse({ error: "Unable to load duel. Please try again." }, 500);
+      console.error('Get duel error:', err);
+      return jsonResponse({ error: 'Unable to load duel. Please try again.' }, 500);
     }
   }
 
@@ -80,8 +90,8 @@ export async function handleDuelRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Accept duel error:", err);
-      return jsonResponse({ error: "Unable to accept duel. Please try again." }, 500);
+      console.error('Accept duel error:', err);
+      return jsonResponse({ error: 'Unable to accept duel. Please try again.' }, 500);
     }
   }
 
@@ -96,8 +106,8 @@ export async function handleDuelRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Decline duel error:", err);
-      return jsonResponse({ error: "Unable to decline duel. Please try again." }, 500);
+      console.error('Decline duel error:', err);
+      return jsonResponse({ error: 'Unable to decline duel. Please try again.' }, 500);
     }
   }
 
@@ -113,8 +123,90 @@ export async function handleDuelRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Submit duel proof error:", err);
-      return jsonResponse({ error: "Unable to submit proof. Please try again." }, 500);
+      console.error('Submit duel proof error:', err);
+      return jsonResponse({ error: 'Unable to submit proof. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/announce ────────────────────────
+  const announceMatch = path.match(/^\/api\/duels\/([^/]+)\/announce$/);
+  if (announceMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await announceDuel(announceMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Announce duel error:', err);
+      return jsonResponse({ error: 'Unable to announce duel. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/notify ──────────────────────────
+  const notifyMatch = path.match(/^\/api\/duels\/([^/]+)\/notify$/);
+  if (notifyMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await watchDuel(notifyMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Watch duel error:', err);
+      return jsonResponse({ error: 'Unable to subscribe to duel. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/stream/ready — admin ────────────
+  const streamMatch = path.match(/^\/api\/duels\/([^/]+)\/stream\/ready$/);
+  if (streamMatch && method === 'POST') {
+    const admin = await requireAdmin(request, env);
+    if (admin.error) return jsonResponse({ error: admin.error }, 403);
+
+    try {
+      const body   = await request.json();
+      const result = await setStreamReady(streamMatch[1], body, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Stream ready error:', err);
+      return jsonResponse({ error: 'Unable to set stream ready. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/tip/:participantId ──────────────
+  const tipMatch = path.match(/^\/api\/duels\/([^/]+)\/tip\/([^/]+)$/);
+  if (tipMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body   = await request.json();
+      const result = await audienceTip(tipMatch[1], tipMatch[2], user.id, body, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Audience tip error:', err);
+      return jsonResponse({ error: 'Unable to send tip. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/vote/:participantId ─────────────
+  const voteMatch = path.match(/^\/api\/duels\/([^/]+)\/vote\/([^/]+)$/);
+  if (voteMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await castDuelVote(voteMatch[1], voteMatch[2], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Cast vote error:', err);
+      return jsonResponse({ error: 'Unable to cast vote. Please try again.' }, 500);
     }
   }
 
@@ -131,8 +223,8 @@ export async function handleDuelRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Resolve duel error:", err);
-      return jsonResponse({ error: "Unable to resolve duel. Please try again." }, 500);
+      console.error('Resolve duel error:', err);
+      return jsonResponse({ error: 'Unable to resolve duel. Please try again.' }, 500);
     }
   }
 
