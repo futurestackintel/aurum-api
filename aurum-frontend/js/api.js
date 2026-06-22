@@ -1,6 +1,6 @@
 /* ============================================================
-   AURUM — API Module — Module Chat F
-   Added: CrewAPI, DuelAPI expanded, SettingsAPI, CheerAPI
+   AURUM — API Module — Module Chat G
+   Token refresh, path fixes, new APIs
 ============================================================ */
 
 const API_BASE = 'https://api.tryaurum.store';
@@ -13,12 +13,28 @@ const Auth = {
   isLoggedIn: () => !!localStorage.getItem('aurum_token'),
 };
 
+/* --- Live token refresh — call before every authenticated request --- */
+async function getFreshToken() {
+  try {
+    if (window.Clerk?.session) {
+      const token = await window.Clerk.session.getToken();
+      if (token) {
+        Auth.setToken(token);
+        return token;
+      }
+    }
+  } catch (err) {
+    /* session expired or Clerk not ready — fall through */
+  }
+  return Auth.getToken();
+}
+
 /* --- Core fetch wrapper --- */
 async function apiRequest(method, path, body = null, requiresAuth = true) {
   const headers = { 'Content-Type': 'application/json' };
 
   if (requiresAuth) {
-    const token = Auth.getToken();
+    const token = await getFreshToken();
     if (!token) throw new Error('NOT_AUTHENTICATED');
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -57,16 +73,27 @@ const LeaderboardAPI = {
   getFull:   (type) => apiRequest('GET', `/leaderboard?type=${type}`),
 };
 
-/* --- Posts / Ledger --- */
+/* --- Public platform stats --- */
+const StatsAPI = {
+  get: () => apiRequest('GET', '/api/stats/public', null, false),
+};
+
+/* --- Posts / Ledger ---
+     offset-based pagination — getFeed(offset)
+     tipPost removed — use TipsAPI.send()
+*/
 const LedgerAPI = {
-  getFeed:    (page = 1) => apiRequest('GET',  `/api/posts?page=${page}`),
-  createPost: (data)     => apiRequest('POST', '/api/posts', data),
+  getFeed:    (offset = 0) => apiRequest('GET',  `/api/posts?limit=20&offset=${offset}`),
+  createPost: (data)       => apiRequest('POST', '/api/posts', data),
   flagPost:   (postId, data) => apiRequest('POST', `/api/posts/${postId}/flag`, data),
   appeal:     (postId, data) => apiRequest('POST', `/api/posts/${postId}/appeal`, data),
   cheer:      (postId)       => apiRequest('POST', `/api/posts/${postId}/cheer`),
 };
 
-/* --- Challenges / Arena --- */
+/* --- Challenges / Arena ---
+     fundChallenge / verifyChallenge / payoutChallenge removed.
+     Entry = POST /api/challenges/:id/join  (joinChallenge)
+*/
 const ArenaAPI = {
   getChallenges:   (limit = 20, offset = 0) =>
     apiRequest('GET', `/api/challenges?limit=${limit}&offset=${offset}`, null, false),
@@ -154,6 +181,9 @@ const SettingsAPI = {
   updateNotifications: (data) =>
     apiRequest('PATCH', '/api/users/me/notifications', data),
 
+  updateBankAccount: (data) =>
+    apiRequest('PATCH', '/api/users/me/bank', data),
+
   deleteAccount: () =>
     apiRequest('POST', '/api/users/me/delete'),
 };
@@ -182,6 +212,7 @@ const WalletAPI = {
 /* --- Founding Member --- */
 const FoundingAPI = {
   join: () => apiRequest('POST', '/api/founding/join'),
+  stats: () => apiRequest('GET', '/api/founding/stats', null, false),
 };
 
 /* --- Crews --- */
@@ -222,14 +253,95 @@ function showToast(message, type = 'default', duration = 3000) {
   }, duration);
 }
 
+/* League promotion toast — gold animated */
+function showLeaguePromotion(leagueName) {
+  const existing = document.querySelector('.promotion-toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = 'promotion-toast';
+  toast.innerHTML = `
+    <div class="promo-toast-inner">
+      <span class="promo-toast-icon">🏆</span>
+      <div>
+        <p class="promo-toast-title">League Promotion!</p>
+        <p class="promo-toast-body">You've been promoted to ${leagueName} League</p>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(toast);
+
+  /* Inject styles once */
+  if (!document.getElementById('promo-toast-styles')) {
+    const s = document.createElement('style');
+    s.id = 'promo-toast-styles';
+    s.textContent = `
+      .promotion-toast {
+        position: fixed;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9000;
+        animation: promoSlideIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards,
+                   promoFadeOut 0.4s ease 4.6s forwards;
+      }
+      .promo-toast-inner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 20px;
+        background: linear-gradient(135deg, #1A1200, #0F0A00);
+        border: 1px solid #C9A84C;
+        border-radius: 14px;
+        box-shadow: 0 0 32px rgba(201,168,76,0.4);
+        white-space: nowrap;
+      }
+      .promo-toast-icon { font-size: 1.5rem; animation: goldPulse 1s ease infinite; }
+      .promo-toast-title {
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #C9A84C;
+        font-family: 'DM Sans', sans-serif;
+      }
+      .promo-toast-body {
+        font-size: 14px;
+        color: #F5F5F0;
+        font-family: 'DM Sans', sans-serif;
+        font-weight: 500;
+      }
+      @keyframes promoSlideIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.9); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+      }
+      @keyframes promoFadeOut {
+        to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+      }
+      @keyframes goldPulse {
+        0%,100% { filter: drop-shadow(0 0 4px rgba(201,168,76,0.6)); }
+        50%      { filter: drop-shadow(0 0 12px rgba(201,168,76,1)); }
+      }
+    `;
+    document.head.appendChild(s);
+  }
+
+  setTimeout(() => toast.remove(), 5200);
+}
+
 function formatAmount(amount) {
   if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
   if (amount >= 1000)    return `$${(amount / 1000).toFixed(1)}K`;
   return `$${Number(amount).toFixed(2)}`;
 }
 
+function formatAurum(amount) {
+  if (amount >= 1000000) return `₳${(amount / 1000000).toFixed(1)}M`;
+  if (amount >= 1000)    return `₳${(amount / 1000).toFixed(1)}K`;
+  return `₳${Number(amount).toFixed(2)}`;
+}
+
 function formatNumber(num) {
-  return num.toLocaleString();
+  return Number(num || 0).toLocaleString();
 }
 
 function getLeagueBadge(league) {
@@ -264,6 +376,35 @@ function formatCountdown(seconds) {
 }
 
 /* ============================================================
+   PROFILE CACHE
+   Cache /api/auth/me in localStorage. Refresh if > 5 min stale.
+============================================================ */
+const ProfileCache = {
+  KEY:      'aurum_profile_cache',
+  TTL_MS:   5 * 60 * 1000,
+
+  get() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      if (!raw) return null;
+      const { data, ts } = JSON.parse(raw);
+      if (Date.now() - ts > this.TTL_MS) return null;
+      return data;
+    } catch { return null; }
+  },
+
+  set(data) {
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify({ data, ts: Date.now() }));
+    } catch { /* storage full — ignore */ }
+  },
+
+  clear() {
+    localStorage.removeItem(this.KEY);
+  },
+};
+
+/* ============================================================
    EXPORT
 ============================================================ */
 
@@ -271,6 +412,7 @@ window.AURUM = {
   Auth,
   AuthAPI,
   LeaderboardAPI,
+  StatsAPI,
   LedgerAPI,
   ArenaAPI,
   DuelAPI,
@@ -281,8 +423,11 @@ window.AURUM = {
   WalletAPI,
   FoundingAPI,
   CrewAPI,
+  ProfileCache,
   showToast,
+  showLeaguePromotion,
   formatAmount,
+  formatAurum,
   formatNumber,
   getLeagueBadge,
   timeAgo,
