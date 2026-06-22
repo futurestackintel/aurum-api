@@ -1,22 +1,23 @@
 /* ============================================
-   AURUM — The Ledger (Main Feed)
-   Achievement posts, tips, proof of stake.
+   AURUM — The Ledger (Main Feed) — Module G
+   Offset pagination, fixed tips, skeleton loaders,
+   optimistic UI.
 ============================================ */
 
 window.LedgerPage = {
-  container: null,
-  page: 1,
-  loading: false,
+  container:   null,
+  offset:      0,
+  pageSize:    20,
+  loading:     false,
   initialized: false,
+  hasMore:     true,
 
   init(containerId) {
     this.container = document.getElementById(containerId);
     if (!this.container) return;
-
-    // Only rebuild DOM once
     if (!this.initialized) {
       this.render();
-      this.loadPosts();
+      this.loadPosts(false);
       this.initialized = true;
     }
   },
@@ -25,7 +26,7 @@ window.LedgerPage = {
     this.container.innerHTML = `
       <div class="ledger-wrap">
 
-        <!-- Post composer -->
+        <!-- Composer -->
         <div class="composer card">
           <div class="composer-top">
             <div class="avatar avatar-sm avatar-gold" id="composer-avatar">—</div>
@@ -57,12 +58,10 @@ window.LedgerPage = {
         </div>
 
         <!-- Feed -->
-        <div class="feed" id="ledger-feed">
-          <!-- Posts load here -->
-        </div>
+        <div class="feed" id="ledger-feed"></div>
 
         <!-- Load more -->
-        <div style="padding: var(--space-6); text-align:center;" id="load-more-wrap">
+        <div style="padding:var(--space-6);text-align:center;" id="load-more-wrap">
           <button class="btn btn-ghost btn-sm" id="btn-load-more">Load More</button>
         </div>
 
@@ -77,7 +76,7 @@ window.LedgerPage = {
   setComposerAvatar() {
     const avatar = document.getElementById('composer-avatar');
     if (avatar && window.App?.user?.username) {
-      avatar.textContent = App.user.username.charAt(0).toUpperCase();
+      avatar.textContent = window.App.user.username.charAt(0).toUpperCase();
     }
   },
 
@@ -92,42 +91,79 @@ window.LedgerPage = {
     }
 
     /* Post button */
-    const btn = document.getElementById('btn-post');
-    if (btn) btn.addEventListener('click', () => this.submitPost());
+    document.getElementById('btn-post')
+      ?.addEventListener('click', () => this.submitPost());
 
     /* Load more */
-    const loadMore = document.getElementById('btn-load-more');
-    if (loadMore) loadMore.addEventListener('click', () => {
-      this.page++;
-      this.loadPosts(true);
-    });
+    document.getElementById('btn-load-more')
+      ?.addEventListener('click', () => {
+        if (!this.loading && this.hasMore) {
+          this.loadPosts(true);
+        }
+      });
   },
 
   async loadPosts(append = false) {
     if (this.loading) return;
     this.loading = true;
 
-    const feed = document.getElementById('ledger-feed');
-    if (!feed) return;
+    const feed       = document.getElementById('ledger-feed');
+    const loadMoreWrap = document.getElementById('load-more-wrap');
+    if (!feed) { this.loading = false; return; }
 
     if (!append) {
+      this.offset = 0;
+      this.hasMore = true;
       feed.innerHTML = this.skeletons(3);
+    } else {
+      /* Append a skeleton at bottom while loading */
+      feed.insertAdjacentHTML('beforeend',
+        `<div id="append-skeleton">${this.skeletons(2)}</div>`);
     }
 
     try {
-      const data = await AURUM.LedgerAPI.getFeed(this.page);
-      const posts = data.posts || getMockPosts();
+      const data  = await AURUM.LedgerAPI.getFeed(this.offset);
+      const posts = data.posts || [];
+
+      /* Remove append skeleton if present */
+      document.getElementById('append-skeleton')?.remove();
+
       if (!append) feed.innerHTML = '';
+
+      if (!posts.length && !append) {
+        feed.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <h4>No posts yet</h4>
+            <p>Be the first to post a verified win.</p>
+          </div>`;
+        if (loadMoreWrap) loadMoreWrap.style.display = 'none';
+        this.loading = false;
+        return;
+      }
+
       posts.forEach(post => {
         feed.insertAdjacentHTML('beforeend', this.postHTML(post));
       });
+
+      /* Pagination state */
+      this.offset  += posts.length;
+      this.hasMore  = posts.length >= this.pageSize;
+
+      if (loadMoreWrap) {
+        loadMoreWrap.style.display = this.hasMore ? 'block' : 'none';
+      }
+
     } catch (err) {
+      document.getElementById('append-skeleton')?.remove();
+
       if (!append) {
-        const posts = getMockPosts();
+        /* Show mock posts so feed is never blank */
         feed.innerHTML = '';
-        posts.forEach(post => {
+        getMockPosts().forEach(post => {
           feed.insertAdjacentHTML('beforeend', this.postHTML(post));
         });
+        if (loadMoreWrap) loadMoreWrap.style.display = 'none';
       }
     } finally {
       this.loading = false;
@@ -137,8 +173,8 @@ window.LedgerPage = {
 
   async submitPost() {
     const content = document.getElementById('post-content')?.value.trim();
-    const stake = document.getElementById('post-stake')?.value;
-    const btn = document.getElementById('btn-post');
+    const stake   = document.getElementById('post-stake')?.value;
+    const btn     = document.getElementById('btn-post');
 
     if (!content) {
       AURUM.showToast('Write something worth staking.', 'error');
@@ -146,54 +182,102 @@ window.LedgerPage = {
     }
 
     btn.textContent = 'Posting...';
-    btn.disabled = true;
+    btn.disabled    = true;
 
     try {
-      await AURUM.LedgerAPI.createPost({ content, stake_amount: parseFloat(stake) });
+      await AURUM.LedgerAPI.createPost({
+        content,
+        stake_amount: parseFloat(stake),
+      });
       document.getElementById('post-content').value = '';
       document.getElementById('post-content').style.height = 'auto';
-      this.page = 1;
-      this.loadPosts(false);
       AURUM.showToast('Win posted. Stake locked.', 'gold');
+      /* Reload from top */
+      this.loadPosts(false);
     } catch (err) {
       AURUM.showToast(err.message || 'Post failed.', 'error');
     } finally {
       btn.textContent = 'Post Win';
-      btn.disabled = false;
+      btn.disabled    = false;
     }
   },
 
   bindPostEvents() {
-    /* Tip buttons */
+    /* ---- Tip buttons — optimistic UI ---- */
     document.querySelectorAll('.btn-tip').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+
       btn.addEventListener('click', async () => {
-        const postId = btn.dataset.postId;
-        const amount = 1; // default $1 tip
+        const postId   = btn.dataset.postId;
+        const counterEl = document.querySelector(`[data-tips="${postId}"]`);
+        const prev      = parseFloat(counterEl?.dataset.total || '0');
+
+        /* Optimistic update */
+        if (counterEl) {
+          const optimistic = prev + 1;
+          counterEl.textContent     = AURUM.formatAmount(optimistic);
+          counterEl.dataset.total   = optimistic;
+          btn.style.color           = 'var(--color-gold)';
+        }
+
         try {
-          await AURUM.TipsAPI.initialize({ post_id: postId, amount });
-          AURUM.showToast('Tip sent!', 'success');
-          const counter = document.querySelector(`[data-tips="${postId}"]`);
-          if (counter) {
-            counter.textContent = AURUM.formatAmount(
-              parseFloat(counter.dataset.total || 0) + amount
-            );
-          }
+          await AURUM.TipsAPI.send({
+            post_id: postId,
+            amount:  1,
+          });
+          AURUM.showToast('Tip sent!', 'gold');
         } catch (err) {
+          /* Roll back on failure */
+          if (counterEl) {
+            counterEl.textContent   = AURUM.formatAmount(prev);
+            counterEl.dataset.total = prev;
+            btn.style.color         = '';
+          }
           AURUM.showToast('Tip failed.', 'error');
+        }
+      });
+    });
+
+    /* ---- Cheer (Gold Button on posts) ---- */
+    document.querySelectorAll('.btn-cheer').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+
+      btn.addEventListener('click', async () => {
+        const postId    = btn.dataset.postId;
+        const countEl   = btn.querySelector('.cheer-count');
+        const prevCount = parseInt(countEl?.textContent || '0', 10);
+
+        /* Optimistic */
+        btn.classList.add('cheered');
+        btn.disabled = true;
+        if (countEl) countEl.textContent = prevCount + 1;
+
+        try {
+          await AURUM.LedgerAPI.cheer(postId);
+        } catch (err) {
+          /* Roll back */
+          btn.classList.remove('cheered');
+          btn.disabled = false;
+          if (countEl) countEl.textContent = prevCount;
+          AURUM.showToast('Could not cheer post.', 'error');
         }
       });
     });
   },
 
   postHTML(post) {
-    const initials = post.username?.charAt(0).toUpperCase() || '?';
-    const league = post.league || 'bronze';
+    const initials    = post.username?.charAt(0).toUpperCase() || '?';
+    const league      = post.league || 'bronze';
     const stakeStatus = post.stake_status || 'pending';
-    const stakeColor = {
+    const stakeColor  = {
       verified: 'var(--color-success)',
       pending:  'var(--color-gold)',
-      disputed: 'var(--color-danger)'
+      disputed: 'var(--color-danger)',
     }[stakeStatus] || 'var(--color-text-muted)';
+
+    const cheers = post.cheers || 0;
 
     return `
       <div class="post-card card fade-in">
@@ -204,17 +288,21 @@ window.LedgerPage = {
           <div class="post-meta">
             <div class="post-username">
               ${post.username || 'Anonymous'}
-              ${post.verified ? '<span style="color:var(--color-gold);font-size:10px;">✦</span>' : ''}
+              ${post.verified
+                ? '<span style="color:var(--color-gold);font-size:10px;">✦</span>'
+                : ''}
             </div>
             <div class="post-sub">
               <span class="badge ${AURUM.getLeagueBadge(league)}" style="font-size:9px;">
                 ${league}
               </span>
-              <span class="post-time">${AURUM.timeAgo(post.created_at || new Date())}</span>
+              <span class="post-time">
+                ${AURUM.timeAgo(post.created_at || new Date())}
+              </span>
             </div>
           </div>
-          <div class="post-stake" style="border-color:${stakeColor}">
-            <span class="post-stake-amount mono" style="color:${stakeColor}">
+          <div class="post-stake" style="border-color:${stakeColor};">
+            <span class="post-stake-amount mono" style="color:${stakeColor};">
               $${post.stake_amount || 5}
             </span>
             <span class="post-stake-label">stake</span>
@@ -228,29 +316,50 @@ window.LedgerPage = {
         ` : ''}
 
         <div class="post-actions">
+
+          <!-- Tip button -->
           <button class="btn-tip post-action-btn" data-post-id="${post.id}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
             </svg>
-            <span
-              class="post-action-value mono"
+            <span class="post-action-value mono"
               data-tips="${post.id}"
-              data-total="${post.tips_received || 0}"
-            >${AURUM.formatAmount(post.tips_received || 0)}</span>
+              data-total="${post.tips_received || 0}">
+              ${AURUM.formatAmount(post.tips_received || 0)}
+            </span>
           </button>
 
+          <!-- Cheer (Gold Button) -->
+          <button class="btn-cheer post-action-btn ${post.user_cheered ? 'cheered' : ''}"
+            data-post-id="${post.id}"
+            ${post.user_cheered ? 'disabled' : ''}>
+            <svg width="14" height="14" viewBox="0 0 24 24"
+              fill="${post.user_cheered ? 'var(--color-gold)' : 'none'}"
+              stroke="var(--color-gold)" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02
+                12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <span class="cheer-count post-action-value mono">${cheers}</span>
+          </button>
+
+          <!-- Comments (disabled — placeholder) -->
           <button class="post-action-btn" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
             </svg>
             <span class="post-action-value mono">${post.comments || 0}</span>
           </button>
 
-          <div class="post-stake-status">
-            <span style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:${stakeColor};">
+          <!-- Stake status -->
+          <div class="post-stake-status" style="margin-left:auto;">
+            <span style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;
+              color:${stakeColor};">
               ${stakeStatus}
             </span>
           </div>
+
         </div>
       </div>
     `;
@@ -265,9 +374,16 @@ window.LedgerPage = {
             <div class="skeleton" style="height:14px;width:120px;"></div>
             <div class="skeleton" style="height:10px;width:80px;"></div>
           </div>
+          <div class="skeleton" style="width:48px;height:40px;border-radius:8px;"></div>
         </div>
         <div class="skeleton" style="height:14px;width:100%;margin-top:12px;"></div>
         <div class="skeleton" style="height:14px;width:80%;margin-top:6px;"></div>
+        <div class="skeleton" style="height:14px;width:60%;margin-top:6px;"></div>
+        <div style="display:flex;gap:16px;margin-top:12px;padding-top:12px;
+          border-top:1px solid var(--color-border);">
+          <div class="skeleton" style="height:20px;width:60px;border-radius:4px;"></div>
+          <div class="skeleton" style="height:20px;width:40px;border-radius:4px;"></div>
+        </div>
       </div>
     `).join('');
   },
@@ -284,7 +400,6 @@ window.LedgerPage = {
         padding: var(--space-4);
       }
 
-      /* Composer */
       .composer {
         display: flex;
         flex-direction: column;
@@ -297,9 +412,7 @@ window.LedgerPage = {
         align-items: flex-start;
       }
 
-      .composer-input-wrap {
-        flex: 1;
-      }
+      .composer-input-wrap { flex: 1; }
 
       .composer-input {
         width: 100%;
@@ -311,11 +424,10 @@ window.LedgerPage = {
         outline: none;
         line-height: 1.6;
         min-height: 40px;
+        font-family: var(--font-body);
       }
 
-      .composer-input::placeholder {
-        color: var(--color-text-dim);
-      }
+      .composer-input::placeholder { color: var(--color-text-dim); }
 
       .composer-bottom {
         display: flex;
@@ -349,14 +461,12 @@ window.LedgerPage = {
         cursor: pointer;
       }
 
-      /* Feed */
       .feed {
         display: flex;
         flex-direction: column;
         gap: var(--space-3);
       }
 
-      /* Post card */
       .post-card {
         display: flex;
         flex-direction: column;
@@ -455,23 +565,19 @@ window.LedgerPage = {
         padding: 0;
       }
 
-      .post-action-btn:hover {
-        color: var(--color-gold);
-      }
+      .post-action-btn:hover { color: var(--color-gold); }
 
-      .post-action-value {
-        font-size: var(--text-xs);
-      }
+      .post-action-value { font-size: var(--text-xs); }
 
-      .post-stake-status {
-        margin-left: auto;
-      }
+      /* Cheer active state */
+      .btn-cheer.cheered { color: var(--color-gold); }
+      .btn-cheer:not(:disabled):hover { color: var(--color-gold); }
     `;
     document.head.appendChild(style);
-  }
+  },
 };
 
-/* Mock posts for when API isn't live */
+/* ---- Mock posts fallback ---- */
 function getMockPosts() {
   return [
     {
@@ -479,36 +585,39 @@ function getMockPosts() {
       username: 'ShadowKing',
       league: 'sovereign',
       verified: true,
-      content: 'Just closed a $84K SaaS contract. Three months of cold outreach paid off. The board doesn\'t lie.',
+      content: 'Just closed a $84K SaaS contract. Three months of cold outreach paid off.',
       stake_amount: 100,
       stake_status: 'verified',
       tips_received: 1240,
+      cheers: 47,
       comments: 18,
-      created_at: new Date(Date.now() - 3600000).toISOString()
+      created_at: new Date(Date.now() - 3600000).toISOString(),
     },
     {
       id: '2',
       username: 'NovaBuild',
       league: 'gold',
       verified: true,
-      content: 'Hit $10K MRR on my B2B tool. 8 months from zero. No investors. No co-founder. Just shipping.',
+      content: 'Hit $10K MRR on my B2B tool. 8 months from zero. No investors. No co-founder.',
       stake_amount: 50,
       stake_status: 'verified',
       tips_received: 870,
+      cheers: 31,
       comments: 31,
-      created_at: new Date(Date.now() - 7200000).toISOString()
+      created_at: new Date(Date.now() - 7200000).toISOString(),
     },
     {
       id: '3',
       username: 'IronFounder',
       league: 'gold',
       verified: false,
-      content: 'First enterprise client signed. $2K/month recurring. This is just the beginning.',
+      content: 'First enterprise client signed. $2K/month recurring.',
       stake_amount: 25,
       stake_status: 'pending',
       tips_received: 340,
+      cheers: 12,
       comments: 9,
-      created_at: new Date(Date.now() - 14400000).toISOString()
+      created_at: new Date(Date.now() - 14400000).toISOString(),
     },
     {
       id: '4',
@@ -519,8 +628,9 @@ function getMockPosts() {
       stake_amount: 5,
       stake_status: 'verified',
       tips_received: 95,
+      cheers: 8,
       comments: 22,
-      created_at: new Date(Date.now() - 86400000).toISOString()
-    }
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+    },
   ];
-}
+		 }
