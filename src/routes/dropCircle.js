@@ -1,12 +1,15 @@
 // ============================================================
 // DROP CIRCLE ROUTES
-// GET  /api/challenges                      — list open challenges
-// POST /api/challenges                      — create challenge
-// GET  /api/challenges/:id                  — get single challenge
-// POST /api/challenges/:id/join             — join + fund entry
-// POST /api/challenges/:id/proof            — submit achievement proof
-// POST /api/challenges/:id/score/:userId    — admin: score an entry
-// POST /api/challenges/:id/resolve          — admin: resolve winner
+// GET  /api/challenges                        — list open challenges
+// POST /api/challenges                        — create challenge
+// GET  /api/challenges/:id                    — get single challenge
+// POST /api/challenges/:id/join               — join + fund entry
+// POST /api/challenges/:id/proof              — submit achievement proof
+// POST /api/challenges/:id/score/:userId      — admin: score an entry
+// POST /api/challenges/:id/resolve            — admin: resolve winner
+// POST /api/challenges/:id/gold               — give gold button (Feature 1)
+// POST /api/challenges/:id/boost              — boost challenge (Feature 2)
+// POST /api/challenges/free-entry             — free monthly entry (Feature 7)
 // ============================================================
 
 import {
@@ -17,6 +20,9 @@ import {
   resolveChallenge,
   getChallenges,
   getChallengeById,
+  giveGoldButton,
+  boostChallenge,
+  freeMonthlyEntry,
 } from '../services/dropCircle.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { streakMiddleware }          from '../services/streak.js';
@@ -33,8 +39,24 @@ export async function handleChallengeRoutes(path, method, request, env) {
       const challenges = await getChallenges(limit, offset, db);
       return jsonResponse({ challenges });
     } catch (err) {
-      console.error("Get challenges error:", err);
-      return jsonResponse({ error: "Unable to load challenges. Please try again." }, 500);
+      console.error('Get challenges error:', err);
+      return jsonResponse({ error: 'Unable to load challenges. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/challenges/free-entry ─────────────────────
+  // Must be checked before /:id routes to avoid mis-routing
+  if (path === '/api/challenges/free-entry' && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await freeMonthlyEntry(user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error('Free entry error:', err);
+      return jsonResponse({ error: 'Unable to enter free challenge. Please try again.' }, 500);
     }
   }
 
@@ -50,8 +72,8 @@ export async function handleChallengeRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result, 201);
     } catch (err) {
-      console.error("Create challenge error:", err);
-      return jsonResponse({ error: "Unable to create challenge. Please try again." }, 500);
+      console.error('Create challenge error:', err);
+      return jsonResponse({ error: 'Unable to create challenge. Please try again.' }, 500);
     }
   }
 
@@ -63,8 +85,8 @@ export async function handleChallengeRoutes(path, method, request, env) {
       if (!challenge) return jsonResponse({ error: 'Challenge not found' }, 404);
       return jsonResponse({ challenge });
     } catch (err) {
-      console.error("Get challenge error:", err);
-      return jsonResponse({ error: "Unable to load challenge. Please try again." }, 500);
+      console.error('Get challenge error:', err);
+      return jsonResponse({ error: 'Unable to load challenge. Please try again.' }, 500);
     }
   }
 
@@ -80,8 +102,8 @@ export async function handleChallengeRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Join challenge error:", err);
-      return jsonResponse({ error: "Unable to join challenge. Please try again." }, 500);
+      console.error('Join challenge error:', err);
+      return jsonResponse({ error: 'Unable to join challenge. Please try again.' }, 500);
     }
   }
 
@@ -97,8 +119,41 @@ export async function handleChallengeRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Submit proof error:", err);
-      return jsonResponse({ error: "Unable to submit proof. Please try again." }, 500);
+      console.error('Submit proof error:', err);
+      return jsonResponse({ error: 'Unable to submit proof. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/challenges/:id/gold ───────────────────────
+  const goldMatch = path.match(/^\/api\/challenges\/([^/]+)\/gold$/);
+  if (goldMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await giveGoldButton(goldMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Gold button error:', err);
+      return jsonResponse({ error: 'Unable to give gold button. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/challenges/:id/boost ──────────────────────
+  const boostMatch = path.match(/^\/api\/challenges\/([^/]+)\/boost$/);
+  if (boostMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body   = await request.json();
+      const result = await boostChallenge(boostMatch[1], user.id, body, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Boost challenge error:', err);
+      return jsonResponse({ error: 'Unable to boost challenge. Please try again.' }, 500);
     }
   }
 
@@ -115,8 +170,8 @@ export async function handleChallengeRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Score entry error:", err);
-      return jsonResponse({ error: "Unable to score entry. Please try again." }, 500);
+      console.error('Score entry error:', err);
+      return jsonResponse({ error: 'Unable to score entry. Please try again.' }, 500);
     }
   }
 
@@ -131,8 +186,8 @@ export async function handleChallengeRoutes(path, method, request, env) {
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
-      console.error("Resolve challenge error:", err);
-      return jsonResponse({ error: "Unable to resolve challenge. Please try again." }, 500);
+      console.error('Resolve challenge error:', err);
+      return jsonResponse({ error: 'Unable to resolve challenge. Please try again.' }, 500);
     }
   }
 
