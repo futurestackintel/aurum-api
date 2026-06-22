@@ -20,15 +20,17 @@
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/components.css" />
 
-  <!-- Clerk Auth -->
+  <!-- Clerk — loads async, does NOT block auth form render -->
   <script
     crossorigin="anonymous"
     data-clerk-publishable-key="pk_live_Y2xlcmsudHJ5YXVydW0uc3RvcmUk"
     src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
     type="text/javascript"
+    async
   ></script>
 
   <style>
+    /* ---- App shell ---- */
     .app-shell {
       display: flex;
       flex-direction: column;
@@ -38,6 +40,7 @@
       position: relative;
     }
 
+    /* ---- App bar ---- */
     .app-bar {
       position: sticky;
       top: 0;
@@ -67,51 +70,54 @@
       gap: var(--space-3);
     }
 
-    .app-bar-score {
+    /* Score + wallet cluster */
+    .app-bar-metrics {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .app-bar-metric {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
     }
 
-    .app-bar-score-value {
+    .app-bar-metric-value {
       font-family: var(--font-mono);
       font-size: var(--text-sm);
       color: var(--color-gold);
       line-height: 1;
     }
 
-    .app-bar-score-label {
-      font-size: 10px;
+    .app-bar-metric-label {
+      font-size: 9px;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--color-text-muted);
     }
 
+    .app-bar-divider {
+      width: 1px;
+      height: 24px;
+      background: var(--color-border);
+    }
+
+    /* ---- Page content ---- */
     .page-content {
       flex: 1;
       overflow-y: auto;
       padding-bottom: var(--bottom-nav-h);
     }
 
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 100%;
-      max-width: var(--max-width);
-      z-index: var(--z-sticky);
-      height: var(--bottom-nav-h);
-      background: rgba(17,17,17,0.96);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-top: 1px solid var(--color-border);
-      display: flex;
-      align-items: center;
-      justify-content: space-around;
-      padding: 0 var(--space-2);
+    /* ---- Page views ---- */
+    .page-view {
+      display: none;
+      animation: fadeIn 0.3s ease;
     }
+    .page-view.active { display: block; }
 
+    /* ---- Auth screen ---- */
     #auth-screen {
       min-height: 100vh;
       display: flex;
@@ -172,11 +178,7 @@
       border-bottom-color: var(--color-gold);
     }
 
-    .auth-form-panel {
-      display: none;
-      width: 100%;
-    }
-
+    .auth-form-panel { display: none; width: 100%; }
     .auth-form-panel.active {
       display: flex;
       flex-direction: column;
@@ -191,104 +193,25 @@
       line-height: 1.8;
     }
 
-    #loading-screen {
+    /* ---- Clerk loading indicator (subtle, non-blocking) ---- */
+    #clerk-loading-bar {
       position: fixed;
-      inset: 0;
-      background: var(--color-bg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: var(--space-4);
-      z-index: 9999;
-    }
-
-    .loading-logo {
-      font-family: var(--font-display);
-      font-size: var(--text-4xl);
-      font-weight: var(--weight-light);
-      letter-spacing: 0.2em;
-      color: var(--color-gold);
-      animation: goldShimmer 2s ease-in-out infinite;
-    }
-
-    .loading-bar {
-      width: 120px;
-      height: 1px;
-      background: var(--color-border);
-      border-radius: var(--radius-full);
-      overflow: hidden;
-    }
-
-    .loading-bar-fill {
-      height: 100%;
+      top: 0;
+      left: 0;
+      height: 2px;
       background: var(--color-gold);
-      border-radius: var(--radius-full);
-      animation: loadingFill 1.5s ease forwards;
+      z-index: 9999;
+      width: 0%;
+      transition: width 0.3s ease;
     }
 
-    @keyframes loadingFill {
-      from { width: 0%; }
-      to   { width: 100%; }
-    }
-
-    .page-view {
-      display: none;
-      animation: fadeIn 0.3s ease;
-    }
-
-    .page-view.active {
-      display: block;
-    }
-
-    /* OTP Panel */
-    .verify-icon {
-      font-size: 2.5rem;
-      text-align: center;
-      margin-bottom: var(--space-2);
-    }
-
-    .verify-title {
-      font-family: var(--font-display);
-      font-size: var(--text-2xl);
-      font-weight: var(--weight-light);
-      letter-spacing: 0.1em;
-      color: var(--color-gold);
-      text-align: center;
-    }
-
-    .verify-subtitle {
-      font-size: var(--text-sm);
-      color: var(--color-text-muted);
-      text-align: center;
-      line-height: 1.6;
-    }
-
-    .verify-email-highlight {
-      color: var(--color-text);
-      font-weight: 500;
-    }
-
-    .verify-resend {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      text-align: center;
-      margin-top: var(--space-2);
-    }
-
-    .verify-resend button {
-      background: none;
-      border: none;
-      color: var(--color-gold);
-      cursor: pointer;
-      font-size: var(--text-xs);
-      padding: 0;
-      text-decoration: underline;
-    }
-
-    .verify-resend button:hover {
-      opacity: 0.8;
-    }
+    /* ---- OTP panel ---- */
+    .verify-icon     { font-size: 2.5rem; text-align: center; margin-bottom: var(--space-2); }
+    .verify-title    { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: var(--weight-light); letter-spacing: 0.1em; color: var(--color-gold); text-align: center; }
+    .verify-subtitle { font-size: var(--text-sm); color: var(--color-text-muted); text-align: center; line-height: 1.6; }
+    .verify-email-highlight { color: var(--color-text); font-weight: 500; }
+    .verify-resend   { font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; margin-top: var(--space-2); }
+    .verify-resend button { background: none; border: none; color: var(--color-gold); cursor: pointer; font-size: var(--text-xs); padding: 0; text-decoration: underline; }
 
     .input-otp {
       text-align: center;
@@ -297,19 +220,47 @@
       letter-spacing: 0.3em;
       padding: var(--space-4);
     }
+
+    /* ---- Wallet deposit/withdraw modals ---- */
+    .wallet-modal-label {
+      font-size: var(--text-xs);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-2);
+    }
+
+    .wallet-balance-display {
+      text-align: center;
+      padding: var(--space-4);
+      background: var(--color-surface-2);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+    }
+
+    .wallet-balance-amount {
+      font-family: var(--font-mono);
+      font-size: var(--text-3xl);
+      color: var(--color-gold);
+    }
+
+    .wallet-balance-label {
+      font-size: var(--text-xs);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
   </style>
 </head>
 <body>
 
-  <!-- Loading Screen -->
-  <div id="loading-screen">
-    <p class="loading-logo">AURUM</p>
-    <div class="loading-bar">
-      <div class="loading-bar-fill"></div>
-    </div>
-  </div>
+  <!-- Subtle top bar — shows while Clerk loads, non-blocking -->
+  <div id="clerk-loading-bar"></div>
 
-  <!-- Auth Screen -->
+  <!-- =====================================================
+       AUTH SCREEN — shown immediately, no loading block
+  ====================================================== -->
   <div id="auth-screen" style="display:none;">
     <p class="auth-logo">AURUM</p>
     <p class="auth-tagline">Where ambition meets competition.</p>
@@ -323,13 +274,13 @@
     <div class="auth-form-panel active" id="panel-signin">
       <div class="input-group">
         <label class="input-label">Email</label>
-        <input class="input" type="email" id="signin-email" placeholder="your@email.com" />
+        <input class="input" type="email" id="signin-email" placeholder="your@email.com" autocomplete="email" />
       </div>
       <div class="input-group">
         <label class="input-label">Password</label>
-        <input class="input" type="password" id="signin-password" placeholder="••••••••" />
+        <input class="input" type="password" id="signin-password" placeholder="••••••••" autocomplete="current-password" />
       </div>
-      <button class="btn btn-primary btn-full" id="btn-signin">Enter AURUM</button>
+      <button class="btn btn-primary btn-full" id="btn-signin" disabled>Enter AURUM</button>
       <p id="signin-error" style="color:var(--color-danger);font-size:var(--text-sm);text-align:center;display:none;"></p>
     </div>
 
@@ -337,21 +288,21 @@
     <div class="auth-form-panel" id="panel-signup">
       <div class="input-group">
         <label class="input-label">Username</label>
-        <input class="input" type="text" id="signup-username" placeholder="YourHandle" />
+        <input class="input" type="text" id="signup-username" placeholder="YourHandle" autocomplete="username" />
       </div>
       <div class="input-group">
         <label class="input-label">Email</label>
-        <input class="input" type="email" id="signup-email" placeholder="your@email.com" />
+        <input class="input" type="email" id="signup-email" placeholder="your@email.com" autocomplete="email" />
       </div>
       <div class="input-group">
         <label class="input-label">Password</label>
-        <input class="input" type="password" id="signup-password" placeholder="Min. 8 characters" />
+        <input class="input" type="password" id="signup-password" placeholder="Min. 8 characters" autocomplete="new-password" />
       </div>
-      <button class="btn btn-primary btn-full" id="btn-signup">Claim Your Spot</button>
+      <button class="btn btn-primary btn-full" id="btn-signup" disabled>Claim Your Spot</button>
       <p id="signup-error" style="color:var(--color-danger);font-size:var(--text-sm);text-align:center;display:none;"></p>
     </div>
 
-    <!-- OTP Verification Panel -->
+    <!-- OTP Verification -->
     <div class="auth-form-panel" id="panel-verify">
       <div class="verify-icon">✉️</div>
       <p class="verify-title">Check your inbox</p>
@@ -361,13 +312,12 @@
       </p>
       <div class="input-group">
         <label class="input-label">Verification Code</label>
-        <input class="input input-otp" type="text" id="otp-input" placeholder="000000" maxlength="6" inputmode="numeric" />
+        <input class="input input-otp" type="text" id="otp-input"
+          placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" />
       </div>
       <button class="btn btn-primary btn-full" id="btn-verify">Verify & Enter AURUM</button>
       <p id="verify-error" style="color:var(--color-danger);font-size:var(--text-sm);text-align:center;display:none;"></p>
-      <p class="verify-resend">
-        Didn't get it? <button id="btn-resend">Resend code</button>
-      </p>
+      <p class="verify-resend">Didn't get it? <button id="btn-resend">Resend code</button></p>
     </div>
 
     <p class="auth-footer">
@@ -376,20 +326,35 @@
     </p>
   </div>
 
-  <!-- App Shell -->
+  <!-- =====================================================
+       APP SHELL
+  ====================================================== -->
   <div id="app-shell" class="app-shell" style="display:none;">
 
+    <!-- App Bar -->
     <div class="app-bar">
       <span class="app-bar-logo">AURUM</span>
       <div class="app-bar-right">
-        <div class="app-bar-score">
-          <span class="app-bar-score-value" id="user-score">—</span>
-          <span class="app-bar-score-label">Aurum Score</span>
+        <div class="app-bar-metrics">
+          <!-- Wallet balance -->
+          <div class="app-bar-metric" id="appbar-wallet-wrap" style="display:none;cursor:pointer;"
+            title="Wallet" onclick="App.openWalletModal()">
+            <span class="app-bar-metric-value" id="user-wallet">₳0.00</span>
+            <span class="app-bar-metric-label">Balance</span>
+          </div>
+          <div class="app-bar-divider" id="appbar-divider" style="display:none;"></div>
+          <!-- Aurum Score -->
+          <div class="app-bar-metric">
+            <span class="app-bar-metric-value" id="user-score">—</span>
+            <span class="app-bar-metric-label">Aurum Score</span>
+          </div>
         </div>
-        <div class="avatar avatar-sm avatar-gold" id="user-avatar">—</div>
+        <div class="avatar avatar-sm avatar-gold" id="user-avatar"
+          style="cursor:pointer;" onclick="App.navigate('profile')">—</div>
       </div>
     </div>
 
+    <!-- Page Content -->
     <div class="page-content">
       <div class="page-view active" id="view-ledger"></div>
       <div class="page-view" id="view-arena"></div>
@@ -398,6 +363,7 @@
       <div class="page-view" id="view-elite"></div>
     </div>
 
+    <!-- Bottom Nav -->
     <nav class="bottom-nav">
       <button class="nav-item active" data-view="ledger">
         <svg viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h6M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg>
@@ -423,6 +389,110 @@
 
   </div>
 
+  <!-- =====================================================
+       WALLET MODAL
+  ====================================================== -->
+  <div class="modal-overlay" id="wallet-modal" style="display:none;">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title">Wallet</h3>
+
+      <!-- Balance display -->
+      <div class="wallet-balance-display">
+        <div class="wallet-balance-amount" id="wallet-modal-balance">₳0.00</div>
+        <div class="wallet-balance-label">Aurum Balance</div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;gap:var(--space-3);margin-bottom:var(--space-5);">
+        <button class="btn btn-primary btn-full" id="btn-wallet-deposit">Deposit</button>
+        <button class="btn btn-outline btn-full" id="btn-wallet-withdraw">Withdraw</button>
+      </div>
+
+      <!-- Transactions -->
+      <p style="font-size:var(--text-xs);letter-spacing:0.08em;text-transform:uppercase;
+        color:var(--color-text-muted);margin-bottom:var(--space-3);">Recent Transactions</p>
+      <div id="wallet-tx-list" style="display:flex;flex-direction:column;gap:var(--space-2);">
+        <div class="skeleton" style="height:48px;border-radius:8px;"></div>
+        <div class="skeleton" style="height:48px;border-radius:8px;"></div>
+        <div class="skeleton" style="height:48px;border-radius:8px;"></div>
+      </div>
+      <button class="btn btn-ghost btn-full btn-sm" style="margin-top:var(--space-4);"
+        onclick="App.navigate('profile')">View Full History →</button>
+    </div>
+  </div>
+
+  <!-- =====================================================
+       DEPOSIT MODAL
+  ====================================================== -->
+  <div class="modal-overlay" id="deposit-modal" style="display:none;">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title">Deposit Funds</h3>
+      <div style="display:flex;flex-direction:column;gap:var(--space-4);">
+        <div class="input-group">
+          <label class="input-label">Amount (USD)</label>
+          <input class="input" type="number" id="deposit-amount" placeholder="25.00" min="1" step="0.01" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Currency</label>
+          <select class="input" id="deposit-currency">
+            <option value="USD">USD — US Dollar</option>
+            <option value="NGN">NGN — Nigerian Naira</option>
+            <option value="GHS">GHS — Ghanaian Cedi</option>
+            <option value="KES">KES — Kenyan Shilling</option>
+            <option value="ZAR">ZAR — South African Rand</option>
+          </select>
+        </div>
+        <p style="font-size:var(--text-xs);color:var(--color-text-muted);line-height:1.6;">
+          You will be redirected to Paystack to complete the payment securely.
+          Your Aurum Balance will update automatically on return.
+        </p>
+        <div style="display:flex;gap:var(--space-3);">
+          <button class="btn btn-ghost btn-full" id="btn-deposit-cancel">Cancel</button>
+          <button class="btn btn-primary btn-full" id="btn-deposit-confirm">Continue →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================
+       WITHDRAW MODAL
+  ====================================================== -->
+  <div class="modal-overlay" id="withdraw-modal" style="display:none;">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title">Withdraw</h3>
+      <div style="display:flex;flex-direction:column;gap:var(--space-4);">
+        <div class="wallet-balance-display">
+          <div class="wallet-balance-amount" id="withdraw-modal-balance">₳0.00</div>
+          <div class="wallet-balance-label">Available Balance</div>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Amount</label>
+          <input class="input" type="number" id="withdraw-amount" placeholder="10.00" min="1" step="0.01" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Bank Name</label>
+          <input class="input" type="text" id="withdraw-bank" placeholder="e.g. Access Bank" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Account Number</label>
+          <input class="input" type="text" id="withdraw-account" placeholder="0123456789" maxlength="10" inputmode="numeric" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Account Name</label>
+          <input class="input" type="text" id="withdraw-name" placeholder="As on bank statement" />
+        </div>
+        <p id="withdraw-error" style="color:var(--color-danger);font-size:var(--text-sm);display:none;"></p>
+        <div style="display:flex;gap:var(--space-3);">
+          <button class="btn btn-ghost btn-full" id="btn-withdraw-cancel">Cancel</button>
+          <button class="btn btn-primary btn-full" id="btn-withdraw-confirm">Request Withdrawal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="js/api.js"></script>
   <script src="js/pages/ledger.js"></script>
@@ -433,104 +503,159 @@
 
   <script>
   /* ============================================
-     AURUM App Shell — Auth + Routing
+     AURUM App Shell — Module G
+     Performance: no loading block, parallel load,
+     profile cache, live token refresh
   ============================================ */
 
-  /* Holds the in-progress signUp object between steps */
   let pendingSignUp = null;
 
   const App = {
-    user: null,
+    user:        null,
     currentView: 'ledger',
+    walletBalance: 0,
 
+    /* -----------------------------------------
+       INIT — show auth immediately, load Clerk
+       in background with 3s timeout
+    ----------------------------------------- */
     async init() {
-      document.getElementById('btn-signin').disabled = true;
-      document.getElementById('btn-signup').disabled = true;
+      /* Show auth form immediately — no blank screen */
+      this.showAuth();
 
+      /* Start Clerk loading bar animation */
+      const bar = document.getElementById('clerk-loading-bar');
+      if (bar) { bar.style.width = '60%'; }
+
+      /* Load Clerk in background — 3s timeout */
       await this.waitForClerk();
 
+      if (bar) {
+        bar.style.width = '100%';
+        setTimeout(() => { bar.style.opacity = '0'; }, 300);
+      }
+
+      /* Enable auth buttons now that Clerk is ready */
       document.getElementById('btn-signin').disabled = false;
       document.getElementById('btn-signup').disabled = false;
 
+      /* Check if already authenticated */
       await this.checkAuth();
-      this.hideLoading();
     },
 
     waitForClerk() {
       return new Promise(resolve => {
         const tryLoad = () => {
           if (window.Clerk) {
-            window.Clerk.load()
-              .then(resolve)
-              .catch(resolve);
+            window.Clerk.load().then(resolve).catch(resolve);
           } else {
             setTimeout(tryLoad, 100);
           }
         };
         tryLoad();
-        setTimeout(resolve, 8000);
+        /* 3s timeout — don't block forever */
+        setTimeout(resolve, 3000);
       });
     },
 
     async checkAuth() {
       try {
-        if (Clerk.session) {
-          const token = await Clerk.session.getToken();
+        if (window.Clerk?.session) {
+          const token = await window.Clerk.session.getToken();
           if (token) {
             AURUM.Auth.setToken(token);
-            this.user = Clerk.user;
-            await this.loadUserProfile();
+            this.user = window.Clerk.user;
+            /* Parallel: load profile + wallet simultaneously */
+            await Promise.all([
+              this.loadUserProfile(),
+              this.loadWalletBalance(),
+            ]);
             this.showApp();
             return;
           }
         }
-        this.showAuth();
+        /* Not authenticated — auth form already visible */
       } catch (err) {
-        console.warn('checkAuth error:', err);
-        this.showAuth();
+        console.warn('checkAuth:', err.message);
       }
     },
 
+    /* -----------------------------------------
+       PROFILE — uses cache, refreshes if stale
+    ----------------------------------------- */
     async loadUserProfile() {
+      /* Try cache first */
+      const cached = AURUM.ProfileCache.get();
+      if (cached) {
+        this.user = { ...this.user, ...cached };
+        this.updateAppBar();
+        /* Refresh in background — don't await */
+        this._refreshProfile();
+        return;
+      }
+      await this._refreshProfile();
+    },
+
+    async _refreshProfile() {
       try {
         const data = await AURUM.AuthAPI.me();
-        this.user = { ...this.user, ...data.user };
+        const prev = this.user?.league;
+        this.user  = { ...this.user, ...data.user };
+        AURUM.ProfileCache.set(data.user);
         this.updateAppBar();
-      } catch (err) {
-        if (this.user) {
-          this.updateAppBar();
+
+        /* League promotion check */
+        if (prev && data.user.league
+          && prev.toLowerCase() !== data.user.league.toLowerCase()) {
+          const name = data.user.league.charAt(0).toUpperCase()
+            + data.user.league.slice(1);
+          AURUM.showLeaguePromotion(name);
         }
+      } catch (err) {
+        /* Use Clerk user data as fallback */
+        if (this.user) this.updateAppBar();
       }
+    },
+
+    /* -----------------------------------------
+       WALLET BALANCE
+    ----------------------------------------- */
+    async loadWalletBalance() {
+      try {
+        const data = await AURUM.WalletAPI.getBalance();
+        this.walletBalance = data.balance || 0;
+        this.updateWalletInBar();
+      } catch (err) {
+        /* Wallet not available — hide from bar */
+      }
+    },
+
+    updateWalletInBar() {
+      const wrap   = document.getElementById('appbar-wallet-wrap');
+      const div    = document.getElementById('appbar-divider');
+      const amount = document.getElementById('user-wallet');
+      if (wrap) wrap.style.display = 'flex';
+      if (div)  div.style.display  = 'block';
+      if (amount) amount.textContent = AURUM.formatAurum(this.walletBalance);
     },
 
     updateAppBar() {
-      const score = document.getElementById('user-score');
+      const score  = document.getElementById('user-score');
       const avatar = document.getElementById('user-avatar');
       const username = this.user?.username
         || this.user?.firstName
         || this.user?.emailAddresses?.[0]?.emailAddress?.split('@')[0]
         || '?';
-
-      if (score) {
-        score.textContent = AURUM.formatNumber(this.user?.aurum_score || 0);
-      }
-      if (avatar) {
-        avatar.textContent = username.charAt(0).toUpperCase();
-      }
+      if (score)  score.textContent  = AURUM.formatNumber(this.user?.aurum_score || 0);
+      if (avatar) avatar.textContent = username.charAt(0).toUpperCase();
     },
 
-    hideLoading() {
-      const el = document.getElementById('loading-screen');
-      if (el) {
-        el.style.opacity = '0';
-        el.style.transition = 'opacity 0.4s ease';
-        setTimeout(() => el.remove(), 400);
-      }
-    },
-
+    /* -----------------------------------------
+       SHOW / HIDE
+    ----------------------------------------- */
     showAuth() {
       document.getElementById('auth-screen').style.display = 'flex';
-      document.getElementById('app-shell').style.display = 'none';
+      document.getElementById('app-shell').style.display   = 'none';
       if (location.hash === '#signup') {
         document.querySelector('[data-tab="signup"]')?.click();
       }
@@ -538,19 +663,20 @@
 
     showApp() {
       document.getElementById('auth-screen').style.display = 'none';
-      document.getElementById('app-shell').style.display = 'flex';
+      document.getElementById('app-shell').style.display   = 'flex';
       this.navigate('ledger');
     },
 
+    /* -----------------------------------------
+       ROUTING
+    ----------------------------------------- */
     navigate(view) {
       document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-
       const viewEl = document.getElementById(`view-${view}`);
-      const navEl = document.querySelector(`[data-view="${view}"]`);
+      const navEl  = document.querySelector(`[data-view="${view}"]`);
       if (viewEl) viewEl.classList.add('active');
-      if (navEl) navEl.classList.add('active');
-
+      if (navEl)  navEl.classList.add('active');
       this.currentView = view;
       this.loadView(view);
     },
@@ -561,24 +687,77 @@
         arena:       () => window.ArenaPage?.init('view-arena'),
         leaderboard: () => window.LeaderboardPage?.init('view-leaderboard'),
         profile:     () => window.ProfilePage?.init('view-profile', App.user),
-        elite:       () => window.ElitePage?.init('view-elite')
+        elite:       () => window.ElitePage?.init('view-elite'),
       };
       loaders[view]?.();
-    }
+    },
+
+    /* -----------------------------------------
+       WALLET MODAL
+    ----------------------------------------- */
+    openWalletModal() {
+      const modal = document.getElementById('wallet-modal');
+      const balEl = document.getElementById('wallet-modal-balance');
+      if (balEl) balEl.textContent = AURUM.formatAurum(this.walletBalance);
+      modal.style.display = 'flex';
+      this.loadWalletTransactions();
+    },
+
+    async loadWalletTransactions() {
+      const list = document.getElementById('wallet-tx-list');
+      if (!list) return;
+      try {
+        const data = await AURUM.WalletAPI.getTransactions(0);
+        const txs  = data.transactions || [];
+        if (!txs.length) {
+          list.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted);
+            text-align:center;padding:var(--space-4);">No transactions yet.</p>`;
+          return;
+        }
+        list.innerHTML = txs.slice(0, 5).map(tx => {
+          const isCredit = ['deposit','tip_received','stake_won'].includes(tx.type);
+          const color    = isCredit ? 'var(--color-success)' : 'var(--color-danger)';
+          const sign     = isCredit ? '+' : '−';
+          return `
+            <div style="display:flex;align-items:center;justify-content:space-between;
+              padding:var(--space-3);background:var(--color-surface-2);
+              border-radius:var(--radius-md);border:1px solid var(--color-border);">
+              <div>
+                <p style="font-size:var(--text-sm);color:var(--color-text);
+                  text-transform:capitalize;">${tx.type?.replace(/_/g,' ') || 'Transaction'}</p>
+                <p style="font-size:10px;color:var(--color-text-muted);">${AURUM.timeAgo(tx.created_at)}</p>
+              </div>
+              <span style="font-family:var(--font-mono);font-size:var(--text-sm);color:${color};">
+                ${sign}${AURUM.formatAurum(tx.amount || 0)}
+              </span>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        list.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted);
+          text-align:center;padding:var(--space-4);">Could not load transactions.</p>`;
+      }
+    },
   };
 
-  /* --- Helper: show a specific panel, hide everything else --- */
+  /* =====================================================
+     HELPERS
+  ===================================================== */
   function showPanel(panelId) {
     document.querySelectorAll('.auth-form-panel').forEach(p => p.classList.remove('active'));
     document.getElementById(panelId).classList.add('active');
   }
 
-  /* --- Bottom nav --- */
+  /* =====================================================
+     BOTTOM NAV
+  ===================================================== */
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => App.navigate(btn.dataset.view));
   });
 
-  /* --- Auth tab switching --- */
+  /* =====================================================
+     AUTH TABS
+  ===================================================== */
   document.querySelectorAll('.auth-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
@@ -587,15 +766,16 @@
     });
   });
 
-  /* --- Sign In --- */
+  /* =====================================================
+     SIGN IN
+  ===================================================== */
   document.getElementById('btn-signin').addEventListener('click', async () => {
-    const email = document.getElementById('signin-email').value.trim();
+    const email    = document.getElementById('signin-email').value.trim();
     const password = document.getElementById('signin-password').value;
-    const errEl = document.getElementById('signin-error');
-    const btn = document.getElementById('btn-signin');
+    const errEl    = document.getElementById('signin-error');
+    const btn      = document.getElementById('btn-signin');
 
     errEl.style.display = 'none';
-
     if (!email || !password) {
       errEl.textContent = 'Email and password are required.';
       errEl.style.display = 'block';
@@ -603,210 +783,273 @@
     }
 
     btn.textContent = 'Entering...';
-    btn.disabled = true;
+    btn.disabled    = true;
 
     try {
-      const signInAttempt = await Clerk.client.signIn.create({
-        identifier: email,
-        password
-      });
-
-      if (signInAttempt.status === 'complete') {
-        await Clerk.setActive({ session: signInAttempt.createdSessionId });
-        const token = await Clerk.session.getToken();
+      const attempt = await window.Clerk.client.signIn.create({ identifier: email, password });
+      if (attempt.status === 'complete') {
+        await window.Clerk.setActive({ session: attempt.createdSessionId });
+        const token = await window.Clerk.session.getToken();
         AURUM.Auth.setToken(token);
-        App.user = Clerk.user;
-        await App.loadUserProfile();
+        AURUM.ProfileCache.clear();
+        App.user = window.Clerk.user;
+        await Promise.all([App.loadUserProfile(), App.loadWalletBalance()]);
         App.showApp();
       } else {
-        errEl.textContent = 'Sign in incomplete. Please try again.';
+        errEl.textContent   = 'Sign in incomplete. Please try again.';
         errEl.style.display = 'block';
-        console.warn('SignIn status:', signInAttempt.status);
       }
-
     } catch (err) {
-      console.error('SignIn error:', err);
-      const message = err.errors?.[0]?.longMessage
-        || err.errors?.[0]?.message
-        || err.message
-        || 'Sign in failed.';
-      errEl.textContent = message;
+      errEl.textContent   = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || 'Sign in failed.';
       errEl.style.display = 'block';
     } finally {
       btn.textContent = 'Enter AURUM';
-      btn.disabled = false;
+      btn.disabled    = false;
     }
   });
 
-  /* --- Sign Up --- */
+  /* =====================================================
+     SIGN UP
+  ===================================================== */
   document.getElementById('btn-signup').addEventListener('click', async () => {
     const username = document.getElementById('signup-username').value.trim();
-    const email = document.getElementById('signup-email').value.trim();
+    const email    = document.getElementById('signup-email').value.trim();
     const password = document.getElementById('signup-password').value;
-    const errEl = document.getElementById('signup-error');
-    const btn = document.getElementById('btn-signup');
+    const errEl    = document.getElementById('signup-error');
+    const btn      = document.getElementById('btn-signup');
 
     errEl.style.display = 'none';
-
     if (!username || !email || !password) {
-      errEl.textContent = 'All fields are required.';
-      errEl.style.display = 'block';
-      return;
+      errEl.textContent = 'All fields are required.'; errEl.style.display = 'block'; return;
     }
-
     if (password.length < 8) {
-      errEl.textContent = 'Password must be at least 8 characters.';
-      errEl.style.display = 'block';
-      return;
+      errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return;
     }
 
     btn.textContent = 'Sending verification...';
-    btn.disabled = true;
+    btn.disabled    = true;
 
     try {
-      const signUpAttempt = await Clerk.client.signUp.create({
-        emailAddress: email,
-        password: password,
-        username: username
+      const attempt = await window.Clerk.client.signUp.create({
+        emailAddress: email, password, username
       });
 
-      if (signUpAttempt.status === 'complete') {
-        /* Email verification was off — go straight in */
-        await Clerk.setActive({ session: signUpAttempt.createdSessionId });
-        const token = await Clerk.session.getToken();
+      if (attempt.status === 'complete') {
+        await window.Clerk.setActive({ session: attempt.createdSessionId });
+        const token = await window.Clerk.session.getToken();
         AURUM.Auth.setToken(token);
-        App.user = Clerk.user;
-        try {
-          await AURUM.AuthAPI.register({ username, email });
-        } catch (workerErr) {
-          console.warn('Worker registration failed:', workerErr.message);
-        }
+        App.user = window.Clerk.user;
+        try { await AURUM.AuthAPI.register({ username, email }); } catch (e) {}
         App.showApp();
-
-      } else if (signUpAttempt.status === 'missing_requirements') {
-        /* Email verification required — trigger OTP email */
-        pendingSignUp = signUpAttempt;
+      } else if (attempt.status === 'missing_requirements') {
+        pendingSignUp = attempt;
         await pendingSignUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-
-        /* Show the OTP panel */
         document.getElementById('verify-email-display').textContent = email;
         document.getElementById('auth-tabs').style.display = 'none';
         showPanel('panel-verify');
         document.getElementById('otp-input').focus();
-
       } else {
-        errEl.textContent = 'Signup incomplete: ' + signUpAttempt.status;
+        errEl.textContent   = 'Signup incomplete: ' + attempt.status;
         errEl.style.display = 'block';
       }
-
     } catch (err) {
-      console.error('SignUp error:', err);
-      const message = err.errors?.[0]?.longMessage
-        || err.errors?.[0]?.message
-        || err.message
-        || 'Registration failed.';
-      errEl.textContent = message;
+      errEl.textContent   = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || 'Registration failed.';
       errEl.style.display = 'block';
     } finally {
       btn.textContent = 'Claim Your Spot';
-      btn.disabled = false;
+      btn.disabled    = false;
     }
   });
 
-  /* --- OTP Verify --- */
+  /* =====================================================
+     OTP VERIFY
+  ===================================================== */
   document.getElementById('btn-verify').addEventListener('click', async () => {
-    const code = document.getElementById('otp-input').value.trim();
+    const code  = document.getElementById('otp-input').value.trim();
     const errEl = document.getElementById('verify-error');
-    const btn = document.getElementById('btn-verify');
+    const btn   = document.getElementById('btn-verify');
 
     errEl.style.display = 'none';
-
     if (!code || code.length !== 6) {
-      errEl.textContent = 'Please enter the 6-digit code from your email.';
-      errEl.style.display = 'block';
-      return;
+      errEl.textContent = 'Please enter the 6-digit code.'; errEl.style.display = 'block'; return;
     }
-
     if (!pendingSignUp) {
-      errEl.textContent = 'Session expired. Please sign up again.';
-      errEl.style.display = 'block';
-      return;
+      errEl.textContent = 'Session expired. Please sign up again.'; errEl.style.display = 'block'; return;
     }
 
     btn.textContent = 'Verifying...';
-    btn.disabled = true;
+    btn.disabled    = true;
 
     try {
       const result = await pendingSignUp.attemptEmailAddressVerification({ code });
-
       if (result.status === 'complete') {
-        await Clerk.setActive({ session: result.createdSessionId });
-        const token = await Clerk.session.getToken();
+        await window.Clerk.setActive({ session: result.createdSessionId });
+        const token = await window.Clerk.session.getToken();
         AURUM.Auth.setToken(token);
-        App.user = Clerk.user;
-
+        App.user = window.Clerk.user;
         const username = document.getElementById('signup-username').value.trim();
-        const email = document.getElementById('signup-email').value.trim();
-
-        try {
-          await AURUM.AuthAPI.register({ username, email });
-        } catch (workerErr) {
-          console.warn('Worker registration failed:', workerErr.message);
-        }
-
+        const email    = document.getElementById('signup-email').value.trim();
+        try { await AURUM.AuthAPI.register({ username, email }); } catch (e) {}
         pendingSignUp = null;
         App.showApp();
-
       } else {
-        errEl.textContent = 'Verification incomplete. Please try again.';
+        errEl.textContent   = 'Verification incomplete. Try again.';
         errEl.style.display = 'block';
-        console.warn('Verify status:', result.status);
       }
-
     } catch (err) {
-      console.error('Verify error:', err);
-      const message = err.errors?.[0]?.longMessage
-        || err.errors?.[0]?.message
-        || err.message
-        || 'Invalid code. Please try again.';
-      errEl.textContent = message;
+      errEl.textContent   = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || 'Invalid code.';
       errEl.style.display = 'block';
     } finally {
       btn.textContent = 'Verify & Enter AURUM';
-      btn.disabled = false;
+      btn.disabled    = false;
     }
   });
 
-  /* --- Resend OTP --- */
+  /* =====================================================
+     RESEND OTP
+  ===================================================== */
   document.getElementById('btn-resend').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-resend');
+    const btn   = document.getElementById('btn-resend');
     const errEl = document.getElementById('verify-error');
-
     if (!pendingSignUp) return;
-
     btn.textContent = 'Sending...';
-    btn.disabled = true;
+    btn.disabled    = true;
     errEl.style.display = 'none';
-
     try {
       await pendingSignUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       btn.textContent = 'Sent!';
-      setTimeout(() => {
-        btn.textContent = 'Resend code';
-        btn.disabled = false;
-      }, 3000);
+      setTimeout(() => { btn.textContent = 'Resend code'; btn.disabled = false; }, 3000);
     } catch (err) {
-      console.error('Resend error:', err);
-      errEl.textContent = 'Could not resend code. Please try again.';
+      errEl.textContent   = 'Could not resend. Please try again.';
       errEl.style.display = 'block';
-      btn.textContent = 'Resend code';
-      btn.disabled = false;
+      btn.textContent     = 'Resend code';
+      btn.disabled        = false;
     }
   });
 
-  /* --- Boot --- */
+  /* =====================================================
+     WALLET MODAL EVENTS
+  ===================================================== */
+  document.getElementById('wallet-modal').addEventListener('click', e => {
+    if (e.target.id === 'wallet-modal') e.target.style.display = 'none';
+  });
+
+  document.getElementById('btn-wallet-deposit').addEventListener('click', () => {
+    document.getElementById('wallet-modal').style.display  = 'none';
+    document.getElementById('deposit-modal').style.display = 'flex';
+  });
+
+  document.getElementById('btn-wallet-withdraw').addEventListener('click', () => {
+    document.getElementById('wallet-modal').style.display   = 'none';
+    const wBal = document.getElementById('withdraw-modal-balance');
+    if (wBal) wBal.textContent = AURUM.formatAurum(App.walletBalance);
+    document.getElementById('withdraw-modal').style.display = 'flex';
+  });
+
+  /* =====================================================
+     DEPOSIT MODAL
+  ===================================================== */
+  document.getElementById('deposit-modal').addEventListener('click', e => {
+    if (e.target.id === 'deposit-modal') e.target.style.display = 'none';
+  });
+  document.getElementById('btn-deposit-cancel').addEventListener('click', () => {
+    document.getElementById('deposit-modal').style.display = 'none';
+  });
+  document.getElementById('btn-deposit-confirm').addEventListener('click', async () => {
+    const amount   = parseFloat(document.getElementById('deposit-amount').value);
+    const currency = document.getElementById('deposit-currency').value;
+    const btn      = document.getElementById('btn-deposit-confirm');
+
+    if (!amount || amount < 1) {
+      AURUM.showToast('Enter a valid amount.', 'error'); return;
+    }
+
+    btn.textContent = 'Redirecting...';
+    btn.disabled    = true;
+
+    try {
+      const data = await AURUM.WalletAPI.deposit({ amount, currency });
+      if (data.payment_url) {
+        window.location.href = data.payment_url;
+      } else {
+        AURUM.showToast('Deposit initiated.', 'gold');
+        document.getElementById('deposit-modal').style.display = 'none';
+      }
+    } catch (err) {
+      AURUM.showToast(err.message || 'Deposit failed.', 'error');
+    } finally {
+      btn.textContent = 'Continue →';
+      btn.disabled    = false;
+    }
+  });
+
+  /* =====================================================
+     WITHDRAW MODAL
+  ===================================================== */
+  document.getElementById('withdraw-modal').addEventListener('click', e => {
+    if (e.target.id === 'withdraw-modal') e.target.style.display = 'none';
+  });
+  document.getElementById('btn-withdraw-cancel').addEventListener('click', () => {
+    document.getElementById('withdraw-modal').style.display = 'none';
+  });
+  document.getElementById('btn-withdraw-confirm').addEventListener('click', async () => {
+    const amount  = parseFloat(document.getElementById('withdraw-amount').value);
+    const bank    = document.getElementById('withdraw-bank').value.trim();
+    const account = document.getElementById('withdraw-account').value.trim();
+    const name    = document.getElementById('withdraw-name').value.trim();
+    const errEl   = document.getElementById('withdraw-error');
+    const btn     = document.getElementById('btn-withdraw-confirm');
+
+    errEl.style.display = 'none';
+
+    if (!amount || amount < 1) {
+      errEl.textContent = 'Enter a valid amount.'; errEl.style.display = 'block'; return;
+    }
+    if (amount > App.walletBalance) {
+      errEl.textContent = 'Insufficient balance.'; errEl.style.display = 'block'; return;
+    }
+    if (!bank || !account || !name) {
+      errEl.textContent = 'Fill in all bank details.'; errEl.style.display = 'block'; return;
+    }
+
+    btn.textContent = 'Requesting...';
+    btn.disabled    = true;
+
+    try {
+      await AURUM.WalletAPI.withdraw({ amount, bank_name: bank, account_number: account, account_name: name });
+      AURUM.showToast('Withdrawal request submitted.', 'gold');
+      document.getElementById('withdraw-modal').style.display = 'none';
+      App.walletBalance = Math.max(0, App.walletBalance - amount);
+      App.updateWalletInBar();
+    } catch (err) {
+      errEl.textContent   = err.message || 'Withdrawal failed.';
+      errEl.style.display = 'block';
+    } finally {
+      btn.textContent = 'Request Withdrawal';
+      btn.disabled    = false;
+    }
+  });
+
+  /* =====================================================
+     CHECK FOR PAYSTACK RETURN (deposit confirm)
+  ===================================================== */
+  (async () => {
+    const params = new URLSearchParams(window.location.search);
+    const ref    = params.get('reference') || params.get('trxref');
+    if (ref) {
+      try {
+        await AURUM.WalletAPI.confirmDeposit({ reference: ref });
+        AURUM.showToast('Deposit confirmed. Balance updated.', 'gold', 5000);
+        /* Clean URL */
+        history.replaceState({}, '', window.location.pathname);
+      } catch (e) { /* fail silently */ }
+    }
+  })();
+
+  /* =====================================================
+     BOOT
+  ===================================================== */
   window.addEventListener('load', () => App.init());
   </script>
-
 </body>
 </html>
