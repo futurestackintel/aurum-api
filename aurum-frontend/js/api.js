@@ -1,24 +1,21 @@
 /* ============================================================
-   AURUM — API Module
-   Central hub for all Worker communication.
-   Every fetch in the app goes through here.
+   AURUM — API Module — Module Chat F
+   Added: CrewAPI, DuelAPI expanded, SettingsAPI, CheerAPI
 ============================================================ */
 
 const API_BASE = 'https://api.tryaurum.store';
 
 /* --- Token management --- */
 const Auth = {
-  getToken:  () => localStorage.getItem('aurum_token'),
-  setToken:  (token) => localStorage.setItem('aurum_token', token),
+  getToken:   () => localStorage.getItem('aurum_token'),
+  setToken:   (token) => localStorage.setItem('aurum_token', token),
   clearToken: () => localStorage.removeItem('aurum_token'),
   isLoggedIn: () => !!localStorage.getItem('aurum_token'),
 };
 
 /* --- Core fetch wrapper --- */
 async function apiRequest(method, path, body = null, requiresAuth = true) {
-  const headers = {
-    'Content-Type': 'application/json',
-  };
+  const headers = { 'Content-Type': 'application/json' };
 
   if (requiresAuth) {
     const token = Auth.getToken();
@@ -45,13 +42,13 @@ async function apiRequest(method, path, body = null, requiresAuth = true) {
 }
 
 /* ============================================================
-   API METHODS — grouped by feature
+   API METHODS
 ============================================================ */
 
 /* --- Auth --- */
 const AuthAPI = {
-  register: (data) => apiRequest('POST', '/auth/register', data, false),
-  me:       ()     => apiRequest('GET',  '/auth/me'),
+  register: (data) => apiRequest('POST', '/api/auth/register', data, false),
+  me:       ()     => apiRequest('GET',  '/api/auth/me'),
 };
 
 /* --- Leaderboard --- */
@@ -66,34 +63,99 @@ const LedgerAPI = {
   createPost: (data)     => apiRequest('POST', '/api/posts', data),
   flagPost:   (postId, data) => apiRequest('POST', `/api/posts/${postId}/flag`, data),
   appeal:     (postId, data) => apiRequest('POST', `/api/posts/${postId}/appeal`, data),
+  cheer:      (postId)       => apiRequest('POST', `/api/posts/${postId}/cheer`),
 };
 
 /* --- Challenges / Arena --- */
 const ArenaAPI = {
-  getChallenges:   (status = 'active') => apiRequest('GET',  `/challenges?status=${status}`),
-  getChallenge:    (id)                => apiRequest('GET',  `/challenges/${id}`),
-  createChallenge: (data)              => apiRequest('POST', '/challenges', data),
-  fundChallenge:   (id, data)          => apiRequest('POST', `/challenges/${id}/fund`, data),
-  verifyChallenge: (id, data)          => apiRequest('POST', `/challenges/${id}/verify`, data),
-  payoutChallenge: (id)                => apiRequest('POST', `/challenges/${id}/payout`),
+  getChallenges:   (limit = 20, offset = 0) =>
+    apiRequest('GET', `/api/challenges?limit=${limit}&offset=${offset}`, null, false),
+
+  getChallenge:    (id) =>
+    apiRequest('GET', `/api/challenges/${id}`, null, false),
+
+  createChallenge: (data) =>
+    apiRequest('POST', '/api/challenges', data),
+
+  joinChallenge:   (id) =>
+    apiRequest('POST', `/api/challenges/${id}/join`),
+
+  submitProof:     (id, data) =>
+    apiRequest('POST', `/api/challenges/${id}/proof`, data),
+
+  giveGoldButton:  (id) =>
+    apiRequest('POST', `/api/challenges/${id}/gold`),
+
+  boostChallenge:  (id, data) =>
+    apiRequest('POST', `/api/challenges/${id}/boost`, data),
+
+  freeEntry:       () =>
+    apiRequest('POST', '/api/challenges/free-entry'),
+};
+
+/* --- Duels --- */
+const DuelAPI = {
+  getDuels:    (limit = 20, offset = 0) =>
+    apiRequest('GET', `/api/duels?limit=${limit}&offset=${offset}`, null, false),
+
+  getDuel:     (id) =>
+    apiRequest('GET', `/api/duels/${id}`, null, false),
+
+  createDuel:  (data) =>
+    apiRequest('POST', '/api/duels', data),
+
+  acceptDuel:  (id) =>
+    apiRequest('POST', `/api/duels/${id}/accept`),
+
+  declineDuel: (id) =>
+    apiRequest('POST', `/api/duels/${id}/decline`),
+
+  submitProof: (id, data) =>
+    apiRequest('POST', `/api/duels/${id}/proof`, data),
+
+  announce:    (id) =>
+    apiRequest('POST', `/api/duels/${id}/announce`),
+
+  watch:       (id) =>
+    apiRequest('POST', `/api/duels/${id}/notify`),
+
+  tip:         (id, participantId, data) =>
+    apiRequest('POST', `/api/duels/${id}/tip/${participantId}`, data),
+
+  vote:        (id, participantId) =>
+    apiRequest('POST', `/api/duels/${id}/vote/${participantId}`),
 };
 
 /* --- Tips --- */
-// Tips are internal wallet transfers — no Paystack checkout
 const TipsAPI = {
   send: (data) => apiRequest('POST', '/api/tips', data),
 };
 
 /* --- Subscriptions --- */
 const SubAPI = {
-  upgrade: (data) => apiRequest('POST', '/subscriptions/upgrade', data),
-  verify:  (data) => apiRequest('POST', '/subscriptions/verify', data),
+  upgrade: (data) => apiRequest('POST', '/api/subscriptions/upgrade', data),
+  verify:  (data) => apiRequest('POST', '/api/subscriptions/verify', data),
 };
 
 /* --- Profile --- */
 const ProfileAPI = {
-  getProfile:    (username) => apiRequest('GET',   `/users/${username}`, null, false),
-  updateProfile: (data)     => apiRequest('PATCH', '/users/me', data),
+  getPassport:  (username) =>
+    apiRequest('GET', `/api/passport/${username}`, null, false),
+
+  updateProfile: (data) =>
+    apiRequest('PATCH', '/api/users/me', data),
+};
+
+/* --- Settings --- */
+const SettingsAPI = {
+  updateProfile: (data) =>
+    apiRequest('PATCH', '/api/users/me', data),
+
+  updateNotifications: (data) =>
+    apiRequest('PATCH', '/api/users/me/notifications', data),
+
+  deleteAccount: () =>
+    apiRequest('POST', '/api/users/me/delete'),
 };
 
 /* --- Wallet --- */
@@ -122,17 +184,34 @@ const FoundingAPI = {
   join: () => apiRequest('POST', '/api/founding/join'),
 };
 
+/* --- Crews --- */
+const CrewAPI = {
+  getCrews: (limit = 20, offset = 0) =>
+    apiRequest('GET', `/api/crews?limit=${limit}&offset=${offset}`, null, false),
+
+  getCrew: (id) =>
+    apiRequest('GET', `/api/crews/${id}`, null, false),
+
+  createCrew: (data) =>
+    apiRequest('POST', '/api/crews', data),
+
+  joinCrew: (id) =>
+    apiRequest('POST', `/api/crews/${id}/join`),
+
+  startBattle: (id, data) =>
+    apiRequest('POST', `/api/crews/${id}/battle`, data),
+};
+
 /* ============================================================
    UI HELPERS
 ============================================================ */
 
-/* Show toast notification */
 function showToast(message, type = 'default', duration = 3000) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
 
   const toast = document.createElement('div');
-  toast.className  = `toast ${type}`;
+  toast.className   = `toast ${type}`;
   toast.textContent = message;
   document.body.appendChild(toast);
 
@@ -143,19 +222,16 @@ function showToast(message, type = 'default', duration = 3000) {
   }, duration);
 }
 
-/* Format currency */
 function formatAmount(amount) {
   if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
   if (amount >= 1000)    return `$${(amount / 1000).toFixed(1)}K`;
-  return `$${amount.toFixed(2)}`;
+  return `$${Number(amount).toFixed(2)}`;
 }
 
-/* Format number with commas */
 function formatNumber(num) {
   return num.toLocaleString();
 }
 
-/* Get league badge class */
 function getLeagueBadge(league) {
   const map = {
     bronze:    'badge-bronze',
@@ -166,7 +242,6 @@ function getLeagueBadge(league) {
   return map[league?.toLowerCase()] || 'badge-muted';
 }
 
-/* Time ago */
 function timeAgo(dateString) {
   const date = new Date(dateString);
   const now  = new Date();
@@ -176,6 +251,16 @@ function timeAgo(dateString) {
   if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function formatCountdown(seconds) {
+  if (!seconds || seconds <= 0) return 'Ended';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h remaining`;
+  if (h > 0) return `${h}h ${m}m remaining`;
+  return `${m}m remaining`;
 }
 
 /* ============================================================
@@ -188,14 +273,18 @@ window.AURUM = {
   LeaderboardAPI,
   LedgerAPI,
   ArenaAPI,
+  DuelAPI,
   TipsAPI,
   SubAPI,
   ProfileAPI,
+  SettingsAPI,
   WalletAPI,
   FoundingAPI,
+  CrewAPI,
   showToast,
   formatAmount,
   formatNumber,
   getLeagueBadge,
   timeAgo,
+  formatCountdown,
 };
