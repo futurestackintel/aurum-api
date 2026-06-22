@@ -4,7 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AURUM — Where Ambition Meets Competition</title>
-  <meta name="description" content="A competitive achievement network where ambition is the entry point and wealth is the scoreboard." />
+  <meta name="description" content="A competitive achievement network where verified wins earn real money, status, and a place on the board." />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="AURUM — Where Ambition Meets Competition" />
+  <meta property="og:description" content="The competitive achievement network where verified wins earn real money, status, and a place on the board." />
+  <meta property="og:url" content="https://tryaurum.store" />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://tryaurum.store/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AURUM — Where Ambition Meets Competition" />
+  <meta name="twitter:description" content="The competitive achievement network where verified wins earn real money." />
+  <meta name="twitter:image" content="https://tryaurum.store/og-image.png" />
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.json" />
@@ -24,6 +35,20 @@
   <link rel="stylesheet" href="css/landing.css" />
 </head>
 <body>
+
+  <!-- ===== FOUNDING MEMBER BANNER ===== -->
+  <div id="founding-banner" style="display:none;
+    background: linear-gradient(90deg, #1A1200, #0F0A00);
+    border-bottom: 1px solid var(--color-border-gold);
+    padding: var(--space-2) var(--space-4);
+    text-align: center;">
+    <p style="font-size:var(--text-xs);letter-spacing:0.08em;color:var(--color-gold);">
+      ✦ Founding Member spots: <strong id="founding-spots-remaining">—</strong> remaining.
+      <a href="app.html#signup" style="color:var(--color-gold);text-decoration:underline;margin-left:4px;">
+        Claim yours →
+      </a>
+    </p>
+  </div>
 
   <!-- ===== TOP NAV ===== -->
   <nav class="top-nav">
@@ -53,6 +78,8 @@
         <a href="app.html#signup" class="btn btn-primary btn-lg">Request Access</a>
         <a href="#leaderboard" class="btn btn-ghost btn-lg">View Leaderboard</a>
       </div>
+
+      <!-- Live stats — populated from API -->
       <div class="hero-stats">
         <div class="stat-block">
           <span class="stat-value mono" id="stat-members">—</span>
@@ -86,16 +113,13 @@
         </span>
       </div>
 
-      <!-- Board type tabs -->
       <div class="board-tabs">
         <button class="board-tab active" data-board="earners">Top Earners</button>
         <button class="board-tab" data-board="generous">Most Generous</button>
         <button class="board-tab" data-board="champions">Challenge Wins</button>
       </div>
 
-      <!-- Leaderboard list -->
       <div class="leaderboard-list" id="leaderboard-list">
-        <!-- Skeleton loaders -->
         <div class="lb-skeleton"></div>
         <div class="lb-skeleton"></div>
         <div class="lb-skeleton"></div>
@@ -103,7 +127,6 @@
         <div class="lb-skeleton"></div>
       </div>
 
-      <!-- Join CTA -->
       <div class="lb-cta">
         <p>Only members see full profiles and stats.</p>
         <a href="app.html#signup" class="btn btn-outline btn-full">Claim Your Spot</a>
@@ -210,53 +233,76 @@
     </div>
   </footer>
 
-  <!-- Scripts -->
   <script src="js/api.js"></script>
   <script>
-    /* --- Register Service Worker --- */
+    /* =====================================================
+       Register Service Worker
+    ===================================================== */
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
 
-    /* --- Leaderboard tabs --- */
+    /* =====================================================
+       LEADERBOARD
+       Uses real /leaderboard/public data.
+       Board type tabs filter from the same API response.
+    ===================================================== */
+    let publicLeaderboardData = null;
+
     const tabs = document.querySelectorAll('.board-tab');
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
         tabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
-        loadLeaderboard(tab.dataset.board);
+        renderLeaderboardFromCache(tab.dataset.board);
       });
     });
 
-    /* --- Load public leaderboard --- */
-    async function loadLeaderboard(type = 'earners') {
-      const list = document.getElementById('leaderboard-list');
-
-      list.innerHTML = `
-        <div class="lb-skeleton"></div>
-        <div class="lb-skeleton"></div>
-        <div class="lb-skeleton"></div>
-        <div class="lb-skeleton"></div>
-        <div class="lb-skeleton"></div>
-      `;
-
+    async function loadLeaderboard() {
+      showLeaderboardSkeletons();
       try {
         const data = await AURUM.LeaderboardAPI.getPublic();
-        const board = data[type] || getMockLeaderboard(type);
-        renderLeaderboard(board);
+        /* API may return { earners:[], generous:[], champions:[] }
+           or a flat array — handle both */
+        if (data && (data.earners || data.generous || data.champions)) {
+          publicLeaderboardData = data;
+        } else if (Array.isArray(data)) {
+          publicLeaderboardData = { earners: data, generous: data, champions: data };
+        } else {
+          publicLeaderboardData = null;
+        }
       } catch (err) {
-        renderLeaderboard(getMockLeaderboard(type));
+        publicLeaderboardData = null;
       }
+      renderLeaderboardFromCache('earners');
     }
 
-    function renderLeaderboard(entries) {
-      const list = document.getElementById('leaderboard-list');
-      list.innerHTML = '';
+    function renderLeaderboardFromCache(type) {
+      const board = publicLeaderboardData?.[type] || getMockLeaderboard(type);
+      renderLeaderboard(board, type);
+    }
 
+    function showLeaderboardSkeletons() {
+      const list = document.getElementById('leaderboard-list');
+      list.innerHTML = Array(5).fill('<div class="lb-skeleton"></div>').join('');
+    }
+
+    function renderLeaderboard(entries, type) {
+      const list = document.getElementById('leaderboard-list');
+      const scoreLabels = { earners: 'earned', generous: 'given', champions: 'wins' };
+      const label = scoreLabels[type] || 'score';
+
+      if (!entries || !entries.length) {
+        list.innerHTML = `<p style="text-align:center;color:var(--color-text-muted);
+          padding:var(--space-8);font-size:var(--text-sm);">No data yet.</p>`;
+        return;
+      }
+
+      list.innerHTML = '';
       entries.forEach((entry, index) => {
-        const rank = index + 1;
-        const isTop3 = rank <= 3;
-        const isStealth = entry.stealth;
+        const rank    = index + 1;
+        const isTop3  = rank <= 3;
+        const stealth = entry.stealth || entry.hide_identity;
 
         const item = document.createElement('div');
         item.className = `lb-item fade-in ${isTop3 ? 'lb-item-top' : ''}`;
@@ -265,63 +311,55 @@
         item.innerHTML = `
           <div class="lb-rank mono ${rank === 1 ? 'gold' : ''}">${rank}</div>
           <div class="avatar avatar-sm ${isTop3 ? 'avatar-gold' : ''}">
-            ${isStealth ? '◈' : entry.initials || '?'}
+            ${stealth ? '◈' : (entry.initials || entry.username?.charAt(0)?.toUpperCase() || '?')}
           </div>
           <div class="lb-info">
-            <p class="lb-name ${isStealth ? 'muted' : ''}">
-              ${isStealth ? 'Anonymous' : entry.username || 'Unknown'}
+            <p class="lb-name ${stealth ? 'muted' : ''}">
+              ${stealth ? 'Anonymous' : (entry.username || 'Unknown')}
               ${entry.verified ? '<span class="lb-verified">✦</span>' : ''}
             </p>
-            <span class="badge ${AURUM.getLeagueBadge(entry.league)}" style="font-size:10px">
+            <span class="badge ${AURUM.getLeagueBadge(entry.league)}" style="font-size:10px;">
               ${entry.league || 'Bronze'}
             </span>
           </div>
           <div class="lb-score">
-            <span class="lb-value mono">${AURUM.formatAmount(entry.value || 0)}</span>
-            <span class="lb-score-label">${entry.scoreLabel || 'Score'}</span>
+            <span class="lb-value mono">${AURUM.formatAmount(entry.value || entry.total_earned || entry.aurum_score || 0)}</span>
+            <span class="lb-score-label">${label}</span>
           </div>
         `;
-
         list.appendChild(item);
       });
     }
 
-    /* Mock data for when API isn't live yet */
-    function getMockLeaderboard(type) {
-      const labels = {
-        earners: 'earned',
-        generous: 'given',
-        champions: 'wins'
-      };
-      const label = labels[type] || 'score';
-
-      return [
-        { username: 'ShadowKing', initials: 'SK', league: 'Sovereign', value: 284000, verified: true, scoreLabel: label },
-        { username: 'NovaBuild', initials: 'NB', league: 'Gold', value: 197500, verified: true, scoreLabel: label },
-        { stealth: true, league: 'Sovereign', value: 156000, scoreLabel: label },
-        { username: 'IronFounder', initials: 'IF', league: 'Gold', value: 134200, verified: false, scoreLabel: label },
-        { username: 'ZeroToOne', initials: 'ZO', league: 'Silver', value: 98700, verified: false, scoreLabel: label },
-        { username: 'ApexStar', initials: 'AS', league: 'Gold', value: 87300, verified: true, scoreLabel: label },
-        { username: 'VaultMind', initials: 'VM', league: 'Silver', value: 65100, verified: false, scoreLabel: label },
-      ];
-    }
-
-    /* --- Load platform stats --- */
+    /* =====================================================
+       PLATFORM STATS — live API with animated fallback
+    ===================================================== */
     async function loadStats() {
-      /* Mock stats for now — replace with live API when ready */
-      animateCount('stat-members', 0, 847, '');
-      animateCount('stat-treasury', 0, 284000, '$', true);
-      animateCount('stat-challenges', 0, 23, '');
+      try {
+        const data = await AURUM.StatsAPI.get();
+        /* Animate to real values */
+        animateCount('stat-members',    0, data.total_members    || 0, '');
+        animateCount('stat-treasury',   0, data.treasury_total   || 0, '$', true);
+        animateCount('stat-challenges', 0, data.active_challenges|| 0, '');
+      } catch (err) {
+        /* API not ready — use mock values */
+        animateCount('stat-members',    0, 847,    '');
+        animateCount('stat-treasury',   0, 284000, '$', true);
+        animateCount('stat-challenges', 0, 23,     '');
+      }
     }
 
     function animateCount(id, from, to, prefix, isAmount = false) {
       const el = document.getElementById(id);
-      if (!el) return;
+      if (!el || to === 0) {
+        if (el) el.textContent = isAmount ? '$0' : prefix + '0';
+        return;
+      }
       const duration = 1500;
-      const steps = 40;
+      const steps    = 40;
       const increment = (to - from) / steps;
       let current = from;
-      let step = 0;
+      let step    = 0;
 
       const timer = setInterval(() => {
         current += increment;
@@ -336,9 +374,51 @@
       }, duration / steps);
     }
 
-    /* --- Init --- */
-    loadLeaderboard('earners');
+    /* =====================================================
+       FOUNDING MEMBER BANNER
+       Show if founding members < 100
+    ===================================================== */
+    async function loadFoundingBanner() {
+      try {
+        const data = await AURUM.FoundingAPI.stats();
+        const count = data.founding_member_count || data.count || 0;
+        const max   = data.max_founding_members  || 100;
+        const remaining = Math.max(0, max - count);
+
+        if (remaining > 0 && count < max) {
+          const banner = document.getElementById('founding-banner');
+          const spots  = document.getElementById('founding-spots-remaining');
+          if (spots)  spots.textContent  = remaining;
+          if (banner) banner.style.display = 'block';
+        }
+      } catch (err) {
+        /* Banner stays hidden if API fails — no false urgency */
+      }
+    }
+
+    /* =====================================================
+       MOCK FALLBACK DATA
+    ===================================================== */
+    function getMockLeaderboard(type) {
+      const labels = { earners: 'earned', generous: 'given', champions: 'wins' };
+      const label  = labels[type] || 'score';
+      return [
+        { username: 'ShadowKing', initials: 'SK', league: 'Sovereign', value: 284000, verified: true,  scoreLabel: label },
+        { username: 'NovaBuild',  initials: 'NB', league: 'Gold',      value: 197500, verified: true,  scoreLabel: label },
+        { stealth: true,                           league: 'Sovereign', value: 156000,                  scoreLabel: label },
+        { username: 'IronFounder',initials: 'IF', league: 'Gold',      value: 134200, verified: false, scoreLabel: label },
+        { username: 'ZeroToOne',  initials: 'ZO', league: 'Silver',    value: 98700,  verified: false, scoreLabel: label },
+        { username: 'ApexStar',   initials: 'AS', league: 'Gold',      value: 87300,  verified: true,  scoreLabel: label },
+        { username: 'VaultMind',  initials: 'VM', league: 'Silver',    value: 65100,  verified: false, scoreLabel: label },
+      ];
+    }
+
+    /* =====================================================
+       INIT
+    ===================================================== */
+    loadLeaderboard();
     loadStats();
+    loadFoundingBanner();
   </script>
 </body>
 </html>
