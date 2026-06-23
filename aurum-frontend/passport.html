@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Dynamic OG tags — overwritten by JS for real data,
+       these are the safe fallbacks for crawlers -->
+  <title>AURUM Wealth Passport</title>
+  <meta name="description"
+    content="View this member's AURUM Wealth Passport — league, score, badges, and wins." />
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"   content="AURUM" />
+  <meta property="og:type"        content="profile" />
+  <meta property="og:title"       id="og-title"
+    content="AURUM Wealth Passport" />
+  <meta property="og:description" id="og-desc"
+    content="League, Aurum Score, challenge wins and more." />
+  <meta property="og:url"         id="og-url"
+    content="https://tryaurum.store/passport/" />
+  <meta property="og:image"       id="og-image"
+    content="https://tryaurum.store/og-passport.png" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:site"        content="@tryaurum" />
+  <meta name="twitter:title"       id="tw-title"
+    content="AURUM Wealth Passport" />
+  <meta name="twitter:description" id="tw-desc"
+    content="League, Aurum Score, challenge wins and more." />
+  <meta name="twitter:image"       id="tw-image"
+    content="https://tryaurum.store/og-passport.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/components.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ---- Top bar ---- */
+    .pp-topbar {
+      width: 100%;
+      max-width: var(--max-width);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .pp-logo {
+      font-family: var(--font-display);
+      font-size: var(--text-xl);
+      letter-spacing: 0.2em;
+      color: var(--color-gold);
+    }
+
+    /* ---- Main content ---- */
+    .pp-wrap {
+      width: 100%;
+      max-width: var(--max-width);
+      padding: var(--space-6) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-5);
+    }
+
+    /* ---- Passport card ---- */
+    .passport-card {
+      position: relative;
+      width: 100%;
+      background: linear-gradient(135deg, #0F0F0F, #1A1500);
+      border: 1px solid var(--color-gold-dim);
+      border-radius: var(--radius-xl);
+      padding: var(--space-8);
+      overflow: hidden;
+      box-shadow: 0 0 48px rgba(201,168,76,0.2);
+    }
+
+    .passport-bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(201,168,76,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(201,168,76,0.04) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
+    }
+
+    .passport-bg-corner {
+      position: absolute;
+      bottom: -40px;
+      right: -40px;
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .passport-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    /* Header row */
+    .passport-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      width: 100%;
+    }
+
+    .passport-logo {
+      font-family: var(--font-display);
+      font-size: var(--text-2xl);
+      letter-spacing: 0.25em;
+      color: var(--color-gold);
+    }
+
+    .passport-tier-badge {
+      font-size: var(--text-xs);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--color-gold-dim);
+      border: 1px solid var(--color-border-gold);
+      padding: 3px var(--space-3);
+      border-radius: var(--radius-full);
+    }
+
+    /* Avatar */
+    .passport-avatar-ring {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: var(--color-surface-3);
+      border: 2px solid var(--color-gold-dim);
+      box-shadow: 0 0 20px rgba(201,168,76,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: var(--text-4xl);
+      color: var(--color-gold);
+      font-weight: var(--weight-light);
+    }
+
+    /* Identity */
+    .passport-name {
+      font-family: var(--font-display);
+      font-size: var(--text-3xl);
+      font-weight: var(--weight-light);
+      letter-spacing: 0.06em;
+      color: var(--color-text);
+      text-align: center;
+    }
+
+    .passport-league-line {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .passport-league-text {
+      font-size: var(--text-xs);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--color-gold-dim);
+    }
+
+    /* Divider */
+    .passport-divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(201,168,76,0.3),
+        transparent
+      );
+    }
+
+    /* Stats row */
+    .passport-stats-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-6);
+      width: 100%;
+      padding: var(--space-2) 0;
+    }
+
+    .passport-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .passport-stat-value {
+      font-family: var(--font-mono);
+      font-size: var(--text-xl);
+      color: var(--color-gold);
+      line-height: 1;
+    }
+
+    .passport-stat-label {
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(201,168,76,0.5);
+    }
+
+    .passport-stat-div {
+      width: 1px;
+      height: 36px;
+      background: rgba(201,168,76,0.15);
+    }
+
+    /* Badges row */
+    .passport-badges-row {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .passport-badge-chip {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 3px var(--space-3);
+      background: var(--color-gold-glow);
+      border: 1px solid var(--color-border-gold);
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      color: var(--color-gold);
+      letter-spacing: 0.06em;
+    }
+
+    /* Footer row */
+    .passport-footer-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding-top: var(--space-2);
+    }
+
+    .passport-footer-left {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: rgba(201,168,76,0.4);
+    }
+
+    .passport-footer-right {
+      font-size: 10px;
+      color: var(--color-text-muted);
+    }
+
+    /* ---- Share buttons ---- */
+    .share-section {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .share-title {
+      font-size: var(--text-xs);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+      text-align: center;
+    }
+
+    .share-buttons {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    .share-btn-twitter  { flex: 1; min-width: 120px; }
+    .share-btn-linkedin { flex: 1; min-width: 120px; }
+    .share-btn-facebook { flex: 1; min-width: 120px; }
+    .share-btn-copy     { flex: 1; min-width: 120px; }
+
+    /* ---- Join CTA ---- */
+    .join-cta {
+      width: 100%;
+      padding: var(--space-5);
+      background: linear-gradient(135deg,
+        var(--color-surface), rgba(201,168,76,0.05));
+      border: 1px solid var(--color-border-gold);
+      border-radius: var(--radius-xl);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .join-cta-title {
+      font-family: var(--font-display);
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-light);
+      color: var(--color-gold);
+    }
+
+    .join-cta-sub {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      line-height: 1.6;
+    }
+
+    /* ---- Error / Loading states ---- */
+    .pp-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-16) var(--space-4);
+      width: 100%;
+    }
+
+    .pp-loading-logo {
+      font-family: var(--font-display);
+      font-size: var(--text-3xl);
+      letter-spacing: 0.2em;
+      color: var(--color-gold);
+      animation: goldShimmer 2s ease-in-out infinite;
+    }
+
+    .pp-error {
+      text-align: center;
+      padding: var(--space-16) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .pp-error-icon { font-size: 3rem; opacity: 0.3; }
+
+    .pp-error-title {
+      font-family: var(--font-display);
+      font-size: var(--text-2xl);
+      color: var(--color-text-muted);
+      font-weight: var(--weight-light);
+    }
+
+    .pp-error-sub {
+      font-size: var(--text-sm);
+      color: var(--color-text-dim);
+    }
+
+    /* ---- Animations ---- */
+    @keyframes goldShimmer {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.6; }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-in { animation: fadeIn 0.5s ease forwards; }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <div class="pp-topbar">
+    <a href="/" style="text-decoration:none;">
+      <span class="pp-logo">AURUM</span>
+    </a>
+    <a href="app.html#signup" class="btn btn-primary btn-sm">Join AURUM</a>
+  </div>
+
+  <!-- Main content — populated by JS -->
+  <div class="pp-wrap" id="pp-wrap">
+    <!-- Loading state shown immediately -->
+    <div class="pp-loading" id="pp-loading">
+      <p class="pp-loading-logo">AURUM</p>
+      <div style="width:80px;height:1px;background:var(--color-border);
+        border-radius:999px;overflow:hidden;">
+        <div style="height:100%;background:var(--color-gold);
+          animation:loadingFill 1.5s ease forwards;"></div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    @keyframes loadingFill {
+      from { width: 0%; }
+      to   { width: 100%; }
+    }
+  </style>
+
+  <script src="js/api.js"></script>
+  <script>
+  /* ============================================
+     AURUM — Wealth Passport Page
+     Reads /passport/:username from URL.
+     Fetches public passport data and renders.
+  ============================================ */
+
+  /* --------------------------------------------------
+     Parse username from URL
+     Supports:
+       /passport/username
+       /passport.html?u=username
+       ?username=username
+  -------------------------------------------------- */
+  function getUsernameFromURL() {
+    /* Try path segments first: /passport/username */
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const ppIdx = parts.indexOf('passport');
+    if (ppIdx !== -1 && parts[ppIdx + 1]) {
+      return decodeURIComponent(parts[ppIdx + 1]);
+    }
+
+    /* Try query params */
+    const params = new URLSearchParams(window.location.search);
+    return params.get('u') || params.get('username') || null;
+  }
+
+  /* --------------------------------------------------
+     Helpers
+  -------------------------------------------------- */
+  function formatAurum(amount) {
+    if (!amount) return '₳0';
+    if (amount >= 1000000) return `₳${(amount / 1000000).toFixed(1)}M`;
+    if (amount >= 1000)    return `₳${(amount / 1000).toFixed(1)}K`;
+    return `₳${Number(amount).toFixed(2)}`;
+  }
+
+  function formatNumber(num) {
+    return Number(num || 0).toLocaleString();
+  }
+
+  function getLeagueBadge(league) {
+    const map = {
+      bronze:    'badge-bronze',
+      silver:    'badge-silver',
+      gold:      'badge-gold-lg',
+      sovereign: 'badge-sovereign',
+    };
+    return map[league?.toLowerCase()] || 'badge-muted';
+  }
+
+  function capitalize(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /* --------------------------------------------------
+     Update OG / Twitter meta tags dynamically
+     (helps when page is shared directly from browser)
+  -------------------------------------------------- */
+  function updateMeta(passport) {
+    const username = passport.username || 'Member';
+    const league   = capitalize(passport.league || 'Bronze');
+    const score    = formatNumber(passport.aurum_score || 0);
+    const url      = `https://tryaurum.store/passport/${username}`;
+
+    const title = `${username}'s AURUM Wealth Passport`;
+    const desc  = `League: ${league} | Score: ${score} | Challenge Wins: ${passport.challenge_wins || 0}`;
+
+    document.title = title;
+
+    const setMeta = (id, attr, val) => {
+      const el = document.getElementById(id);
+      if (el) el.setAttribute(attr, val);
+    };
+
+    setMeta('og-title',  'content', title);
+    setMeta('og-desc',   'content', desc);
+    setMeta('og-url',    'content', url);
+    setMeta('tw-title',  'content', title);
+    setMeta('tw-desc',   'content', desc);
+  }
+
+  /* --------------------------------------------------
+     Share helpers
+  -------------------------------------------------- */
+  function getShareText(passport) {
+    const username = passport.username || 'member';
+    const league   = capitalize(passport.league || 'Bronze');
+    const score    = formatNumber(passport.aurum_score || 0);
+    const url      = `https://tryaurum.store/passport/${username}`;
+    return {
+      text: `My AURUM Wealth Passport 🏆 League: ${league} | Score: ${score} ${url} #AURUM`,
+      url,
+    };
+  }
+
+  async function handleShare(passport) {
+    const { text, url } = getShareText(passport);
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${passport.username}'s AURUM Wealth Passport`,
+          text,
+          url,
+        });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
+    /* Fallback — show desktop buttons */
+    const btnsEl = document.getElementById('share-desktop-buttons');
+    if (btnsEl) {
+      btnsEl.style.display = btnsEl.style.display === 'none'
+        ? 'flex' : 'none';
+    }
+  }
+
+  function shareTwitter(passport) {
+    const { text } = getShareText(passport);
+    window.open(
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,
+      '_blank', 'noopener,noreferrer'
+    );
+  }
+
+  function shareLinkedIn(passport) {
+    const { url } = getShareText(passport);
+    window.open(
+      `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+      '_blank', 'noopener,noreferrer'
+    );
+  }
+
+  function shareFacebook(passport) {
+    const { url } = getShareText(passport);
+    window.open(
+      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+      '_blank', 'noopener,noreferrer'
+    );
+  }
+
+  async function copyLink(passport) {
+    const { url } = getShareText(passport);
+    try {
+      await navigator.clipboard.writeText(url);
+      AURUM.showToast('Link copied!', 'gold');
+    } catch (err) {
+      AURUM.showToast(url, 'default', 5000);
+    }
+  }
+
+  /* --------------------------------------------------
+     Render passport
+  -------------------------------------------------- */
+  function renderPassport(passport) {
+    const wrap    = document.getElementById('pp-wrap');
+    const loading = document.getElementById('pp-loading');
+    if (loading) loading.remove();
+
+    const username    = passport.username || 'Member';
+    const league      = capitalize(passport.league || 'Bronze');
+    const tier        = capitalize(passport.tier   || 'Explorer');
+    const score       = formatNumber(passport.aurum_score    || 0);
+    const streak      = passport.streak           || 0;
+    const wins        = passport.challenge_wins   || 0;
+    const given       = AURUM.formatAmount(passport.total_given || 0);
+    const memberSince = passport.created_at
+      ? new Date(passport.created_at).getFullYear()
+      : '—';
+    const badges      = passport.badges || [];
+    const initial     = username.charAt(0).toUpperCase();
+
+    const badgeMap = {
+      verified_builder:     { icon: '🥉', name: 'Verified Builder'     },
+      verified_founder:     { icon: '🥈', name: 'Verified Founder'     },
+      verified_millionaire: { icon: '🥇', name: 'Verified Millionaire' },
+      sovereign:            { icon: '💎', name: 'Sovereign'            },
+    };
+
+    const badgesHTML = badges.length
+      ? badges.map(b => {
+          const def = badgeMap[b?.key || b] || { icon: '✦', name: b?.key || b };
+          return `
+            <div class="passport-badge-chip">
+              ${def.icon} ${def.name}
+            </div>`;
+        }).join('')
+      : '';
+
+    wrap.innerHTML = `
+      <!-- Passport card -->
+      <div class="passport-card fade-in">
+        <div class="passport-bg-grid"></div>
+        <div class="passport-bg-corner"></div>
+        <div class="passport-content">
+
+          <!-- Header -->
+          <div class="passport-header-row">
+            <span class="passport-logo">AURUM</span>
+            <span class="passport-tier-badge">${tier}</span>
+          </div>
+
+          <!-- Avatar -->
+          <div class="passport-avatar-ring">${initial}</div>
+
+          <!-- Identity -->
+          <p class="passport-name">${username}</p>
+          <div class="passport-league-line">
+            <span class="badge ${getLeagueBadge(passport.league)}"
+              style="font-size:10px;">${league}</span>
+            <span class="passport-league-text">League</span>
+            ${passport.verified
+              ? '<span style="color:var(--color-gold);font-size:12px;">✦ Verified</span>'
+              : ''}
+          </div>
+
+          <div class="passport-divider"></div>
+
+          <!-- Stats -->
+          <div class="passport-stats-row">
+            <div class="passport-stat">
+              <span class="passport-stat-value">${score}</span>
+              <span class="passport-stat-label">Score</span>
+            </div>
+            <div class="passport-stat-div"></div>
+            <div class="passport-stat">
+              <span class="passport-stat-value">${wins}</span>
+              <span class="passport-stat-label">Wins</span>
+            </div>
+            <div class="passport-stat-div"></div>
+            <div class="passport-stat">
+              <span class="passport-stat-value">${streak}</span>
+              <span class="passport-stat-label">Streak</span>
+            </div>
+            <div class="passport-stat-div"></div>
+            <div class="passport-stat">
+              <span class="passport-stat-value">${given}</span>
+              <span class="passport-stat-label">Given</span>
+            </div>
+          </div>
+
+          <div class="passport-divider"></div>
+
+          ${badgesHTML ? `
+            <div class="passport-badges-row">${badgesHTML}</div>
+          ` : ''}
+
+          <!-- Footer -->
+          <div class="passport-footer-row">
+            <span class="passport-footer-left">tryaurum.store</span>
+            <span class="passport-footer-right">Member since ${memberSince}</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Share section -->
+      <div class="share-section">
+        <p class="share-title">Share this Passport</p>
+
+        <!-- Primary share button -->
+        <button class="btn btn-primary btn-full" id="btn-share-main">
+          Share Wealth Passport
+        </button>
+
+        <!-- Desktop buttons — hidden by default -->
+        <div id="share-desktop-buttons" style="display:none;gap:var(--space-2);"
+          class="share-buttons">
+          <button class="btn btn-ghost btn-sm share-btn-twitter"
+            id="btn-share-twitter">𝕏 Twitter</button>
+          <button class="btn btn-ghost btn-sm share-btn-linkedin"
+            id="btn-share-linkedin">LinkedIn</button>
+          <button class="btn btn-ghost btn-sm share-btn-facebook"
+            id="btn-share-facebook">Facebook</button>
+          <button class="btn btn-ghost btn-sm share-btn-copy"
+            id="btn-share-copy">Copy Link</button>
+        </div>
+      </div>
+
+      <!-- Join CTA -->
+      <div class="join-cta fade-in">
+        <p class="join-cta-title">Compete on AURUM</p>
+        <p class="join-cta-sub">
+          Post verified wins, enter Drop Circles, and earn real money.
+          Your Wealth Passport is waiting.
+        </p>
+        <a href="/app.html#signup" class="btn btn-primary btn-full">
+          Claim Your Spot
+        </a>
+        <a href="/" class="btn btn-ghost btn-full btn-sm">
+          Learn more →
+        </a>
+      </div>
+    `;
+
+    /* Bind share events */
+    document.getElementById('btn-share-main')
+      ?.addEventListener('click', () => handleShare(passport));
+    document.getElementById('btn-share-twitter')
+      ?.addEventListener('click', () => shareTwitter(passport));
+    document.getElementById('btn-share-linkedin')
+      ?.addEventListener('click', () => shareLinkedIn(passport));
+    document.getElementById('btn-share-facebook')
+      ?.addEventListener('click', () => shareFacebook(passport));
+    document.getElementById('btn-share-copy')
+      ?.addEventListener('click', () => copyLink(passport));
+  }
+
+  /* --------------------------------------------------
+     Render error state
+  -------------------------------------------------- */
+  function renderError(username) {
+    const wrap    = document.getElementById('pp-wrap');
+    const loading = document.getElementById('pp-loading');
+    if (loading) loading.remove();
+
+    wrap.innerHTML = `
+      <div class="pp-error fade-in">
+        <div class="pp-error-icon">🔍</div>
+        <p class="pp-error-title">Passport not found</p>
+        <p class="pp-error-sub">
+          ${username
+            ? `No AURUM member with username <strong>${username}</strong> was found.`
+            : 'No username provided in the URL.'}
+        </p>
+        <div style="display:flex;flex-direction:column;gap:var(--space-3);
+          width:100%;margin-top:var(--space-4);">
+          <a href="/app.html#signup" class="btn btn-primary btn-full">
+            Claim Your Spot on AURUM
+          </a>
+          <a href="/" class="btn btn-ghost btn-full">Back to Home</a>
+        </div>
+      </div>
+    `;
+  }
+
+  /* --------------------------------------------------
+     INIT
+  -------------------------------------------------- */
+  async function init() {
+    const username = getUsernameFromURL();
+
+    if (!username) {
+      renderError(null);
+      return;
+    }
+
+    try {
+      const data     = await AURUM.ProfileAPI.getPassport(username);
+      const passport = data.passport || data.user || data;
+
+      if (!passport || (!passport.username && !passport.aurum_score)) {
+        renderError(username);
+        return;
+      }
+
+      updateMeta(passport);
+      renderPassport(passport);
+    } catch (err) {
+      renderError(username);
+    }
+  }
+
+  window.addEventListener('load', init);
+  </script>
+</body>
+</html>
