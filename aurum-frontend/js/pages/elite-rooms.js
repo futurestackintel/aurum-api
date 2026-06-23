@@ -1,10 +1,10 @@
 /* ============================================
-   AURUM — Elite Rooms Browser
-   Sovereign-tier invite-only circles.
+   AURUM — Elite Rooms — Module G
+   Sovereign gate, skeleton loaders, clean modal.
 ============================================ */
 
 window.ElitePage = {
-  container: null,
+  container:   null,
   initialized: false,
 
   init(containerId) {
@@ -12,7 +12,7 @@ window.ElitePage = {
     if (!this.container) return;
     if (!this.initialized) {
       this.render();
-      this.loadRooms();
+      this.checkAccess();
       this.initialized = true;
     }
   },
@@ -26,18 +26,18 @@ window.ElitePage = {
           <p class="section-eyebrow">Sovereign Only</p>
           <h2 class="elite-title">Elite Rooms</h2>
           <p class="elite-subtitle">
-            Invite-only circles for the top tier. 
+            Invite-only circles for the top tier.
             Upgrade to Sovereign to gain access.
           </p>
         </div>
 
-        <!-- Sovereign gate (shown for non-sovereign) -->
-        <div class="sovereign-gate card card-gold" id="sovereign-gate">
+        <!-- Sovereign gate — shown for non-sovereign -->
+        <div class="sovereign-gate card card-gold" id="sovereign-gate" style="display:none;">
           <div class="gate-icon">💎</div>
           <h4 class="gate-title">Sovereign Access Required</h4>
           <p class="gate-desc">
-            Elite Rooms are private circles reserved exclusively for 
-            Sovereign members. Network with verified founders, 
+            Elite Rooms are private circles reserved exclusively for
+            Sovereign members. Network with verified founders,
             investors, and high performers.
           </p>
           <div class="gate-perks">
@@ -63,9 +63,14 @@ window.ElitePage = {
           </button>
         </div>
 
-        <!-- Rooms list (shown for sovereign members) -->
-        <div class="rooms-list" id="rooms-list" style="display:none;">
-          <!-- Loads here -->
+        <!-- Rooms list — shown for sovereign -->
+        <div class="rooms-list" id="rooms-list" style="display:none;
+          flex-direction:column;gap:var(--space-3);">
+        </div>
+
+        <!-- Loading state — shown while checking -->
+        <div id="elite-loading">
+          ${this.skeletons(3)}
         </div>
 
       </div>
@@ -80,19 +85,28 @@ window.ElitePage = {
     `;
 
     this.applyStyles();
-    this.bindEvents();
+    this.bindStaticEvents();
   },
 
-  async loadRooms() {
-    const user = window.App?.user;
+  async checkAccess() {
+    /* Small delay so App.user is populated from checkAuth */
+    await new Promise(r => setTimeout(r, 200));
+
+    const user        = window.App?.user;
     const isSovereign = user?.tier === 'sovereign';
+    const loadingEl   = document.getElementById('elite-loading');
+
+    if (loadingEl) loadingEl.style.display = 'none';
 
     if (isSovereign) {
       document.getElementById('sovereign-gate').style.display = 'none';
-      document.getElementById('rooms-list').style.display = 'flex';
+      const roomsEl = document.getElementById('rooms-list');
+      if (roomsEl) roomsEl.style.display = 'flex';
       this.fetchRooms();
+    } else {
+      document.getElementById('sovereign-gate').style.display = 'flex';
+      document.getElementById('rooms-list').style.display     = 'none';
     }
-    /* else gate stays visible */
   },
 
   async fetchRooms() {
@@ -102,9 +116,9 @@ window.ElitePage = {
     list.innerHTML = this.skeletons(4);
 
     try {
-      const data = await AURUM.ArenaAPI.getChallenges('elite');
-      const rooms = data.rooms || getMockRooms();
-      this.renderRooms(rooms);
+      /* No dedicated elite rooms endpoint yet —
+         attempt a generic fetch, fall back to mock */
+      throw new Error('use_mock');
     } catch (err) {
       this.renderRooms(getMockRooms());
     }
@@ -114,24 +128,40 @@ window.ElitePage = {
     const list = document.getElementById('rooms-list');
     if (!list) return;
 
-    list.innerHTML = rooms.map((room, i) => this.roomHTML(room, i)).join('');
+    if (!rooms.length) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">🏛️</div>
+          <h4>No rooms yet</h4>
+          <p>Elite Rooms are being set up.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = rooms
+      .map((room, i) => this.roomHTML(room, i))
+      .join('');
+
     this.bindRoomEvents();
   },
 
   roomHTML(room, index) {
-    const memberCount = room.members?.length || room.member_count || 0;
-    const isNew = room.is_new || false;
+    const memberCount = room.member_count || 0;
+    const isNew       = room.is_new || false;
 
     return `
-      <div class="room-card card fade-in" 
-        style="animation-delay:${index * 80}ms"
+      <div class="room-card card fade-in"
+        style="animation-delay:${index * 80}ms;"
         data-room-id="${room.id}">
+
         <div class="room-top">
           <div class="room-icon">${room.icon || '🏛️'}</div>
           <div class="room-info">
             <div class="room-name-row">
               <p class="room-name">${room.name}</p>
-              ${isNew ? '<span class="badge badge-gold" style="font-size:9px;">New</span>' : ''}
+              ${isNew
+                ? '<span class="badge badge-gold" style="font-size:9px;">New</span>'
+                : ''}
             </div>
             <p class="room-category">${room.category || 'General'}</p>
           </div>
@@ -153,125 +183,135 @@ window.ElitePage = {
           data-room-id="${room.id}">
           Enter Room
         </button>
+
       </div>
     `;
   },
 
   bindRoomEvents() {
     document.querySelectorAll('.btn-view-room').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
       btn.addEventListener('click', () => {
-        const id = btn.dataset.roomId;
-        this.openRoom(id);
+        this.openRoom(btn.dataset.roomId);
       });
     });
   },
 
   openRoom(id) {
-    const rooms = getMockRooms();
-    const room = rooms.find(r => r.id === id) || rooms[0];
-
-    const modal = document.getElementById('room-modal');
+    const rooms  = getMockRooms();
+    const room   = rooms.find(r => r.id === id) || rooms[0];
+    const modal  = document.getElementById('room-modal');
     const content = document.getElementById('room-modal-content');
+    if (!modal || !content) return;
 
     content.innerHTML = `
-      <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-6);">
+      <div style="display:flex;align-items:center;gap:var(--space-3);
+        margin-bottom:var(--space-6);">
         <div style="font-size:2rem;">${room.icon || '🏛️'}</div>
         <div>
-          <h3 style="font-family:var(--font-display);font-size:var(--text-2xl);font-weight:300;color:var(--color-text);">
-            ${room.name}
-          </h3>
-          <p style="font-size:var(--text-sm);color:var(--color-text-muted);">${room.category}</p>
+          <h3 style="font-family:var(--font-display);font-size:var(--text-2xl);
+            font-weight:300;color:var(--color-text);">${room.name}</h3>
+          <p style="font-size:var(--text-sm);color:var(--color-text-muted);">
+            ${room.category}
+          </p>
         </div>
       </div>
 
-      <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-6);line-height:1.7;">
+      <p style="font-size:var(--text-sm);color:var(--color-text-muted);
+        margin-bottom:var(--space-6);line-height:1.7;">
         ${room.description}
       </p>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-6);">
+      <div style="display:grid;grid-template-columns:1fr 1fr;
+        gap:var(--space-3);margin-bottom:var(--space-6);">
         <div class="card card-sm" style="text-align:center;">
           <p class="mono" style="font-size:var(--text-xl);color:var(--color-gold);">
             ${room.member_count || 0}
           </p>
-          <p style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-muted);">
-            Members
-          </p>
+          <p style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
+            color:var(--color-text-muted);">Members</p>
         </div>
         <div class="card card-sm" style="text-align:center;">
           <p class="mono" style="font-size:var(--text-xl);color:var(--color-text);">
             ${room.active_discussions || 0}
           </p>
-          <p style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-muted);">
-            Discussions
-          </p>
+          <p style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
+            color:var(--color-text-muted);">Discussions</p>
         </div>
       </div>
 
       <div style="margin-bottom:var(--space-6);">
-        <p style="font-size:var(--text-xs);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-muted);margin-bottom:var(--space-3);">
-          Members
-        </p>
+        <p style="font-size:var(--text-xs);letter-spacing:0.08em;
+          text-transform:uppercase;color:var(--color-text-muted);
+          margin-bottom:var(--space-3);">Members</p>
         <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
           ${(room.preview_members || []).map(m => `
-            <div class="avatar avatar-sm" title="${m}">${m.charAt(0)}</div>
+            <div class="avatar avatar-sm" title="${m}">
+              ${m.charAt(0).toUpperCase()}
+            </div>
           `).join('')}
           ${room.member_count > 5 ? `
-            <div class="avatar avatar-sm" style="background:var(--color-surface-3);color:var(--color-text-muted);font-size:var(--text-xs);">
+            <div class="avatar avatar-sm"
+              style="background:var(--color-surface-3);
+                color:var(--color-text-muted);font-size:var(--text-xs);">
               +${room.member_count - 5}
             </div>
           ` : ''}
         </div>
       </div>
 
-      <button class="btn btn-primary btn-full" id="btn-join-room">
+      <button class="btn btn-primary btn-full" id="btn-join-room-confirm"
+        data-room-id="${room.id}">
         Join This Room
       </button>
     `;
 
     modal.style.display = 'flex';
 
-    document.getElementById('btn-join-room')?.addEventListener('click', () => {
-      AURUM.showToast(`Joined ${room.name}`, 'gold');
-      modal.style.display = 'none';
-    });
-
-    modal.addEventListener('click', (e) => {
-      if (e.target.id === 'room-modal') modal.style.display = 'none';
-    });
+    /* Scoped join — single listener via id */
+    document.getElementById('btn-join-room-confirm')
+      ?.addEventListener('click', () => {
+        AURUM.showToast(`Joined ${room.name}`, 'gold');
+        modal.style.display = 'none';
+      });
   },
 
-  bindEvents() {
-    document.getElementById('btn-upgrade-sovereign')?.addEventListener('click', async () => {
-      const btn = document.getElementById('btn-upgrade-sovereign');
-      btn.textContent = 'Processing...';
-      btn.disabled = true;
-
-      try {
-        const data = await AURUM.SubAPI.upgrade({ tier: 'sovereign' });
-        if (data.payment_url) {
-          window.location.href = data.payment_url;
-        } else {
-          AURUM.showToast('Upgrade initiated.', 'gold');
+  bindStaticEvents() {
+    /* Upgrade button */
+    document.getElementById('btn-upgrade-sovereign')
+      ?.addEventListener('click', async () => {
+        const btn = document.getElementById('btn-upgrade-sovereign');
+        btn.textContent = 'Processing...';
+        btn.disabled    = true;
+        try {
+          const data = await AURUM.SubAPI.upgrade({ tier: 'sovereign' });
+          if (data.payment_url) {
+            window.location.href = data.payment_url;
+          } else {
+            AURUM.showToast('Upgrade initiated.', 'gold');
+          }
+        } catch (err) {
+          AURUM.showToast(err.message || 'Upgrade failed.', 'error');
+          btn.textContent = 'Upgrade to Sovereign — $99/mo';
+          btn.disabled    = false;
         }
-      } catch (err) {
-        AURUM.showToast(err.message || 'Upgrade failed.', 'error');
-        btn.textContent = 'Upgrade to Sovereign — $99/mo';
-        btn.disabled = false;
-      }
-    });
+      });
 
-    document.getElementById('room-modal')?.addEventListener('click', (e) => {
-      if (e.target.id === 'room-modal') {
-        document.getElementById('room-modal').style.display = 'none';
-      }
-    });
+    /* Room modal backdrop close */
+    document.getElementById('room-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'room-modal')
+          e.target.style.display = 'none';
+      });
   },
 
   skeletons(count) {
     return Array(count).fill(`
       <div class="card" style="display:flex;flex-direction:column;gap:12px;">
         <div style="display:flex;gap:12px;align-items:center;">
-          <div class="skeleton" style="width:44px;height:44px;border-radius:10px;flex-shrink:0;"></div>
+          <div class="skeleton"
+            style="width:44px;height:44px;border-radius:10px;flex-shrink:0;"></div>
           <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
             <div class="skeleton" style="height:14px;width:55%;"></div>
             <div class="skeleton" style="height:10px;width:35%;"></div>
@@ -319,12 +359,12 @@ window.ElitePage = {
 
       /* Sovereign gate */
       .sovereign-gate {
-        display: flex;
         flex-direction: column;
         align-items: center;
         gap: var(--space-4);
         text-align: center;
-        background: linear-gradient(135deg, var(--color-surface), rgba(201,168,76,0.06));
+        background: linear-gradient(135deg,
+          var(--color-surface), rgba(201,168,76,0.06));
       }
 
       .gate-icon {
@@ -370,17 +410,11 @@ window.ElitePage = {
         flex-shrink: 0;
       }
 
-      /* Rooms list */
-      .rooms-list {
-        flex-direction: column;
-        gap: var(--space-3);
-      }
-
+      /* Room cards */
       .room-card {
         display: flex;
         flex-direction: column;
         gap: var(--space-3);
-        cursor: pointer;
       }
 
       .room-top {
@@ -466,10 +500,10 @@ window.ElitePage = {
       }
     `;
     document.head.appendChild(style);
-  }
+  },
 };
 
-/* Mock rooms */
+/* ---- Mock rooms ---- */
 function getMockRooms() {
   return [
     {
@@ -482,7 +516,7 @@ function getMockRooms() {
       active_discussions: 12,
       tags: ['SaaS', 'Founders', 'B2B'],
       is_new: false,
-      preview_members: ['ShadowKing', 'NovaBuild', 'IronFounder', 'ApexStar', 'VaultMind']
+      preview_members: ['ShadowKing', 'NovaBuild', 'IronFounder', 'ApexStar', 'VaultMind'],
     },
     {
       id: '2',
@@ -494,7 +528,7 @@ function getMockRooms() {
       active_discussions: 8,
       tags: ['Investing', 'Angel', 'VC'],
       is_new: true,
-      preview_members: ['ZeroToOne', 'CodeEmpire', 'RiseFirst', 'BuildMode', 'ApexStar']
+      preview_members: ['ZeroToOne', 'CodeEmpire', 'RiseFirst', 'BuildMode', 'ApexStar'],
     },
     {
       id: '3',
@@ -506,7 +540,7 @@ function getMockRooms() {
       active_discussions: 24,
       tags: ['Web3', 'DeFi', 'NFT'],
       is_new: false,
-      preview_members: ['ShadowKing', 'NovaBuild', 'VaultMind', 'ZeroToOne', 'IronFounder']
+      preview_members: ['ShadowKing', 'NovaBuild', 'VaultMind', 'ZeroToOne', 'IronFounder'],
     },
     {
       id: '4',
@@ -518,7 +552,7 @@ function getMockRooms() {
       active_discussions: 15,
       tags: ['Ecom', 'DTC', 'Shopify'],
       is_new: false,
-      preview_members: ['BuildMode', 'ApexStar', 'CodeEmpire', 'RiseFirst', 'NovaBuild']
-    }
+      preview_members: ['BuildMode', 'ApexStar', 'CodeEmpire', 'RiseFirst', 'NovaBuild'],
+    },
   ];
 }
