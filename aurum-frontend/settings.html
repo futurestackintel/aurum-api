@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AURUM — Settings</title>
+  <meta name="theme-color" content="#0A0A0A" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/components.css" />
+
+  <!-- Clerk -->
+  <script
+    crossorigin="anonymous"
+    data-clerk-publishable-key="pk_live_Y2xlcmsudHJ5YXVydW0uc3RvcmUk"
+    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+    type="text/javascript"
+    async
+  ></script>
+
+  <style>
+    body {
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+    }
+
+    /* ---- Top bar ---- */
+    .settings-topbar {
+      position: sticky;
+      top: 0;
+      z-index: var(--z-sticky);
+      height: var(--nav-height);
+      background: rgba(10,10,10,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: 0 var(--space-4);
+      max-width: var(--max-width);
+      margin: 0 auto;
+    }
+
+    .settings-back {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      transition: color var(--transition-base);
+    }
+
+    .settings-back:hover { color: var(--color-text); }
+
+    .settings-topbar-title {
+      flex: 1;
+      font-family: var(--font-display);
+      font-size: var(--text-xl);
+      font-weight: var(--weight-light);
+      letter-spacing: 0.1em;
+      color: var(--color-text);
+    }
+
+    /* ---- Page wrap ---- */
+    .settings-wrap {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      padding-bottom: var(--space-16);
+    }
+
+    /* ---- Section header ---- */
+    .settings-section-header {
+      padding: var(--space-4) 0 var(--space-2);
+    }
+
+    .settings-section-title {
+      font-size: var(--text-xs);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+    }
+
+    /* ---- Settings row ---- */
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-4);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      gap: var(--space-3);
+      transition: border-color var(--transition-base);
+    }
+
+    .settings-row:first-of-type { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+    .settings-row:last-of-type  { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+    .settings-row:only-of-type  { border-radius: var(--radius-lg); }
+
+    /* Collapse adjacent borders */
+    .settings-row + .settings-row { border-top: none; }
+
+    .settings-row:hover { border-color: var(--color-border-gold); }
+
+    .settings-row-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .settings-row-label {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-text);
+    }
+
+    .settings-row-sub {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      line-height: 1.4;
+    }
+
+    .settings-row-right {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    /* ---- Toggle switch ---- */
+    .toggle-wrap {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+
+    .toggle-input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--color-surface-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      transition: all var(--transition-base);
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      left: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--color-text-muted);
+      border-radius: 50%;
+      transition: all var(--transition-base);
+    }
+
+    .toggle-input:checked + .toggle-slider {
+      background: var(--color-gold-glow);
+      border-color: var(--color-gold);
+    }
+
+    .toggle-input:checked + .toggle-slider::before {
+      background: var(--color-gold);
+      transform: translateY(-50%) translateX(20px);
+    }
+
+    /* Locked toggle */
+    .toggle-input:disabled + .toggle-slider {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* ---- Inline edit row ---- */
+    .settings-edit-row {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+    }
+
+    .settings-edit-row + .settings-edit-row { border-top: none; }
+    .settings-edit-row:first-of-type {
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    }
+    .settings-edit-row:last-of-type {
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    }
+    .settings-edit-row:only-of-type { border-radius: var(--radius-lg); }
+
+    /* ---- Danger zone ---- */
+    .settings-danger-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-4);
+      background: rgba(231,76,60,0.04);
+      border: 1px solid rgba(231,76,60,0.2);
+      border-radius: var(--radius-lg);
+      gap: var(--space-3);
+      transition: border-color var(--transition-base);
+    }
+
+    .settings-danger-row:hover {
+      border-color: var(--color-danger);
+    }
+
+    /* ---- Tier display card ---- */
+    .tier-card-settings {
+      padding: var(--space-4);
+      background: linear-gradient(135deg,
+        var(--color-surface), rgba(201,168,76,0.06));
+      border: 1px solid var(--color-border-gold);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+    }
+
+    .tier-info {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
+    .tier-name-display {
+      font-family: var(--font-display);
+      font-size: var(--text-xl);
+      font-weight: var(--weight-light);
+      color: var(--color-gold);
+    }
+
+    .tier-sub-display {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    /* ---- Delete modal ---- */
+    .delete-modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .delete-warning {
+      background: rgba(231,76,60,0.08);
+      border: 1px solid rgba(231,76,60,0.2);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-danger);
+      line-height: 1.6;
+    }
+
+    /* ---- Loading overlay ---- */
+    #settings-loading {
+      position: fixed;
+      inset: 0;
+      background: var(--color-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: var(--space-4);
+      z-index: 9999;
+    }
+
+    .settings-loading-logo {
+      font-family: var(--font-display);
+      font-size: var(--text-3xl);
+      letter-spacing: 0.2em;
+      color: var(--color-gold);
+      animation: goldShimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes goldShimmer {
+      0%,100% { opacity: 1; }
+      50%      { opacity: 0.5; }
+    }
+
+    /* ---- Saved indicator ---- */
+    .saved-indicator {
+      font-size: var(--text-xs);
+      color: var(--color-success);
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Auth loading screen -->
+  <div id="settings-loading">
+    <p class="settings-loading-logo">AURUM</p>
+    <div style="width:80px;height:1px;background:var(--color-border);
+      border-radius:999px;overflow:hidden;">
+      <div style="height:100%;background:var(--color-gold);
+        width:0%;transition:width 0.3s ease;" id="settings-load-bar"></div>
+    </div>
+  </div>
+
+  <!-- Top bar -->
+  <div class="settings-topbar">
+    <button class="settings-back" onclick="history.back()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+      Back
+    </button>
+    <span class="settings-topbar-title">Settings</span>
+  </div>
+
+  <!-- Settings content -->
+  <div class="settings-wrap" id="settings-wrap" style="display:none;">
+
+    <!-- ==========================================
+         SECTION 1 — ACCOUNT
+    =========================================== -->
+    <div class="settings-section-header">
+      <p class="settings-section-title">Account</p>
+    </div>
+
+    <!-- Username -->
+    <div class="settings-edit-row" style="border-radius:var(--radius-lg)
+      var(--radius-lg) 0 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="settings-row-left">
+          <span class="settings-row-label">Username</span>
+          <span class="settings-row-sub" id="display-username">—</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btn-edit-username">Edit</button>
+      </div>
+      <div id="username-edit-panel" style="display:none;
+        display:none;flex-direction:column;gap:var(--space-3);">
+        <div class="input-group">
+          <label class="input-label">New Username</label>
+          <input class="input" type="text" id="new-username"
+            placeholder="YourNewHandle" />
+        </div>
+        <div style="display:flex;gap:var(--space-2);">
+          <button class="btn btn-ghost btn-sm" id="btn-cancel-username">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="btn-save-username">Save</button>
+        </div>
+        <p id="username-error" style="font-size:var(--text-xs);
+          color:var(--color-danger);display:none;"></p>
+      </div>
+    </div>
+
+    <!-- Email -->
+    <div class="settings-row">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Email</span>
+        <span class="settings-row-sub" id="display-email">—</span>
+      </div>
+      <span style="font-size:var(--text-xs);color:var(--color-text-muted);">
+        via Clerk
+      </span>
+    </div>
+
+    <!-- Change password -->
+    <div class="settings-row" style="border-radius:0 0 var(--radius-lg)
+      var(--radius-lg);cursor:pointer;" id="btn-change-password">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Change Password</span>
+        <span class="settings-row-sub">Update via Clerk secure flow</span>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+        stroke="var(--color-text-muted)" stroke-width="2">
+        <path d="M9 18l6-6-6-6"/>
+      </svg>
+    </div>
+
+    <!-- ==========================================
+         SECTION 2 — PRIVACY & VISIBILITY
+    =========================================== -->
+    <div class="settings-section-header">
+      <p class="settings-section-title">Privacy &amp; Visibility</p>
+    </div>
+
+    <!-- Profile visibility -->
+    <div class="settings-row" style="border-radius:var(--radius-lg)
+      var(--radius-lg) 0 0;">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Public Profile</span>
+        <span class="settings-row-sub">
+          Allow others to view your profile and Wealth Passport
+        </span>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle-wrap">
+          <input type="checkbox" class="toggle-input" id="toggle-public-profile"
+            checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Hide Aurum Score -->
+    <div class="settings-row">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Hide Aurum Score</span>
+        <span class="settings-row-sub">
+          Show — instead of your score on the leaderboard
+        </span>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle-wrap">
+          <input type="checkbox" class="toggle-input" id="toggle-hide-score" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Hide League -->
+    <div class="settings-row">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Hide League Badge</span>
+        <span class="settings-row-sub">
+          Don't show your league on posts and profile
+        </span>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle-wrap">
+          <input type="checkbox" class="toggle-input" id="toggle-hide-league" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Stealth Mode — Sovereign only -->
+    <div class="settings-row" style="border-radius:0 0 var(--radius-lg)
+      var(--radius-lg);">
+      <div class="settings-row-left">
+        <span class="settings-row-label">
+          Stealth Mode
+          <span id="stealth-sovereign-badge" style="display:none;">
+            <span class="badge badge-sovereign" style="font-size:9px;
+              margin-left:6px;">Sovereign</span>
+          </span>
+        </span>
+        <span class="settings-row-sub" id="stealth-sub">
+          Appear as Anonymous on leaderboards and posts
+        </span>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle-wrap">
+          <input type="checkbox" class="toggle-input" id="toggle-stealth"
+            disabled />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SECTION 3 — WALLET & PAYMENTS
+    =========================================== -->
+    <div class="settings-section-header">
+      <p class="settings-section-title">Wallet &amp; Payments</p>
+    </div>
+
+    <!-- Currency preference -->
+    <div class="settings-edit-row" style="border-radius:var(--radius-lg)
+      var(--radius-lg) 0 0;">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Display Currency</span>
+        <span class="settings-row-sub">
+          Choose how amounts display across the platform
+        </span>
+      </div>
+      <select class="input" id="currency-select"
+        style="max-width:160px;margin-top:var(--space-3);">
+        <option value="USD">USD — US Dollar</option>
+        <option value="NGN">NGN — Nigerian Naira</option>
+        <option value="GHS">GHS — Ghanaian Cedi</option>
+        <option value="KES">KES — Kenyan Shilling</option>
+        <option value="ZAR">ZAR — South African Rand</option>
+      </select>
+    </div>
+
+    <!-- Bank account -->
+    <div class="settings-edit-row">
+      <div class="settings-row-left" style="margin-bottom:var(--space-3);">
+        <span class="settings-row-label">Withdrawal Bank Account</span>
+        <span class="settings-row-sub">
+          Saved for faster withdrawals — never stored in plain text
+        </span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:var(--space-3);">
+        <div class="input-group">
+          <label class="input-label">Bank Name</label>
+          <input class="input" type="text" id="bank-name"
+            placeholder="e.g. Access Bank" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Account Number</label>
+          <input class="input" type="text" id="bank-account"
+            placeholder="0123456789" maxlength="10" inputmode="numeric" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Account Name</label>
+          <input class="input" type="text" id="bank-account-name"
+            placeholder="As on bank statement" />
+        </div>
+        <button class="btn btn-outline btn-sm" id="btn-save-bank"
+          style="align-self:flex-start;">
+          Save Bank Details
+        </button>
+        <p id="bank-saved" class="saved-indicator" style="display:none;">
+          ✓ Saved
+        </p>
+      </div>
+    </div>
+
+    <!-- Wallet link -->
+    <div class="settings-row"
+      style="border-radius:0 0 var(--radius-lg) var(--radius-lg);
+      cursor:pointer;" onclick="history.back()">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Wallet &amp; Transactions</span>
+        <span class="settings-row-sub">
+          Deposit, withdraw, and view transaction history
+        </span>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+        stroke="var(--color-text-muted)" stroke-width="2">
+        <path d="M9 18l6-6-6-6"/>
+      </svg>
+    </div>
+
+    <!-- ==========================================
+         SECTION 4 — NOTIFICATIONS
+    =========================================== -->
+    <div class="settings-section-header">
+      <p class="settings-section-title">Notifications</p>
+    </div>
+
+    <div class="settings-row" style="border-radius:var(--radius-lg)
+      var(--radius-lg) 0 0;">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Tips Received</span>
+        <span class="settings-row-sub">When someone tips one of your posts</span>
+      </div>
+      <label class="toggle-wrap">
+        <input type="checkbox" class="toggle-input"
+          id="notif-tips" checked />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="settings-row">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Challenge Updates</span>
+        <span class="settings-row-sub">
+          Entry confirmations, results, and prize payouts
+        </span>
+      </div>
+      <label class="toggle-wrap">
+        <input type="checkbox" class="toggle-input"
+          id="notif-challenges" checked />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="settings-row">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Duel Requests</span>
+        <span class="settings-row-sub">When someone challenges you to a duel</span>
+      </div>
+      <label class="toggle-wrap">
+        <input type="checkbox" class="toggle-input"
+          id="notif-duels" checked />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="settings-row">
+      <div class="settings-row-left">
+        <span class="settings-row-label">League Promotions</span>
+        <span class="settings-row-sub">When your Aurum Score moves you up a league</span>
+      </div>
+      <label class="toggle-wrap">
+        <input type="checkbox" class="toggle-input"
+          id="notif-league" checked />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="settings-row">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Platform Announcements</span>
+        <span class="settings-row-sub">
+          New features, maintenance, and AURUM news
+        </span>
+      </div>
+      <label class="toggle-wrap">
+        <input type="checkbox" class="toggle-input"
+          id="notif-platform" checked />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="settings-row" style="border-radius:0 0 var(--radius-lg)
+      var(--radius-lg);">
+      <div class="settings-row-left">
+        <span class="settings-row-label">Wallet Transactions</span>
+        <span class="settings-row-sub">
+          Deposit confirmations and withdrawal status
+        </span>
+      </div>
+      <label class="toggle-wrap">
+        <input type="checkbox" class="toggle-input"
+          id="notif-wallet" checked />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <!-- Save notifications button -->
+    <button class="btn btn-outline btn-full" id="btn-save-notifications">
+      Save Notification Preferences
+    </button>
+
+    <!-- ==========================================
+         SECTION 5 — MEMBERSHIP
+    =========================================== -->
+    <div class="settings-section-header">
+      <p class="settings-section-title">Membership</p>
+    </div>
+
+    <!-- Current tier -->
+    <div class="tier-card-settings" id="tier-display-card">
+      <div class="tier-info">
+        <span class="settings-row-sub">Current Tier</span>
+        <span class="tier-name-display" id="settings-tier-name">Explorer</span>
+        <span class="tier-sub-display" id="settings-tier-sub">Free</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:var(--space-2);
+        align-items:flex-end;" id="tier-action-buttons">
+        <!-- Populated by JS based on tier -->
+      </div>
+    </div>
+
+    <!-- Founding member status -->
+    <div id="founding-member-row" style="display:none;">
+      <div class="settings-row" style="border-radius:var(--radius-lg);">
+        <div class="settings-row-left">
+          <span class="settings-row-label" style="color:var(--color-gold);">
+            ✦ Founding Member
+          </span>
+          <span class="settings-row-sub">
+            You're one of AURUM's first 100 members
+          </span>
+        </div>
+        <span class="badge badge-gold">Active</span>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         DANGER ZONE
+    =========================================== -->
+    <div class="settings-section-header">
+      <p class="settings-section-title" style="color:var(--color-danger);">
+        Danger Zone
+      </p>
+    </div>
+
+    <div class="settings-danger-row">
+      <div class="settings-row-left">
+        <span class="settings-row-label" style="color:var(--color-danger);">
+          Delete Account
+        </span>
+        <span class="settings-row-sub">
+          Permanently delete your account, wallet balance, and all data.
+          This cannot be undone.
+        </span>
+      </div>
+      <button class="btn btn-danger btn-sm" id="btn-delete-account">
+        Delete
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ==========================================
+       DELETE CONFIRMATION MODAL
+  =========================================== -->
+  <div class="modal-overlay" id="delete-modal" style="display:none;">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title" style="color:var(--color-danger);">
+        Delete Account
+      </h3>
+      <div class="delete-modal-body">
+        <div class="delete-warning">
+          ⚠️ This will permanently delete your AURUM account, including your
+          Aurum Score, wallet balance, badges, challenge history, and all posts.
+          This action cannot be reversed.
+        </div>
+        <p style="font-size:var(--text-sm);color:var(--color-text-muted);
+          line-height:1.6;">
+          Any remaining wallet balance will be forfeited. Ongoing challenge
+          entries will be cancelled without refund.
+        </p>
+        <div class="input-group">
+          <label class="input-label">
+            Type <strong style="color:var(--color-text);">DELETE</strong> to confirm
+          </label>
+          <input class="input" type="text" id="delete-confirm-input"
+            placeholder="DELETE" />
+        </div>
+        <p id="delete-error" style="font-size:var(--text-xs);
+          color:var(--color-danger);display:none;"></p>
+        <div style="display:flex;gap:var(--space-3);">
+          <button class="btn btn-ghost btn-full" id="btn-cancel-delete">
+            Cancel
+          </button>
+          <button class="btn btn-danger btn-full" id="btn-confirm-delete"
+            disabled>
+            Delete Forever
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+  /* ============================================
+     AURUM — Settings Page
+     Auth-gated, all sections wired.
+  ============================================ */
+
+  let currentUser = null;
+
+  /* --------------------------------------------------
+     INIT — auth gate
+  -------------------------------------------------- */
+  async function init() {
+    const bar = document.getElementById('settings-load-bar');
+    if (bar) bar.style.width = '60%';
+
+    /* Wait for Clerk */
+    await new Promise(resolve => {
+      const tryLoad = () => {
+        if (window.Clerk) {
+          window.Clerk.load().then(resolve).catch(resolve);
+        } else {
+          setTimeout(tryLoad, 100);
+        }
+      };
+      tryLoad();
+      setTimeout(resolve, 3000);
+    });
+
+    if (bar) bar.style.width = '100%';
+
+    /* Check session */
+    try {
+      if (window.Clerk?.session) {
+        const token = await window.Clerk.session.getToken();
+        if (token) {
+          AURUM.Auth.setToken(token);
+          currentUser = window.Clerk.user;
+          await loadSettings();
+          hideLoading();
+          return;
+        }
+      }
+      /* Not authenticated — redirect */
+      window.location.href = 'app.html';
+    } catch (err) {
+      window.location.href = 'app.html';
+    }
+  }
+
+  function hideLoading() {
+    const el = document.getElementById('settings-loading');
+    if (el) {
+      el.style.opacity    = '0';
+      el.style.transition = 'opacity 0.3s ease';
+      setTimeout(() => el.remove(), 300);
+    }
+    document.getElementById('settings-wrap').style.display = 'flex';
+  }
+
+  /* --------------------------------------------------
+     LOAD SETTINGS — populate from API + Clerk
+  -------------------------------------------------- */
+  async function loadSettings() {
+    /* Populate from cache first */
+    const cached = AURUM.ProfileCache.get();
+    if (cached) populateSettings(cached);
+
+    try {
+      const data = await AURUM.AuthAPI.me();
+      const user = data.user || {};
+      AURUM.ProfileCache.set(user);
+      populateSettings(user);
+    } catch (err) {
+      if (cached) populateSettings(cached);
+    }
+  }
+
+  function populateSettings(user) {
+    const username = user.username
+      || currentUser?.username
+      || currentUser?.firstName
+      || '—';
+    const email = user.email
+      || currentUser?.emailAddresses?.[0]?.emailAddress
+      || '—';
+    const tier  = user.tier || 'explorer';
+
+    /* Account */
+    const displayUsername = document.getElementById('display-username');
+    const displayEmail    = document.getElementById('display-email');
+    if (displayUsername) displayUsername.textContent = `@${username}`;
+    if (displayEmail)    displayEmail.textContent    = email;
+
+    /* Pre-fill username input */
+    const newUsernameInput = document.getElementById('new-username');
+    if (newUsernameInput) newUsernameInput.value = username;
+
+    /* Privacy toggles */
+    setToggle('toggle-public-profile', user.profile_public !== false);
+    setToggle('toggle-hide-score',     !!user.hide_score);
+    setToggle('toggle-hide-league',    !!user.hide_league);
+
+    /* Stealth Mode — Sovereign only */
+    const stealthInput = document.getElementById('toggle-stealth');
+    const stealthSub   = document.getElementById('stealth-sub');
+    const stealthBadge = document.getElementById('stealth-sovereign-badge');
+
+    if (tier === 'sovereign') {
+      if (stealthInput) stealthInput.disabled = false;
+      setToggle('toggle-stealth', !!user.stealth_mode);
+      if (stealthBadge) stealthBadge.style.display = 'inline-flex';
+    } else {
+      if (stealthInput) stealthInput.disabled = true;
+      if (stealthSub) {
+        stealthSub.textContent =
+          'Sovereign members only — upgrade to unlock stealth mode';
+        stealthSub.style.color = 'var(--color-gold-dim)';
+      }
+      if (stealthBadge) stealthBadge.style.display = 'inline-flex';
+    }
+
+    /* Currency */
+    const currencySelect = document.getElementById('currency-select');
+    if (currencySelect && user.currency) {
+      currencySelect.value = user.currency;
+    }
+
+    /* Bank details */
+    if (user.bank_name)         setVal('bank-name',         user.bank_name);
+    if (user.bank_account)      setVal('bank-account',      user.bank_account);
+    if (user.bank_account_name) setVal('bank-account-name', user.bank_account_name);
+
+    /* Notification toggles */
+    const notifs = user.notifications || {};
+    setToggle('notif-tips',       notifs.tips       !== false);
+    setToggle('notif-challenges', notifs.challenges !== false);
+    setToggle('notif-duels',      notifs.duels      !== false);
+    setToggle('notif-league',     notifs.league     !== false);
+    setToggle('notif-platform',   notifs.platform   !== false);
+    setToggle('notif-wallet',     notifs.wallet     !== false);
+
+    /* Membership tier */
+    populateTierSection(tier, user);
+
+    /* Founding member */
+    if (user.is_founding_member) {
+      const row = document.getElementById('founding-member-row');
+      if (row) row.style.display = 'block';
+    }
+  }
+
+  function populateTierSection(tier, user) {
+    const tierNames = {
+      explorer:  'Explorer',
+      contender: 'Contender',
+      sovereign: 'Sovereign',
+    };
+    const tierSubs = {
+      explorer:  'Free',
+      contender: '$29 / month',
+      sovereign: '$99 / month',
+    };
+
+    const nameEl = document.getElementById('settings-tier-name');
+    const subEl  = document.getElementById('settings-tier-sub');
+    const btnsEl = document.getElementById('tier-action-buttons');
+
+    if (nameEl) nameEl.textContent = tierNames[tier] || 'Explorer';
+    if (subEl)  subEl.textContent  = tierSubs[tier]  || 'Free';
+
+    if (!btnsEl) return;
+
+    if (tier === 'explorer') {
+      btnsEl.innerHTML = `
+        <button class="btn btn-primary btn-sm" id="btn-upgrade-contender-settings">
+          Upgrade to Contender
+        </button>
+        <span style="font-size:10px;color:var(--color-text-muted);">$29/mo</span>
+      `;
+      document.getElementById('btn-upgrade-contender-settings')
+        ?.addEventListener('click', () => handleUpgrade('contender'));
+    } else if (tier === 'contender') {
+      btnsEl.innerHTML = `
+        <button class="btn btn-outline btn-sm" id="btn-upgrade-sovereign-settings">
+          Go Sovereign
+        </button>
+        <button class="btn btn-ghost btn-sm" id="btn-manage-subscription">
+          Manage
+        </button>
+      `;
+      document.getElementById('btn-upgrade-sovereign-settings')
+        ?.addEventListener('click', () => handleUpgrade('sovereign'));
+      document.getElementById('btn-manage-subscription')
+        ?.addEventListener('click', () => {
+          AURUM.showToast('Manage subscription via Paystack.', 'default');
+        });
+    } else if (tier === 'sovereign') {
+      btnsEl.innerHTML = `
+        <button class="btn btn-ghost btn-sm" id="btn-manage-subscription">
+          Manage Plan
+        </button>
+      `;
+      document.getElementById('btn-manage-subscription')
+        ?.addEventListener('click', () => {
+          AURUM.showToast('Manage subscription via Paystack.', 'default');
+        });
+    }
+  }
+
+  async function handleUpgrade(tier) {
+    try {
+      const data = await AURUM.SubAPI.upgrade({ tier });
+      if (data.payment_url) window.location.href = data.payment_url;
+      else AURUM.showToast('Upgrade initiated.', 'gold');
+    } catch (err) {
+      AURUM.showToast(err.message || 'Upgrade failed.', 'error');
+    }
+  }
+
+  /* --------------------------------------------------
+     HELPERS
+  -------------------------------------------------- */
+  function setToggle(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.checked = value;
+  }
+
+  function setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+  }
+
+  function getToggle(id) {
+    return document.getElementById(id)?.checked || false;
+  }
+
+  function getVal(id) {
+    return document.getElementById(id)?.value?.trim() || '';
+  }
+
+  /* Debounce helper for auto-save toggles */
+  function debounce(fn, ms) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+
+  /* --------------------------------------------------
+     ACCOUNT — Username
+  -------------------------------------------------- */
+  document.getElementById('btn-edit-username')
+    ?.addEventListener('click', () => {
+      const panel = document.getElementById('username-edit-panel');
+      if (panel) panel.style.display = 'flex';
+    });
+
+  document.getElementById('btn-cancel-username')
+    ?.addEventListener('click', () => {
+      const panel = document.getElementById('username-edit-panel');
+      if (panel) panel.style.display = 'none';
+    });
+
+  document.getElementById('btn-save-username')
+    ?.addEventListener('click', async () => {
+      const username = getVal('new-username');
+      const errEl    = document.getElementById('username-error');
+      const btn      = document.getElementById('btn-save-username');
+
+      errEl.style.display = 'none';
+
+      if (!username || username.length < 3) {
+        errEl.textContent   = 'Username must be at least 3 characters.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      btn.textContent = 'Saving...';
+      btn.disabled    = true;
+
+      try {
+        await AURUM.SettingsAPI.updateProfile({ username });
+        AURUM.ProfileCache.clear();
+
+        const displayEl = document.getElementById('display-username');
+        if (displayEl) displayEl.textContent = `@${username}`;
+
+        const panel = document.getElementById('username-edit-panel');
+        if (panel) panel.style.display = 'none';
+
+        AURUM.showToast('Username updated.', 'gold');
+      } catch (err) {
+        errEl.textContent   = err.message || 'Could not update username.';
+        errEl.style.display = 'block';
+      } finally {
+        btn.textContent = 'Save';
+        btn.disabled    = false;
+      }
+    });
+
+  /* --------------------------------------------------
+     ACCOUNT — Password (Clerk flow)
+  -------------------------------------------------- */
+  document.getElementById('btn-change-password')
+    ?.addEventListener('click', () => {
+      /* Clerk's hosted account page handles password change */
+      if (window.Clerk?.openUserProfile) {
+        window.Clerk.openUserProfile();
+      } else {
+        AURUM.showToast('Visit your Clerk account page to change password.', 'default', 4000);
+      }
+    });
+
+  /* --------------------------------------------------
+     PRIVACY — auto-save on toggle change
+  -------------------------------------------------- */
+  const savePrivacy = debounce(async () => {
+    try {
+      await AURUM.SettingsAPI.updateProfile({
+        profile_public: getToggle('toggle-public-profile'),
+        hide_score:     getToggle('toggle-hide-score'),
+        hide_league:    getToggle('toggle-hide-league'),
+        stealth_mode:   getToggle('toggle-stealth'),
+      });
+      AURUM.ProfileCache.clear();
+      AURUM.showToast('Privacy settings saved.', 'gold');
+    } catch (err) {
+      AURUM.showToast('Could not save settings.', 'error');
+    }
+  }, 800);
+
+  ['toggle-public-profile', 'toggle-hide-score',
+   'toggle-hide-league',    'toggle-stealth'].forEach(id => {
+    document.getElementById(id)
+      ?.addEventListener('change', savePrivacy);
+  });
+
+  /* --------------------------------------------------
+     WALLET — Currency preference (auto-save)
+  -------------------------------------------------- */
+  document.getElementById('currency-select')
+    ?.addEventListener('change', async (e) => {
+      try {
+        await AURUM.WalletAPI.setCurrency({ currency: e.target.value });
+        AURUM.showToast('Currency preference saved.', 'gold');
+      } catch (err) {
+        AURUM.showToast('Could not save currency.', 'error');
+      }
+    });
+
+  /* --------------------------------------------------
+     WALLET — Bank account
+  -------------------------------------------------- */
+  document.getElementById('btn-save-bank')
+    ?.addEventListener('click', async () => {
+      const bankName = getVal('bank-name');
+      const account  = getVal('bank-account');
+      const accName  = getVal('bank-account-name');
+      const btn      = document.getElementById('btn-save-bank');
+      const savedEl  = document.getElementById('bank-saved');
+
+      if (!bankName || !account || !accName) {
+        AURUM.showToast('Fill in all bank details.', 'error'); return;
+      }
+
+      btn.textContent = 'Saving...';
+      btn.disabled    = true;
+
+      try {
+        await AURUM.SettingsAPI.updateBankAccount({
+          bank_name:        bankName,
+          account_number:   account,
+          account_name:     accName,
+        });
+        if (savedEl) {
+          savedEl.style.display = 'block';
+          setTimeout(() => { savedEl.style.display = 'none'; }, 3000);
+        }
+        AURUM.showToast('Bank details saved.', 'gold');
+      } catch (err) {
+        AURUM.showToast(err.message || 'Could not save bank details.', 'error');
+      } finally {
+        btn.textContent = 'Save Bank Details';
+        btn.disabled    = false;
+      }
+    });
+
+  /* --------------------------------------------------
+     NOTIFICATIONS — save
+  -------------------------------------------------- */
+  document.getElementById('btn-save-notifications')
+    ?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-save-notifications');
+      btn.textContent = 'Saving...';
+      btn.disabled    = true;
+
+      try {
+        await AURUM.SettingsAPI.updateNotifications({
+          tips:       getToggle('notif-tips'),
+          challenges: getToggle('notif-challenges'),
+          duels:      getToggle('notif-duels'),
+          league:     getToggle('notif-league'),
+          platform:   getToggle('notif-platform'),
+          wallet:     getToggle('notif-wallet'),
+        });
+        AURUM.showToast('Notification preferences saved.', 'gold');
+      } catch (err) {
+        AURUM.showToast('Could not save notifications.', 'error');
+      } finally {
+        btn.textContent = 'Save Notification Preferences';
+        btn.disabled    = false;
+      }
+    });
+
+  /* --------------------------------------------------
+     DELETE ACCOUNT MODAL
+  -------------------------------------------------- */
+  document.getElementById('btn-delete-account')
+    ?.addEventListener('click', () => {
+      document.getElementById('delete-modal').style.display = 'flex';
+      document.getElementById('delete-confirm-input').value = '';
+      document.getElementById('btn-confirm-delete').disabled = true;
+      document.getElementById('delete-error').style.display = 'none';
+    });
+
+  document.getElementById('btn-cancel-delete')
+    ?.addEventListener('click', () => {
+      document.getElementById('delete-modal').style.display = 'none';
+    });
+
+  document.getElementById('delete-modal')
+    ?.addEventListener('click', e => {
+      if (e.target.id === 'delete-modal')
+        e.target.style.display = 'none';
+    });
+
+  /* Enable confirm button only when user types DELETE */
+  document.getElementById('delete-confirm-input')
+    ?.addEventListener('input', e => {
+      const confirmBtn = document.getElementById('btn-confirm-delete');
+      if (confirmBtn) {
+        confirmBtn.disabled = e.target.value.trim() !== 'DELETE';
+      }
+    });
+
+  document.getElementById('btn-confirm-delete')
+    ?.addEventListener('click', async () => {
+      const btn   = document.getElementById('btn-confirm-delete');
+      const errEl = document.getElementById('delete-error');
+      btn.textContent = 'Deleting...';
+      btn.disabled    = true;
+      errEl.style.display = 'none';
+
+      try {
+        await AURUM.SettingsAPI.deleteAccount();
+        /* Sign out of Clerk */
+        try { await window.Clerk?.signOut(); } catch (e) {}
+        AURUM.Auth.clearToken();
+        AURUM.ProfileCache.clear();
+        window.location.href = 'index.html';
+      } catch (err) {
+        errEl.textContent   = err.message || 'Could not delete account. Contact support.';
+        errEl.style.display = 'block';
+        btn.textContent     = 'Delete Forever';
+        btn.disabled        = false;
+      }
+    });
+
+  /* --------------------------------------------------
+     BOOT
+  -------------------------------------------------- */
+  window.addEventListener('load', init);
+  </script>
+</body>
+</html>
