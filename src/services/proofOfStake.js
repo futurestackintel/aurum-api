@@ -1,6 +1,6 @@
 // ============================================================
 // PROOF OF STAKE SYSTEM
-// Post creation locks a stake into treasury.
+// Post creation locks a stake into post_stakes table.
 // Community flags suspicious posts.
 // Moderation resolves: stake returned (verified) or appeal_pending (fake).
 // Appeal window: 48 hours. Cron finalises slash after deadline.
@@ -26,12 +26,12 @@ const VALID_FLAG_REASONS = ['fake_claim', 'no_evidence', 'misleading', 'spam'];
 // ── POST CREATION ────────────────────────────────────────────
 
 /**
- * Create a new Ledger post with stake locked in treasury.
+ * Create a new Ledger post with stake locked in post_stakes.
  * Deducts stake from wallet balance before locking.
  * Returns post in the exact shape the frontend expects.
  */
 export async function createPost(userId, body, db) {
-  const { content, stake_amount, media_url } = body;
+  const { content, stake_amount, media_urls } = body;
 
   // Validate content
   if (!content || content.trim().length === 0) {
@@ -43,7 +43,7 @@ export async function createPost(userId, body, db) {
     return { error: 'Minimum stake is $5' };
   }
 
-  // Fix 1 — Check wallet balance before locking stake
+  // Check wallet balance before locking stake
   const wallet = await db
     .prepare(`SELECT id, balance_usd FROM wallets WHERE user_id = ?`)
     .bind(userId)
@@ -78,11 +78,7 @@ export async function createPost(userId, body, db) {
   const newBalance = wallet.balance_usd - stake_amount;
 
   await db
-    .prepare(`
-      UPDATE wallets
-      SET balance_usd = ?, updated_at = ?
-      WHERE user_id = ?
-    `)
+    .prepare(`UPDATE wallets SET balance_usd = ?, updated_at = ? WHERE user_id = ?`)
     .bind(newBalance, now, userId)
     .run();
 
@@ -94,30 +90,31 @@ export async function createPost(userId, body, db) {
          balance_after_usd, description, created_at)
       VALUES (?, ?, ?, 'stake_lock', ?, ?, 'Stake locked for Ledger post', ?)
     `)
-    .bind(
-      crypto.randomUUID(), wallet.id, userId,
-      stake_amount, newBalance, now
-    )
+    .bind(crypto.randomUUID(), wallet.id, userId, stake_amount, newBalance, now)
     .run();
 
-  // Insert post — stake_status starts as 'locked'
+  // Insert post using correct column names
+  // stake_amount stored as cents, tips_received_cents starts at 0
+  const stakeAmountCents = Math.round(stake_amount * 100);
+
   await db
     .prepare(`
       INSERT INTO posts
-        (id, user_id, content, media_url, stake_amount, stake_status, tips_received, created_at)
-      VALUES (?, ?, ?, ?, ?, 'locked', 0, ?)
+        (id, user_id, content, media_urls, stake_amount_cents,
+         tips_received_cents, moderation_status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 0, 'active', ?, ?)
     `)
-    .bind(postId, userId, content.trim(), media_url ?? null, stake_amount, now)
+    .bind(postId, userId, content.trim(), media_urls ?? null, stakeAmountCents, now, now)
     .run();
 
-  // Lock stake in treasury ledger
+  // Insert into post_stakes — stake status tracked here, not on posts table
   await db
     .prepare(`
-      INSERT INTO treasury_ledger
-        (id, post_id, user_id, amount, type, status, created_at)
-      VALUES (?, ?, ?, ?, 'post_stake', 'locked', ?)
+      INSERT INTO post_stakes
+        (id, post_id, user_id, amount_usd, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'locked', ?, ?)
     `)
-    .bind(crypto.randomUUID(), postId, userId, stake_amount, now)
+    .bind(crypto.randomUUID(), postId, userId, stake_amount, now, now)
     .run();
 
   return {
@@ -144,7 +141,6 @@ export async function createPost(userId, body, db) {
  * After AUTO_SUSPEND_FLAG_COUNT flags → post suspended pending moderation.
  */
 export async function flagPost(postId, flaggedByUserId, reason, db) {
-  // Fix 2 — Reason is required and must be valid
   if (!reason) {
     return { error: 'Flag reason is required.' };
   }
@@ -154,15 +150,22 @@ export async function flagPost(postId, flaggedByUserId, reason, db) {
     };
   }
 
-  // Check post exists
+  // Check post exists — use moderation_status not stake_status
   const post = await db
-    .prepare(`SELECT id, user_id, stake_status FROM posts WHERE id = ?`)
+    .prepare(`SELECT id, user_id, moderation_status FROM posts WHERE id = ?`)
     .bind(postId)
     .first();
 
   if (!post) return { error: 'Post not found' };
-  if (post.stake_status === 'slashed')  return { error: 'Post already resolved as fake' };
-  if (post.stake_status === 'returned') return { error: 'Post already verified' };
+
+  // Check stake status from post_stakes table
+  const stake = await db
+    .prepare(`SELECT status FROM post_stakes WHERE post_id = ?`)
+    .bind(postId)
+    .first();
+
+  if (stake?.status === 'slashed')  return { error: 'Post already resolved as fake' };
+  if (stake?.status === 'returned') return { error: 'Post already verified' };
 
   // Prevent self-flagging
   if (post.user_id === flaggedByUserId) {
@@ -196,18 +199,18 @@ export async function flagPost(postId, flaggedByUserId, reason, db) {
 
   const flagCount = results[0]?.count ?? 0;
 
-  // Auto-suspend if threshold reached
-  if (flagCount >= AUTO_SUSPEND_FLAG_COUNT && post.stake_status === 'locked') {
+  // Auto-suspend if threshold reached — sets moderation_status on posts table
+  if (flagCount >= AUTO_SUSPEND_FLAG_COUNT && stake?.status === 'locked') {
     await db
-      .prepare(`UPDATE posts SET stake_status = 'suspended' WHERE id = ?`)
-      .bind(postId)
+      .prepare(`UPDATE posts SET moderation_status = 'suspended', updated_at = ? WHERE id = ?`)
+      .bind(now, postId)
       .run();
   }
 
   return {
-    flagged:   true,
+    flagged:    true,
     flag_count: flagCount,
-    suspended: flagCount >= AUTO_SUSPEND_FLAG_COUNT,
+    suspended:  flagCount >= AUTO_SUSPEND_FLAG_COUNT,
   };
 }
 
@@ -216,8 +219,8 @@ export async function flagPost(postId, flaggedByUserId, reason, db) {
 /**
  * Resolve a flagged post — admin only.
  * verdict: 'verified' → stake returned to user + score boost
- * verdict: 'fake'     → sets appeal_pending (NOT slashed yet)
- *                       Slash is finalised by cron after 48h deadline.
+ * verdict: 'fake'     → sets appeal_pending in post_stakes (NOT slashed yet)
+ *                       Slash finalised by cron after 48h deadline.
  */
 export async function resolvePost(postId, verdict, moderatorId, db) {
   if (!['verified', 'fake'].includes(verdict)) {
@@ -225,13 +228,21 @@ export async function resolvePost(postId, verdict, moderatorId, db) {
   }
 
   const post = await db
-    .prepare(`SELECT id, user_id, stake_amount, stake_status FROM posts WHERE id = ?`)
+    .prepare(`SELECT id, user_id FROM posts WHERE id = ?`)
     .bind(postId)
     .first();
 
   if (!post) return { error: 'Post not found' };
 
-  if (['returned', 'slashed', 'appeal_pending'].includes(post.stake_status)) {
+  // All stake state lives in post_stakes
+  const stake = await db
+    .prepare(`SELECT id, amount_usd, status FROM post_stakes WHERE post_id = ?`)
+    .bind(postId)
+    .first();
+
+  if (!stake) return { error: 'Stake record not found' };
+
+  if (['returned', 'slashed', 'appeal_pending'].includes(stake.status)) {
     return { error: 'Post has already been resolved' };
   }
 
@@ -239,21 +250,11 @@ export async function resolvePost(postId, verdict, moderatorId, db) {
 
   if (verdict === 'verified') {
     // Return stake to wallet
-    await _returnStakeToWallet(post.user_id, post.stake_amount, postId, db, now);
+    await _returnStakeToWallet(post.user_id, stake.amount_usd, postId, db, now);
 
-    // Update post status
+    // Update post_stakes status — NOT posts table
     await db
-      .prepare(`UPDATE posts SET stake_status = 'returned' WHERE id = ?`)
-      .bind(postId)
-      .run();
-
-    // Update treasury record
-    await db
-      .prepare(`
-        UPDATE treasury_ledger
-        SET status = 'returned', released_at = ?
-        WHERE post_id = ? AND type = 'post_stake'
-      `)
+      .prepare(`UPDATE post_stakes SET status = 'returned', updated_at = ? WHERE post_id = ?`)
       .bind(now, postId)
       .run();
 
@@ -267,18 +268,19 @@ export async function resolvePost(postId, verdict, moderatorId, db) {
     );
 
   } else {
-    // Fix 3 — Set appeal_pending, not slashed immediately
+    // Set appeal_pending in post_stakes — NOT slashed yet
     const appealDeadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
     await db
       .prepare(`
-        UPDATE posts
-        SET stake_status = 'appeal_pending',
+        UPDATE post_stakes
+        SET status = 'appeal_pending',
             appeal_deadline = ?,
-            appeal_status = 'open'
-        WHERE id = ?
+            appeal_status = 'open',
+            updated_at = ?
+        WHERE post_id = ?
       `)
-      .bind(appealDeadline, postId)
+      .bind(appealDeadline, now, postId)
       .run();
 
     // Score penalty applied immediately on verdict
@@ -301,24 +303,25 @@ export async function resolvePost(postId, verdict, moderatorId, db) {
     .bind(crypto.randomUUID(), postId, moderatorId, verdict, now)
     .run();
 
+  const appealDeadline = verdict === 'fake'
+    ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+    : null;
+
   return {
-    resolved:     true,
-    post_id:      postId,
+    resolved:        true,
+    post_id:         postId,
     verdict,
-    stake_amount: post.stake_amount,
-    stake_status: verdict === 'verified' ? 'returned' : 'appeal_pending',
-    appeal_deadline: verdict === 'fake'
-      ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-      : null,
+    stake_amount:    stake.amount_usd,
+    stake_status:    verdict === 'verified' ? 'returned' : 'appeal_pending',
+    appeal_deadline: appealDeadline,
   };
 }
 
 // ── APPEAL ───────────────────────────────────────────────────
 
 /**
- * Fix 3 — User submits an appeal within the 48h window.
- * appeal_status moves from 'open' → 'submitted'.
- * Admin reviews via resolveAppeal().
+ * User submits an appeal within the 48h window.
+ * appeal_status moves from 'open' → 'submitted' in post_stakes.
  */
 export async function appealPost(postId, userId, appealReason, db) {
   if (!appealReason || appealReason.trim().length === 0) {
@@ -326,10 +329,7 @@ export async function appealPost(postId, userId, appealReason, db) {
   }
 
   const post = await db
-    .prepare(`
-      SELECT id, user_id, stake_status, appeal_deadline, appeal_status
-      FROM posts WHERE id = ?
-    `)
+    .prepare(`SELECT id, user_id FROM posts WHERE id = ?`)
     .bind(postId)
     .first();
 
@@ -339,33 +339,44 @@ export async function appealPost(postId, userId, appealReason, db) {
     return { error: 'You can only appeal your own posts.' };
   }
 
-  if (post.stake_status !== 'appeal_pending') {
+  // All appeal state read from post_stakes
+  const stake = await db
+    .prepare(`
+      SELECT status, appeal_deadline, appeal_status
+      FROM post_stakes WHERE post_id = ?
+    `)
+    .bind(postId)
+    .first();
+
+  if (!stake) return { error: 'Stake record not found' };
+
+  if (stake.status !== 'appeal_pending') {
     return { error: 'This post is not in an appealable state.' };
   }
 
-  if (post.appeal_status !== 'open') {
+  if (stake.appeal_status !== 'open') {
     return { error: 'Appeal has already been submitted or closed.' };
   }
 
-  // Check deadline
-  if (new Date() > new Date(post.appeal_deadline)) {
+  if (new Date() > new Date(stake.appeal_deadline)) {
     return { error: 'Appeal window has closed.' };
   }
 
   const now = new Date().toISOString();
 
+  // Write appeal_reason and appeal_status to post_stakes
   await db
     .prepare(`
-      UPDATE posts
+      UPDATE post_stakes
       SET appeal_reason = ?, appeal_status = 'submitted', updated_at = ?
-      WHERE id = ?
+      WHERE post_id = ?
     `)
     .bind(appealReason.trim(), now, postId)
     .run();
 
   return {
-    appealed:   true,
-    post_id:    postId,
+    appealed:      true,
+    post_id:       postId,
     appeal_status: 'submitted',
   };
 }
@@ -381,54 +392,50 @@ export async function resolveAppeal(postId, decision, moderatorId, db) {
   }
 
   const post = await db
-    .prepare(`
-      SELECT id, user_id, stake_amount, stake_status, appeal_status
-      FROM posts WHERE id = ?
-    `)
+    .prepare(`SELECT id, user_id FROM posts WHERE id = ?`)
     .bind(postId)
     .first();
 
   if (!post) return { error: 'Post not found' };
 
-  if (post.stake_status !== 'appeal_pending') {
+  // All reads from post_stakes
+  const stake = await db
+    .prepare(`SELECT id, amount_usd, status, appeal_status FROM post_stakes WHERE post_id = ?`)
+    .bind(postId)
+    .first();
+
+  if (!stake) return { error: 'Stake record not found' };
+
+  if (stake.status !== 'appeal_pending') {
     return { error: 'Post is not in appeal_pending state' };
   }
 
   const now = new Date().toISOString();
 
   if (decision === 'upheld') {
-    // Return stake to user wallet
-    await _returnStakeToWallet(post.user_id, post.stake_amount, postId, db, now);
+    await _returnStakeToWallet(post.user_id, stake.amount_usd, postId, db, now);
 
+    // All writes to post_stakes
     await db
       .prepare(`
-        UPDATE posts
-        SET stake_status = 'returned', appeal_status = 'upheld'
-        WHERE id = ?
-      `)
-      .bind(postId)
-      .run();
-
-    await db
-      .prepare(`
-        UPDATE treasury_ledger
-        SET status = 'returned', released_at = ?
-        WHERE post_id = ? AND type = 'post_stake'
+        UPDATE post_stakes
+        SET status = 'returned', appeal_status = 'upheld', updated_at = ?
+        WHERE post_id = ?
       `)
       .bind(now, postId)
       .run();
 
   } else {
-    // Finalise slash
-    await _finaliseSlash(postId, post.user_id, post.stake_amount, db, now);
+    await _finaliseSlash(postId, post.user_id, stake.amount_usd, db, now);
 
+    // appeal_status update also in post_stakes
     await db
       .prepare(`
-        UPDATE posts
-        SET appeal_status = 'rejected'
-        WHERE id = ?
+        UPDATE post_stakes
+        SET appeal_status = 'rejected', updated_at = ?
+        WHERE post_id = ?
       `)
-      .bind(postId)
+      .bind(now, postId)
       .run();
   }
 
@@ -444,7 +451,7 @@ export async function resolveAppeal(postId, decision, moderatorId, db) {
   return { resolved: true, post_id: postId, decision };
 }
 
-// ── CRON HELPER — called by leaderboardCron or a dedicated cron ──
+// ── CRON HELPER ──────────────────────────────────────────────
 
 /**
  * Finalise any appeal_pending posts whose deadline has passed
@@ -454,19 +461,20 @@ export async function resolveAppeal(postId, decision, moderatorId, db) {
 export async function finaliseExpiredAppeals(db) {
   const now = new Date().toISOString();
 
+  // Query post_stakes — not posts table
   const { results } = await db
     .prepare(`
-      SELECT id, user_id, stake_amount
-      FROM posts
-      WHERE stake_status = 'appeal_pending'
-        AND appeal_status = 'open'
-        AND appeal_deadline < ?
+      SELECT ps.post_id, ps.user_id, ps.amount_usd
+      FROM post_stakes ps
+      WHERE ps.status = 'appeal_pending'
+        AND ps.appeal_status = 'open'
+        AND ps.appeal_deadline < ?
     `)
     .bind(now)
     .all();
 
-  for (const post of results) {
-    await _finaliseSlash(post.id, post.user_id, post.stake_amount, db, now);
+  for (const row of results) {
+    await _finaliseSlash(row.post_id, row.user_id, row.amount_usd, db, now);
   }
 
   return { finalised: results.length };
@@ -488,9 +496,7 @@ async function _returnStakeToWallet(userId, stakeAmount, postId, db, now) {
   const newBalance = wallet.balance_usd + stakeAmount;
 
   await db
-    .prepare(`
-      UPDATE wallets SET balance_usd = ?, updated_at = ? WHERE user_id = ?
-    `)
+    .prepare(`UPDATE wallets SET balance_usd = ?, updated_at = ? WHERE user_id = ?`)
     .bind(newBalance, now, userId)
     .run();
 
@@ -501,31 +507,20 @@ async function _returnStakeToWallet(userId, stakeAmount, postId, db, now) {
          balance_after_usd, description, created_at)
       VALUES (?, ?, ?, 'stake_return', ?, ?, 'Stake returned — post verified', ?)
     `)
-    .bind(
-      crypto.randomUUID(), wallet.id, userId,
-      stakeAmount, newBalance, now
-    )
+    .bind(crypto.randomUUID(), wallet.id, userId, stakeAmount, newBalance, now)
     .run();
 }
 
 /**
- * Fix 4 — Finalise a stake slash.
- * 50% to platform revenue ledger.
+ * Finalise a stake slash.
+ * 50% to platform revenue (wallet_transactions with user_id = 'platform').
  * 50% split equally among correct flaggers.
+ * Does NOT touch treasury_ledger.
  */
 async function _finaliseSlash(postId, userId, stakeAmount, db, now) {
-  // Update post and treasury
+  // Update post_stakes status to 'slashed'
   await db
-    .prepare(`UPDATE posts SET stake_status = 'slashed' WHERE id = ?`)
-    .bind(postId)
-    .run();
-
-  await db
-    .prepare(`
-      UPDATE treasury_ledger
-      SET status = 'slashed', released_at = ?
-      WHERE post_id = ? AND type = 'post_stake'
-    `)
+    .prepare(`UPDATE post_stakes SET status = 'slashed', updated_at = ? WHERE post_id = ?`)
     .bind(now, postId)
     .run();
 
@@ -533,17 +528,18 @@ async function _finaliseSlash(postId, userId, stakeAmount, db, now) {
   const platformShare = stakeAmount * 0.5;
   const flaggersPool  = stakeAmount * 0.5;
 
-  // Record platform revenue
+  // Record platform revenue as wallet_transaction — user_id = 'platform'
   await db
     .prepare(`
-      INSERT INTO treasury_ledger
-        (id, post_id, user_id, amount, type, status, created_at)
-      VALUES (?, ?, NULL, ?, 'platform_revenue', 'settled', ?)
+      INSERT INTO wallet_transactions
+        (id, wallet_id, user_id, type, amount_usd,
+         balance_after_usd, description, created_at)
+      VALUES (?, NULL, 'platform', 'platform_revenue', ?, NULL, 'Platform revenue from slashed stake', ?)
     `)
-    .bind(crypto.randomUUID(), postId, platformShare, now)
+    .bind(crypto.randomUUID(), platformShare, now)
     .run();
 
-  // Get all correct flaggers for this post
+  // Get all flaggers for this post
   const { results: flaggers } = await db
     .prepare(`SELECT flagged_by FROM post_flags WHERE post_id = ?`)
     .bind(postId)
@@ -563,9 +559,7 @@ async function _finaliseSlash(postId, userId, stakeAmount, db, now) {
       const newBal = flaggerWallet.balance_usd + perFlagger;
 
       await db
-        .prepare(`
-          UPDATE wallets SET balance_usd = ?, updated_at = ? WHERE user_id = ?
-        `)
+        .prepare(`UPDATE wallets SET balance_usd = ?, updated_at = ? WHERE user_id = ?`)
         .bind(newBal, now, flagger.flagged_by)
         .run();
 
@@ -589,25 +583,37 @@ async function _finaliseSlash(postId, userId, stakeAmount, db, now) {
 
 /**
  * Get all posts — returns in exact shape frontend Ledger expects.
+ * Joins post_stakes to get stake amount and status.
  */
 export async function getLedgerPosts(limit, offset, db) {
   const { results } = await db
     .prepare(`
       SELECT
-        p.id, p.content, p.stake_amount, p.stake_status,
-        p.tips_received, p.created_at,
-        u.username, u.league,
+        p.id,
+        p.content,
+        p.tips_received_cents,
+        p.created_at,
+        ps.amount_usd           AS stake_amount_usd,
+        ps.status               AS stake_status,
+        u.username,
+        u.league,
         EXISTS (
           SELECT 1 FROM badges b WHERE b.user_id = p.user_id LIMIT 1
-        ) as verified
+        ) AS verified
       FROM posts p
-      JOIN users u ON u.id = p.user_id
-      WHERE p.stake_status != 'slashed'
+      JOIN users u       ON u.id  = p.user_id
+      LEFT JOIN post_stakes ps ON ps.post_id = p.id
+      WHERE ps.status != 'slashed' OR ps.status IS NULL
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `)
     .bind(limit ?? 20, offset ?? 0)
     .all();
 
-  return results;
-		}
+  // Convert cents to USD for tips
+  return results.map(row => ({
+    ...row,
+    tips_received: (row.tips_received_cents ?? 0) / 100,
+    tips_received_cents: undefined,
+  }));
+}
