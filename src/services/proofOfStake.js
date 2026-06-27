@@ -30,8 +30,18 @@ const VALID_FLAG_REASONS = ['fake_claim', 'no_evidence', 'misleading', 'spam'];
  * Deducts stake from wallet balance before locking.
  * Returns post in the exact shape the frontend expects.
  */
-export async function createPost(userId, body, db) {
+export async function createPost(clerkId, body, db) {
   const { content, stake_amount, media_urls } = body;
+
+  // Resolve Clerk ID to internal DB user ID
+  const dbUser = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+
+  if (!dbUser) return { error: 'User not found. Please complete registration.' };
+
+  const userId = dbUser.id;
 
   // Validate content
   if (!content || content.trim().length === 0) {
