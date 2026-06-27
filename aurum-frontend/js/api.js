@@ -3,7 +3,7 @@
    Token refresh, path fixes, new APIs
 ============================================================ */
 
-const API_BASE = 'https://https://aurum-api.futurestack001.workers.dev';
+const API_BASE = 'https://aurum-api.futurestack001.workers.dev';
 
 /* --- Token management --- */
 const Auth = {
