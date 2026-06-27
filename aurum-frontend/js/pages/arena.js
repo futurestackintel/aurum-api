@@ -99,10 +99,10 @@ window.ArenaPage = {
               <label class="input-label">Challenge Type</label>
               <select class="input" id="ch-type">
                 <option value="revenue">Most Revenue</option>
-                <option value="deals">Most Deals Closed</option>
+                <option value="deals_closed">Most Deals Closed</option>
                 <option value="growth">Best Growth %</option>
                 <option value="savings">Most Saved</option>
-                <option value="charity">Charity Brawl</option>
+                <option value="charity_brawl">Charity Brawl</option>
               </select>
             </div>
             <div class="input-group">
@@ -1119,11 +1119,15 @@ window.ArenaPage = {
     btn.disabled    = true;
 
     try {
+      const endsAt = new Date(
+        Date.now() + parseInt(duration, 10) * 60 * 60 * 1000
+      ).toISOString();
+
       await AURUM.ArenaAPI.createChallenge({
         title,
         type,
-        entry_fee:      parseFloat(fee),
-        duration_hours: parseInt(duration, 10),
+        entry_fee: parseFloat(fee),
+        ends_at:   endsAt,
       });
       document.getElementById('create-modal').style.display = 'none';
       document.getElementById('ch-title').value = '';
