@@ -17,7 +17,7 @@ function json(data, status = 200) {
 export async function handleAuthRoutes(pathname, request, env) {
 
   // ── POST /auth/register ─────────────────────────────────────
-  if (pathname === "/auth/register" && request.method === "POST") {
+  if (pathname === "/api/auth/register" && request.method === "POST") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
@@ -107,7 +107,7 @@ export async function handleAuthRoutes(pathname, request, env) {
   }
 
   // ── GET /auth/me ────────────────────────────────────────────
-  if (pathname === "/auth/me" && request.method === "GET") {
+  if (pathname === "/api/auth/me" && request.method === "GET") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
