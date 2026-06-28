@@ -66,6 +66,27 @@ export async function createChallenge(userId, body, db) {
   const now          = nowISO();
   const challengeId  = crypto.randomUUID();
 
+  // Resolve internal user ID from Clerk ID
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(
+      challengeId,
+      internalUserId,
+      title.trim(),
+      description ?? '',
+      type,
+      verificationMethod,
+      entryFeeCents,
+      max_entries ?? null,
+      startsAtDate.toISOString(),
+      endsAtDate.toISOString(),
+      now,
+      now,
+    )
+    .first();
+  if (!userRow) return { error: 'User not found' };
+  const internalUserId = userRow.id;
+
   // entry_fee stored as cents in DB
   const entryFeeCents = Math.round(entry_fee * 100);
 
