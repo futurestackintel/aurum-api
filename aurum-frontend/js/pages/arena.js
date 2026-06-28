@@ -321,9 +321,12 @@ window.ArenaPage = {
       /* Filter client-side by status if API returns all */
       let challenges = data.challenges || [];
       if (status !== 'all') {
+        const statusMap = { active: 'open', upcoming: 'draft', completed: 'completed' };
+        const dbStatus  = statusMap[status] || status;
         challenges = challenges.filter(c =>
-          (c.status || 'active').toLowerCase() === status
+          (c.status || 'open').toLowerCase() === dbStatus
         );
+      }
       }
       if (!challenges.length) challenges = getMockChallenges(status);
       this.renderChallenges(challenges);
