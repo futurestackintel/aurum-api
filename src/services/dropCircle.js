@@ -98,8 +98,8 @@ export async function createChallenge(userId, body, db) {
     .prepare(`
       INSERT INTO treasury_ledger
         (id, challenge_id, total_held_cents, platform_fee_cents,
-         winner_payout_cents, charity_payout_cents, status, created_at, updated_at)
-      VALUES (?, ?, 0, 0, 0, 0, 'holding', ?, ?)
+         winner_payout_cents, status, created_at, updated_at)
+      VALUES (?, ?, 0, 0, 0, 'holding', ?, ?)
     `)
     .bind(crypto.randomUUID(), challengeId, now, now)
     .run();
