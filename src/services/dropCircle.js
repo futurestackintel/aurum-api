@@ -81,7 +81,7 @@ export async function createChallenge(userId, body, db) {
       challengeId,
       userId,
       title.trim(),
-      description ?? null,
+      description ?? '',
       type,
       verificationMethod,
       entryFeeCents,
