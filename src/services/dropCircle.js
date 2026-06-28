@@ -69,20 +69,7 @@ export async function createChallenge(userId, body, db) {
   // Resolve internal user ID from Clerk ID
   const userRow = await db
     .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
-    .bind(
-      challengeId,
-      internalUserId,
-      title.trim(),
-      description ?? '',
-      type,
-      verificationMethod,
-      entryFeeCents,
-      max_entries ?? null,
-      startsAtDate.toISOString(),
-      endsAtDate.toISOString(),
-      now,
-      now,
-    )
+    .bind(userId)
     .first();
   if (!userRow) return { error: 'User not found' };
   const internalUserId = userRow.id;
@@ -100,7 +87,7 @@ export async function createChallenge(userId, body, db) {
     `)
     .bind(
       challengeId,
-      userId,
+      internalUserId,
       title.trim(),
       description ?? '',
       type,
