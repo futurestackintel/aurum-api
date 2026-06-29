@@ -327,7 +327,6 @@ window.ArenaPage = {
           (c.status || 'open').toLowerCase() === dbStatus
         );
       }
-      }
       if (!challenges.length) challenges = getMockChallenges(status);
       this.renderChallenges(challenges);
       this.updateStats(challenges);
