@@ -4,6 +4,14 @@
    optimistic UI.
 ============================================ */
 
+/* ---- Fix 1: Aurum-branded amount formatter (₳ not $) ---- */
+function formatAurum(amount) {
+  const n = parseFloat(amount) || 0;
+  if (n >= 1000000) return `₳${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000)    return `₳${(n / 1000).toFixed(1)}K`;
+  return `₳${n.toFixed(2)}`;
+}
+
 window.LedgerPage = {
   container:   null,
   offset:      0,
@@ -216,7 +224,7 @@ window.LedgerPage = {
         /* Optimistic update */
         if (counterEl) {
           const optimistic = prev + 1;
-          counterEl.textContent     = AURUM.formatAmount(optimistic);
+          counterEl.textContent     = formatAurum(optimistic);
           counterEl.dataset.total   = optimistic;
           btn.style.color           = 'var(--color-gold)';
         }
@@ -230,7 +238,7 @@ window.LedgerPage = {
         } catch (err) {
           /* Roll back on failure */
           if (counterEl) {
-            counterEl.textContent   = AURUM.formatAmount(prev);
+            counterEl.textContent   = formatAurum(prev);
             counterEl.dataset.total = prev;
             btn.style.color         = '';
           }
@@ -303,7 +311,7 @@ window.LedgerPage = {
           </div>
           <div class="post-stake" style="border-color:${stakeColor};">
             <span class="post-stake-amount mono" style="color:${stakeColor};">
-              $${post.stake_amount || 5}
+              ₳${post.stake_amount_usd || (post.stake_amount_cents / 100) || 5}
             </span>
             <span class="post-stake-label">stake</span>
           </div>
@@ -326,7 +334,7 @@ window.LedgerPage = {
             <span class="post-action-value mono"
               data-tips="${post.id}"
               data-total="${post.tips_received || 0}">
-              ${AURUM.formatAmount(post.tips_received || 0)}
+              ${formatAurum(post.tips_received || 0)}
             </span>
           </button>
 
