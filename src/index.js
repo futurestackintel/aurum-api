@@ -4,9 +4,11 @@
 //        KYC gate on withdrawals
 // Fix 2: resolve internal DB user id from Clerk id in
 //        handleUpdateProfile / handleUpdateNotifications /
-//        handleDeleteAccount
+//        handleDeleteAccount / handlePostCheer / KYC withdrawal gate
 // Fix 3: temporary admin-only manual leaderboard snapshot
 //        trigger — POST /api/admin/run-snapshot
+//        Admin check now reads env.ADMIN_USER_IDS (wrangler.toml)
+//        instead of a hardcoded constant.
 // ============================================================
 
 import { handleWebhookRoutes }          from './routes/webhook.js';
@@ -28,11 +30,6 @@ import { updateExchangeRates }          from './services/currency.js';
 import { finaliseExpiredAppeals }       from './services/proofOfStake.js';
 import { requireAuth }                  from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
-
-// Fix 3 — temporary admin gate for the manual snapshot trigger.
-// Remove this constant along with the route once the snapshot
-// has been run successfully and leaderboard_snapshots is populated.
-const ADMIN_CLERK_ID = 'user_3Ew8fBacb9IK2BgIsO0sXAwfh8P';
 
 const ALLOWED_ORIGINS = [
   'https://tryaurum.store',
@@ -502,10 +499,18 @@ async function handleDeleteAccount(request, env) {
 }
 
 // ── Feature 7b: POST /api/posts/:id/cheer ────────────────────
+// Fix 2 (Q4): resolve internal DB user id from Clerk id.
 async function handlePostCheer(postId, request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
   if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  const dbUser = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(user.id)
+    .first();
+
+  if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
 
   const post = await db
     .prepare(`SELECT id, user_id FROM posts WHERE id = ?`)
@@ -516,7 +521,7 @@ async function handlePostCheer(postId, request, env) {
 
   const existing = await db
     .prepare(`SELECT id FROM post_cheers WHERE post_id = ? AND user_id = ?`)
-    .bind(postId, user.id)
+    .bind(postId, dbUser.id)
     .first();
 
   if (existing) return jsonResponse({ error: 'You have already cheered this post' }, 400);
@@ -528,11 +533,11 @@ async function handlePostCheer(postId, request, env) {
       INSERT INTO post_cheers (id, post_id, user_id, created_at)
       VALUES (?, ?, ?, ?)
     `)
-    .bind(crypto.randomUUID(), postId, user.id, now)
+    .bind(crypto.randomUUID(), postId, dbUser.id, now)
     .run();
 
   // Notify post author
-  if (post.user_id !== user.id) {
+  if (post.user_id !== dbUser.id) {
     await db
       .prepare(`
         INSERT INTO notifications
@@ -545,7 +550,7 @@ async function handlePostCheer(postId, request, env) {
 
   // Award 1 Aurum Score to the cheerer
   await addScoreEvent(
-    user.id,
+    dbUser.id,
     'tip_received_reaction',
     1,
     { post_id: postId, note: 'Cheered a Wealth Journey post' },
@@ -557,13 +562,19 @@ async function handlePostCheer(postId, request, env) {
 
 // ── Fix 3: manual leaderboard snapshot trigger (admin only) ──
 // Temporary endpoint. Remove after the leaderboard_snapshots
-// table has been confirmed populated by a successful manual run,
-// and remove the ADMIN_CLERK_ID constant above along with it.
+// table has been confirmed populated by a successful manual run.
+// Admin check reads env.ADMIN_USER_IDS (wrangler.toml) — supports
+// a single id or a comma-separated list.
 async function handleRunSnapshotAdmin(request, env) {
   const user = await requireAuth(request, env);
   if (user.error) return jsonResponse({ error: user.error }, 401);
 
-  if (user.id !== ADMIN_CLERK_ID) {
+  const adminIds = (env.ADMIN_USER_IDS || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean);
+
+  if (!adminIds.includes(user.id)) {
     return jsonResponse({ error: 'Forbidden' }, 403);
   }
 
@@ -653,12 +664,21 @@ export default {
       }
 
       // ── KYC gate on withdrawals ─────────────────────────
+      // Fix 2 (Q4): resolve internal DB user id from Clerk id
+      // before passing into checkKycGate.
       if (pathname === '/api/wallet/withdraw' && request.method === 'POST') {
         const user = await requireAuth(request, env);
         if (user.error) {
           return withCors(jsonResponse({ error: user.error }, 401), cors);
         }
-        const kyc = await checkKycGate(user.id, env.DB);
+        const dbUser = await env.DB
+          .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+          .bind(user.id)
+          .first();
+        if (!dbUser) {
+          return withCors(jsonResponse({ error: 'User not found' }, 404), cors);
+        }
+        const kyc = await checkKycGate(dbUser.id, env.DB);
         if (kyc.blocked) {
           return withCors(jsonResponse({ error: kyc.reason }, 403), cors);
         }
