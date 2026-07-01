@@ -2,6 +2,11 @@
 // AURUM Worker Entry Point — Module Chat F
 // Added: crew routes, settings routes, post cheer route,
 //        KYC gate on withdrawals
+// Fix 2: resolve internal DB user id from Clerk id in
+//        handleUpdateProfile / handleUpdateNotifications /
+//        handleDeleteAccount
+// Fix 3: temporary admin-only manual leaderboard snapshot
+//        trigger — POST /api/admin/run-snapshot
 // ============================================================
 
 import { handleWebhookRoutes }          from './routes/webhook.js';
@@ -23,6 +28,11 @@ import { updateExchangeRates }          from './services/currency.js';
 import { finaliseExpiredAppeals }       from './services/proofOfStake.js';
 import { requireAuth }                  from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
+
+// Fix 3 — temporary admin gate for the manual snapshot trigger.
+// Remove this constant along with the route once the snapshot
+// has been run successfully and leaderboard_snapshots is populated.
+const ADMIN_CLERK_ID = 'user_3Ew8fBacb9IK2BgIsO0sXAwfh8P';
 
 const ALLOWED_ORIGINS = [
   'https://tryaurum.store',
@@ -282,10 +292,19 @@ async function handlePassport(username, env) {
 }
 
 // ── Settings: PATCH /api/users/me ────────────────────────────
+// Fix 2: requireAuth returns the Clerk id under user.id — resolve
+// the internal DB user id before running any query against `users`.
 async function handleUpdateProfile(request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
   if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  const dbUser = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(user.id)
+    .first();
+
+  if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
 
   const body = await request.json();
   const {
@@ -313,7 +332,7 @@ async function handleUpdateProfile(request, env) {
     // Check uniqueness
     const taken = await db
       .prepare(`SELECT id FROM users WHERE username = ? AND id != ?`)
-      .bind(username.trim(), user.id)
+      .bind(username.trim(), dbUser.id)
       .first();
     if (taken) return jsonResponse({ error: 'Username is already taken' }, 400);
   }
@@ -332,7 +351,7 @@ async function handleUpdateProfile(request, env) {
 
   fields.push('updated_at = ?');
   values.push(now);
-  values.push(user.id);
+  values.push(dbUser.id);
 
   await db
     .prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`)
@@ -345,17 +364,25 @@ async function handleUpdateProfile(request, env) {
              hide_aurum_score, hide_league
       FROM users WHERE id = ?
     `)
-    .bind(user.id)
+    .bind(dbUser.id)
     .first();
 
   return jsonResponse({ updated: true, user: updated });
 }
 
 // ── Settings: PATCH /api/users/me/notifications ──────────────
+// Fix 2: resolve internal DB user id from Clerk id.
 async function handleUpdateNotifications(request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
   if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  const dbUser = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(user.id)
+    .first();
+
+  if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
 
   const body = await request.json();
   const {
@@ -372,7 +399,7 @@ async function handleUpdateNotifications(request, env) {
   // Upsert notification preferences
   const existing = await db
     .prepare(`SELECT id FROM notification_preferences WHERE user_id = ?`)
-    .bind(user.id)
+    .bind(dbUser.id)
     .first();
 
   if (existing) {
@@ -390,7 +417,7 @@ async function handleUpdateNotifications(request, env) {
 
     fields.push('updated_at = ?');
     values.push(now);
-    values.push(user.id);
+    values.push(dbUser.id);
 
     await db
       .prepare(`UPDATE notification_preferences SET ${fields.join(', ')} WHERE user_id = ?`)
@@ -406,7 +433,7 @@ async function handleUpdateNotifications(request, env) {
       `)
       .bind(
         crypto.randomUUID(),
-        user.id,
+        dbUser.id,
         tips_received      !== undefined ? (tips_received      ? 1 : 0) : 1,
         challenge_updates  !== undefined ? (challenge_updates  ? 1 : 0) : 1,
         duel_challenges    !== undefined ? (duel_challenges    ? 1 : 0) : 1,
@@ -421,17 +448,26 @@ async function handleUpdateNotifications(request, env) {
 
   const prefs = await db
     .prepare(`SELECT * FROM notification_preferences WHERE user_id = ?`)
-    .bind(user.id)
+    .bind(dbUser.id)
     .first();
 
   return jsonResponse({ updated: true, preferences: prefs });
 }
 
 // ── Settings: POST /api/users/me/delete ──────────────────────
+// Fix 2: resolve internal DB user id from Clerk id for the DB
+// update. user.clerkId is kept as-is for the Clerk ban API call.
 async function handleDeleteAccount(request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
   if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  const dbUser = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(user.id)
+    .first();
+
+  if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
 
   const now = new Date().toISOString();
 
@@ -441,7 +477,7 @@ async function handleDeleteAccount(request, env) {
       SET account_deleted = 1, deleted_at = ?, updated_at = ?
       WHERE id = ?
     `)
-    .bind(now, now, user.id)
+    .bind(now, now, dbUser.id)
     .run();
 
   // Revoke Clerk session by banning the user via Clerk Backend API
@@ -517,6 +553,31 @@ async function handlePostCheer(postId, request, env) {
   );
 
   return jsonResponse({ cheered: true, post_id: postId });
+}
+
+// ── Fix 3: manual leaderboard snapshot trigger (admin only) ──
+// Temporary endpoint. Remove after the leaderboard_snapshots
+// table has been confirmed populated by a successful manual run,
+// and remove the ADMIN_CLERK_ID constant above along with it.
+async function handleRunSnapshotAdmin(request, env) {
+  const user = await requireAuth(request, env);
+  if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  if (user.id !== ADMIN_CLERK_ID) {
+    return jsonResponse({ error: 'Forbidden' }, 403);
+  }
+
+  try {
+    await runLeaderboardSnapshot(env);
+    return jsonResponse({
+      triggered: true,
+      message:   'Leaderboard snapshot run complete. Check leaderboard_snapshots table.',
+      ran_at:    new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[handleRunSnapshotAdmin] Snapshot failed:', err);
+    return jsonResponse({ error: 'Snapshot run failed', detail: err.message }, 500);
+  }
 }
 
 // ── KYC gate helper ───────────────────────────────────────────
@@ -637,6 +698,12 @@ export default {
       const cheerMatch = pathname.match(/^\/api\/posts\/([^/]+)\/cheer$/);
       if (cheerMatch && request.method === 'POST') {
         const res = await handlePostCheer(cheerMatch[1], request, env);
+        return withCors(res, cors);
+      }
+
+      // ── Fix 3: manual leaderboard snapshot trigger (admin) ──
+      if (pathname === '/api/admin/run-snapshot' && request.method === 'POST') {
+        const res = await handleRunSnapshotAdmin(request, env);
         return withCors(res, cors);
       }
 
