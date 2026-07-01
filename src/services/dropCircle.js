@@ -573,7 +573,7 @@ export async function getChallenges(limit, offset, db) {
     .bind(now, limit ?? 20, offset ?? 0)
     .all();
 
-  return { challenges: results };
+  return results;
 }
 
 // ── GET SINGLE CHALLENGE ─────────────────────────────────────
