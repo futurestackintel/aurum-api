@@ -3,6 +3,16 @@
 // Triggered by Cloudflare Workers cron scheduler.
 // Reads live data from users + tips + challenges tables,
 // then writes ranked rows to leaderboard_snapshots.
+//
+// Fix 3: buildMostGenerousQuery / buildHighestEarnerQuery referenced
+// a non-existent column `t.amount` (tips table uses `amount_cents`,
+// confirmed against handlePassport in index.js). This caused those
+// two queries to throw on every cron run, which rejected the shared
+// Promise.all and silently prevented ALL boards — plus
+// awardAccountAgeWeeks — from ever completing. Fixed the column name,
+// added the missing `status = 'completed'` filter (present elsewhere
+// in the codebase for tip totals), and isolated each board's snapshot
+// call so one board failing can no longer block the others.
 
 // ── Entry point (called from worker index.js scheduled handler) ───────────────
 
@@ -12,10 +22,14 @@ export async function runLeaderboardSnapshot(env) {
   const periods = buildPeriods(now);
 
   await Promise.all([
-    snapshotBoard(env, 'most_generous',  periods, buildMostGenerousQuery),
-    snapshotBoard(env, 'highest_earner', periods, buildHighestEarnerQuery),
-    snapshotBoard(env, 'most_wins',      periods, buildMostWinsQuery),
-    snapshotBoard(env, 'aurum_score',    periods, buildAurumScoreQuery),
+    snapshotBoard(env, 'most_generous',  periods, buildMostGenerousQuery)
+      .catch(err => console.error('[leaderboardCron] most_generous snapshot failed:', err)),
+    snapshotBoard(env, 'highest_earner', periods, buildHighestEarnerQuery)
+      .catch(err => console.error('[leaderboardCron] highest_earner snapshot failed:', err)),
+    snapshotBoard(env, 'most_wins',      periods, buildMostWinsQuery)
+      .catch(err => console.error('[leaderboardCron] most_wins snapshot failed:', err)),
+    snapshotBoard(env, 'aurum_score',    periods, buildAurumScoreQuery)
+      .catch(err => console.error('[leaderboardCron] aurum_score snapshot failed:', err)),
   ]);
 
   // Fix 3 — award account_age_week points to all eligible users
@@ -159,9 +173,15 @@ function buildPeriods(now) {
 // Each returns a SQL string.
 // If since is not null, caller binds it as first param.
 // Fix 4 — all queries use CASE WHEN stealth_mode to mask display_name.
+// Fix 3 — corrected `t.amount` -> `t.amount_cents` (tips table column)
+// and added `t.status = 'completed'` filter, matching handlePassport
+// in index.js which sums the same table the same way.
 
 function buildMostGenerousQuery(since) {
-  const whereClause = since ? `WHERE t.created_at >= ?` : '';
+  const conditions = [`t.status = 'completed'`];
+  if (since) conditions.push(`t.created_at >= ?`);
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
   return `
     SELECT
       t.sender_id                                       as user_id,
@@ -171,7 +191,7 @@ function buildMostGenerousQuery(since) {
       END                                               as display_name,
       u.avatar_url,
       u.league,
-      CAST(SUM(t.amount) AS INTEGER)                    as score
+      CAST(SUM(t.amount_cents) AS INTEGER)              as score
     FROM tips t
     JOIN users u ON u.id = t.sender_id
     ${whereClause}
@@ -182,7 +202,10 @@ function buildMostGenerousQuery(since) {
 }
 
 function buildHighestEarnerQuery(since) {
-  const whereClause = since ? `WHERE t.created_at >= ?` : '';
+  const conditions = [`t.status = 'completed'`];
+  if (since) conditions.push(`t.created_at >= ?`);
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
   return `
     SELECT
       t.receiver_id                                     as user_id,
@@ -192,7 +215,7 @@ function buildHighestEarnerQuery(since) {
       END                                               as display_name,
       u.avatar_url,
       u.league,
-      CAST(SUM(t.amount) AS INTEGER)                    as score
+      CAST(SUM(t.amount_cents) AS INTEGER)              as score
     FROM tips t
     JOIN users u ON u.id = t.receiver_id
     ${whereClause}
