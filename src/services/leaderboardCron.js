@@ -5,14 +5,17 @@
 // then writes ranked rows to leaderboard_snapshots.
 //
 // Fix 3: buildMostGenerousQuery / buildHighestEarnerQuery referenced
-// a non-existent column `t.amount` (tips table uses `amount_cents`,
-// confirmed against handlePassport in index.js). This caused those
-// two queries to throw on every cron run, which rejected the shared
-// Promise.all and silently prevented ALL boards — plus
-// awardAccountAgeWeeks — from ever completing. Fixed the column name,
-// added the missing `status = 'completed'` filter (present elsewhere
-// in the codebase for tip totals), and isolated each board's snapshot
-// call so one board failing can no longer block the others.
+// a non-existent column `t.amount` (confirmed via
+// PRAGMA table_info(tips) — the real column is `amount_cents`).
+// This caused those two queries to throw on every cron run, which
+// rejected the shared Promise.all and silently prevented ALL boards —
+// plus awardAccountAgeWeeks — from ever completing. Fixed the column
+// name, added the missing `status = 'completed'` filter (confirmed
+// present on the tips table, and already used elsewhere in the
+// codebase for tip totals), converted cents to dollars for display
+// (score is stored in dollars, matching handlePassport's convention),
+// and isolated each board's snapshot call so one board failing can
+// no longer block the others.
 
 // ── Entry point (called from worker index.js scheduled handler) ───────────────
 
@@ -173,9 +176,9 @@ function buildPeriods(now) {
 // Each returns a SQL string.
 // If since is not null, caller binds it as first param.
 // Fix 4 — all queries use CASE WHEN stealth_mode to mask display_name.
-// Fix 3 — corrected `t.amount` -> `t.amount_cents` (tips table column)
-// and added `t.status = 'completed'` filter, matching handlePassport
-// in index.js which sums the same table the same way.
+// Fix 3 — corrected `t.amount` -> `t.amount_cents` (confirmed via
+// PRAGMA table_info(tips)), added `t.status = 'completed'` filter
+// (confirmed column exists), and convert cents to dollars for score.
 
 function buildMostGenerousQuery(since) {
   const conditions = [`t.status = 'completed'`];
@@ -191,7 +194,7 @@ function buildMostGenerousQuery(since) {
       END                                               as display_name,
       u.avatar_url,
       u.league,
-      CAST(SUM(t.amount_cents) AS INTEGER)              as score
+      CAST(SUM(t.amount_cents) / 100.0 AS REAL)         as score
     FROM tips t
     JOIN users u ON u.id = t.sender_id
     ${whereClause}
@@ -215,7 +218,7 @@ function buildHighestEarnerQuery(since) {
       END                                               as display_name,
       u.avatar_url,
       u.league,
-      CAST(SUM(t.amount_cents) AS INTEGER)              as score
+      CAST(SUM(t.amount_cents) / 100.0 AS REAL)         as score
     FROM tips t
     JOIN users u ON u.id = t.receiver_id
     ${whereClause}
