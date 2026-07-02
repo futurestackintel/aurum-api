@@ -1,10 +1,9 @@
 // ============================================================
-// AURUM Worker Entry Point — Module Chat F
-// Added: crew routes, settings routes, post cheer route,
-//        KYC gate on withdrawals
-// Fix 2: resolve internal DB user id from Clerk id in
-//        handleUpdateProfile / handleUpdateNotifications /
-//        handleDeleteAccount / handlePostCheer / KYC withdrawal gate
+// AURUM Worker Entry Point — Final Fix Chat
+// Fix 7: expireChallenges imported and wired into scheduled cron.
+// Fix 3 (confirmed, no change needed): handleUpdateNotifications
+// already resolves internal DB user id from Clerk id before the
+// upsert — see comment above that function.
 // ============================================================
 
 import { handleWebhookRoutes }          from './routes/webhook.js';
@@ -24,6 +23,7 @@ import { handleCrewRoutes }             from './routes/crew.js';
 import { runLeaderboardSnapshot }       from './services/leaderboardCron.js';
 import { updateExchangeRates }          from './services/currency.js';
 import { finaliseExpiredAppeals }       from './services/proofOfStake.js';
+import { expireChallenges }             from './services/dropCircle.js';
 import { requireAuth }                  from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
 
@@ -285,8 +285,6 @@ async function handlePassport(username, env) {
 }
 
 // ── Settings: PATCH /api/users/me ────────────────────────────
-// Fix 2: requireAuth returns the Clerk id under user.id — resolve
-// the internal DB user id before running any query against `users`.
 async function handleUpdateProfile(request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
@@ -364,7 +362,8 @@ async function handleUpdateProfile(request, env) {
 }
 
 // ── Settings: PATCH /api/users/me/notifications ──────────────
-// Fix 2: resolve internal DB user id from Clerk id.
+// Fix 3 confirmed present: internal DB user id resolved from
+// Clerk id before the upsert.
 async function handleUpdateNotifications(request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
@@ -448,8 +447,6 @@ async function handleUpdateNotifications(request, env) {
 }
 
 // ── Settings: POST /api/users/me/delete ──────────────────────
-// Fix 2: resolve internal DB user id from Clerk id for the DB
-// update. user.clerkId is kept as-is for the Clerk ban API call.
 async function handleDeleteAccount(request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
@@ -495,7 +492,6 @@ async function handleDeleteAccount(request, env) {
 }
 
 // ── Feature 7b: POST /api/posts/:id/cheer ────────────────────
-// Fix 2 (Q4): resolve internal DB user id from Clerk id.
 async function handlePostCheer(postId, request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
@@ -629,8 +625,6 @@ export default {
       }
 
       // ── KYC gate on withdrawals ─────────────────────────
-      // Fix 2 (Q4): resolve internal DB user id from Clerk id
-      // before passing into checkKycGate.
       if (pathname === '/api/wallet/withdraw' && request.method === 'POST') {
         const user = await requireAuth(request, env);
         if (user.error) {
@@ -728,6 +722,7 @@ export default {
         updateExchangeRates(env.DB),
         finaliseExpiredAppeals(env.DB),
         processExpiredSubscriptions(env.DB),
+        expireChallenges(env.DB),
       ]),
     );
   },
