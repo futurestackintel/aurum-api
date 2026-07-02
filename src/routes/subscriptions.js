@@ -3,8 +3,10 @@ import { PaymentService } from "../services/payments.js";
 
 export async function handleSubscriptionRoutes(pathname, request, env) {
 
-  // POST /subscriptions/upgrade
-  if (pathname === "/subscriptions/upgrade" && request.method === "POST") {
+  // POST /api/subscriptions/upgrade
+  // Fix 1: was "/subscriptions/upgrade" — frontend (js/api.js SubAPI.upgrade)
+  // calls "/api/subscriptions/upgrade", causing a 404. Prefix added.
+  if (pathname === "/api/subscriptions/upgrade" && request.method === "POST") {
     const auth = await requireAuth(request, env);
     if (auth.error) {
       return new Response(JSON.stringify({ error: auth.error }), {
@@ -77,8 +79,9 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
     }
   }
 
-  // POST /subscriptions/verify
-  if (pathname === "/subscriptions/verify" && request.method === "POST") {
+  // POST /api/subscriptions/verify
+  // Fix 1: same prefix fix as above.
+  if (pathname === "/api/subscriptions/verify" && request.method === "POST") {
     const auth = await requireAuth(request, env);
     if (auth.error) {
       return new Response(JSON.stringify({ error: auth.error }), {
