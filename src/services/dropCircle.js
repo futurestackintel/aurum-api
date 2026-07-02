@@ -1,15 +1,14 @@
 // ============================================================
 // DROP CIRCLE (ARENA) — FULL LIFECYCLE
-// Rewritten for Module Chat F to match actual DB schema.
-// Key schema facts:
-//   challenges uses: challenge_type, entry_fee_cents, pool_total_cents,
-//     participant_count, max_participants, status ('draft','open','active',
-//     'voting','completed','cancelled'), starts_at (required)
-//   treasury_ledger uses: total_held_cents, platform_fee_cents,
-//     winner_payout_cents, paystack_transfer_id
-//   challenge_entries uses: entry_amount (dollars float, legacy col)
-// New features: gold buttons, boosts, free entry, creator-join fix,
-//   pool sync in batch, getChallenges ordered by boost then gold then date
+// Fix 5: getChallengeById wrapped in try/catch, returns null on
+//        DB error instead of throwing past the caller.
+// Fix 7: expireChallenges() added for cron — flips 'open' ->
+//        'completed' once ends_at has passed.
+// Fix 8: getChallenges() now accepts a status filter:
+//        'open'      -> status='open' AND already started
+//        'upcoming'  -> status='open' AND starts_at is in the future
+//        'completed' -> status='completed'
+//        (no status)  -> preserves old default behavior (open only)
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
@@ -121,6 +120,7 @@ export async function createChallenge(userId, body, db) {
       pool_amount: 0,
       entry_fee,
       entries:     0,
+      starts_at:   startsAtDate.toISOString(),
       ends_at:     endsAtDate.toISOString(),
     },
   };
@@ -545,12 +545,32 @@ export async function freeMonthlyEntry(userId, db) {
 }
 
 // ── GET CHALLENGES (Arena feed) ──────────────────────────────
-
+// Fix 8: status param drives which bucket of challenges is returned.
+//   'open'      -> status='open' AND (starts_at is null OR already started)
+//   'upcoming'  -> status='open' AND starts_at is in the future
+//   'completed' -> status='completed'
+//   (omitted)   -> defaults to 'open' bucket, same as prior behavior
 /**
  * Order: boosted (active boost) → gold button count → created_at
  */
-export async function getChallenges(limit, offset, db) {
+export async function getChallenges(limit, offset, db, status) {
   const now = nowISO();
+
+  let statusClause;
+  const params = [now]; // used by is_boosted CASE regardless of branch
+
+  if (status === 'upcoming') {
+    statusClause = `c.status = 'open' AND c.starts_at > ?`;
+    params.push(now);
+  } else if (status === 'completed') {
+    statusClause = `c.status = 'completed'`;
+  } else {
+    // 'open' or default
+    statusClause = `c.status = 'open' AND (c.starts_at IS NULL OR c.starts_at <= ?)`;
+    params.push(now);
+  }
+
+  params.push(limit ?? 20, offset ?? 0);
 
   const { results } = await db
     .prepare(`
@@ -558,61 +578,86 @@ export async function getChallenges(limit, offset, db) {
         c.id, c.title, c.challenge_type as type, c.status,
         c.pool_total_cents / 100.0  AS pool_amount,
         c.entry_fee_cents  / 100.0  AS entry_fee,
-        c.ends_at,
+        c.starts_at, c.ends_at,
         c.participant_count         AS entries,
         COUNT(DISTINCT cgb.id)      AS gold_buttons,
         MAX(CASE WHEN cb.expires_at > ? THEN 1 ELSE 0 END) AS is_boosted
       FROM challenges c
       LEFT JOIN challenge_gold_buttons cgb ON cgb.challenge_id = c.id
       LEFT JOIN challenge_boosts cb        ON cb.challenge_id  = c.id
-      WHERE c.status = 'open'
+      WHERE ${statusClause}
       GROUP BY c.id
       ORDER BY is_boosted DESC, gold_buttons DESC, c.created_at DESC
       LIMIT ? OFFSET ?
     `)
-    .bind(now, limit ?? 20, offset ?? 0)
+    .bind(...params)
     .all();
 
   return results;
 }
 
 // ── GET SINGLE CHALLENGE ─────────────────────────────────────
+// Fix 5: wrapped in try/catch so a malformed id or transient DB
+// error returns null instead of throwing past the caller, and the
+// modal can show a clean "not found" state instead of nothing.
 
 export async function getChallengeById(challengeId, db) {
-  const challenge = await db
-    .prepare(`
-      SELECT
-        c.*,
-        c.pool_total_cents / 100.0 AS pool_amount,
-        c.entry_fee_cents  / 100.0 AS entry_fee,
-        c.participant_count        AS entries
-      FROM challenges c
-      WHERE c.id = ?
-    `)
-    .bind(challengeId)
-    .first();
+  try {
+    const challenge = await db
+      .prepare(`
+        SELECT
+          c.*,
+          c.pool_total_cents / 100.0 AS pool_amount,
+          c.entry_fee_cents  / 100.0 AS entry_fee,
+          c.participant_count        AS entries
+        FROM challenges c
+        WHERE c.id = ?
+      `)
+      .bind(challengeId)
+      .first();
 
-  if (!challenge) return null;
+    if (!challenge) return null;
 
-  const { results: entryList } = await db
-    .prepare(`
-      SELECT ce.user_id, ce.score, ce.joined_at, u.username, u.league
-      FROM challenge_entries ce
-      JOIN users u ON u.id = ce.user_id
-      WHERE ce.challenge_id = ?
-      ORDER BY ce.score DESC
-    `)
-    .bind(challengeId)
-    .all();
+    const { results: entryList } = await db
+      .prepare(`
+        SELECT ce.user_id, ce.score, ce.joined_at, u.username, u.league
+        FROM challenge_entries ce
+        JOIN users u ON u.id = ce.user_id
+        WHERE ce.challenge_id = ?
+        ORDER BY ce.score DESC
+      `)
+      .bind(challengeId)
+      .all();
 
-  const { results: goldButtons } = await db
-    .prepare(`SELECT COUNT(*) as count FROM challenge_gold_buttons WHERE challenge_id = ?`)
-    .bind(challengeId)
-    .all();
+    const { results: goldButtons } = await db
+      .prepare(`SELECT COUNT(*) as count FROM challenge_gold_buttons WHERE challenge_id = ?`)
+      .bind(challengeId)
+      .all();
 
-  return {
-    ...challenge,
-    entry_list:   entryList,
-    gold_buttons: goldButtons[0]?.count ?? 0,
-  };
+    return {
+      ...challenge,
+      entry_list:   entryList,
+      gold_buttons: goldButtons[0]?.count ?? 0,
+    };
+  } catch (err) {
+    console.error('getChallengeById error:', err);
+    return null;
+  }
+}
+
+// ── FEATURE (Fix 7): EXPIRE CHALLENGES ───────────────────────
+// Run on cron. Flips any 'open' challenge whose ends_at has
+// passed to 'completed'. This does NOT resolve a winner or move
+// funds — that still requires an admin/moderator call to
+// resolveChallenge(). It only stops "open" challenges from
+// staying open (and joinable) forever once their clock runs out.
+
+export async function expireChallenges(db) {
+  const now = nowISO();
+  await db.prepare(`
+    UPDATE challenges
+    SET status = 'completed', updated_at = ?
+    WHERE status = 'open'
+      AND ends_at <= ?
+  `).bind(now, now).run();
 }
