@@ -10,12 +10,15 @@
 // This caused those two queries to throw on every cron run, which
 // rejected the shared Promise.all and silently prevented ALL boards —
 // plus awardAccountAgeWeeks — from ever completing. Fixed the column
-// name, added the missing `status = 'completed'` filter (confirmed
-// present on the tips table, and already used elsewhere in the
-// codebase for tip totals), converted cents to dollars for display
-// (score is stored in dollars, matching handlePassport's convention),
-// and isolated each board's snapshot call so one board failing can
-// no longer block the others.
+// name, added the missing `status = 'completed'` filter, converted
+// cents to dollars for display, and isolated each board's snapshot
+// call so one board failing can no longer block the others.
+//
+// buildMostWinsQuery also referenced a non-existent table
+// `drop_circles` (confirmed via SELECT name FROM sqlite_master —
+// no such table exists). Corrected to the real table `challenges`,
+// which has winner_id / status / updated_at columns matching what
+// this query needs.
 
 // ── Entry point (called from worker index.js scheduled handler) ───────────────
 
@@ -177,28 +180,30 @@ function buildPeriods(now) {
 // If since is not null, caller binds it as first param.
 // Fix 4 — all queries use CASE WHEN stealth_mode to mask display_name.
 // Fix 3 — corrected `t.amount` -> `t.amount_cents` (confirmed via
-// PRAGMA table_info(tips)), added `t.status = 'completed'` filter
-// (confirmed column exists), and convert cents to dollars for score.
+// PRAGMA table_info(tips)), added `t.status = 'completed'` filter,
+// and convert cents to dollars for score.
+// Also corrected buildMostWinsQuery: `drop_circles` -> `challenges`
+// (confirmed via sqlite_master query — drop_circles does not exist).
 
-function buildMostWinsQuery(since) {
-  const conditions = [`c.status = 'completed'`, `c.winner_id IS NOT NULL`];
-  if (since) conditions.push(`c.updated_at >= ?`);
+function buildMostGenerousQuery(since) {
+  const conditions = [`t.status = 'completed'`];
+  if (since) conditions.push(`t.created_at >= ?`);
   const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
   return `
     SELECT
-      c.winner_id                                       as user_id,
+      t.sender_id                                       as user_id,
       CASE WHEN u.stealth_mode = 1
         THEN 'Anonymous'
         ELSE u.username
       END                                               as display_name,
       u.avatar_url,
       u.league,
-      COUNT(*)                                          as score
-    FROM challenges c
-    JOIN users u ON u.id = c.winner_id
+      CAST(SUM(t.amount_cents) / 100.0 AS REAL)         as score
+    FROM tips t
+    JOIN users u ON u.id = t.sender_id
     ${whereClause}
-    GROUP BY c.winner_id
+    GROUP BY t.sender_id
     ORDER BY score DESC
     LIMIT 100
   `;
@@ -229,11 +234,13 @@ function buildHighestEarnerQuery(since) {
 }
 
 function buildMostWinsQuery(since) {
-  const baseWhere  = `WHERE dc.status = 'completed' AND dc.winner_id IS NOT NULL`;
-  const sinceClause = since ? `AND dc.updated_at >= ?` : '';
+  const conditions = [`c.status = 'completed'`, `c.winner_id IS NOT NULL`];
+  if (since) conditions.push(`c.updated_at >= ?`);
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
   return `
     SELECT
-      dc.winner_id                                      as user_id,
+      c.winner_id                                       as user_id,
       CASE WHEN u.stealth_mode = 1
         THEN 'Anonymous'
         ELSE u.username
@@ -241,11 +248,10 @@ function buildMostWinsQuery(since) {
       u.avatar_url,
       u.league,
       COUNT(*)                                          as score
-    FROM drop_circles dc
-    JOIN users u ON u.id = dc.winner_id
-    ${baseWhere}
-    ${sinceClause}
-    GROUP BY dc.winner_id
+    FROM challenges c
+    JOIN users u ON u.id = c.winner_id
+    ${whereClause}
+    GROUP BY c.winner_id
     ORDER BY score DESC
     LIMIT 100
   `;
