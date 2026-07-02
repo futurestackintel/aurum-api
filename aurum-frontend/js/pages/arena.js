@@ -1,7 +1,21 @@
 /* ============================================
-   AURUM — The Arena — Module G
-   Fixed paths, Gold Button, Boost UI,
-   Duel enhancements, skeleton loaders.
+   AURUM — The Arena — Final Fix Chat
+   Fix 6: description textarea added to create-challenge modal.
+   Fix 8: status tabs now pass a real status filter to the backend
+          instead of filtering an already-truncated 20-item page
+          client-side. 'upcoming' = open challenges with a future
+          starts_at (Finding 4, Option A).
+   Finding 5: every `ch.status === 'active'` check replaced with
+          `ch.status === 'open'` — the backend never returns
+          'active', only 'open' / 'completed', so those checks
+          always fell through to the "Starting Soon" / zero-stats
+          branch even for real, live challenges.
+   Finding 6: mock-data fallback removed. An empty result now shows
+          the real empty state instead of silently substituting
+          fake challenges, so real failures are visible.
+   Fix 9: confirmed — loadChallenges already unwraps
+          `data.challenges || []` before calling updateStats.
+          No change needed there.
 ============================================ */
 
 window.ArenaPage = {
@@ -104,6 +118,13 @@ window.ArenaPage = {
                 <option value="savings">Most Saved</option>
                 <option value="charity_brawl">Charity Brawl</option>
               </select>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Description</label>
+              <textarea class="input" id="ch-description"
+                placeholder="Describe what participants need to prove..."
+                rows="3"
+                style="resize:none;font-family:var(--font-body);"></textarea>
             </div>
             <div class="input-group">
               <label class="input-label">Entry Fee</label>
@@ -311,29 +332,35 @@ window.ArenaPage = {
   /* --------------------------------------------------
      CHALLENGES
   -------------------------------------------------- */
-  async loadChallenges(status = 'active') {
+
+  // Fix 8: maps the frontend tab label to the backend's status
+  // filter value. 'active' tab -> 'open' bucket on the backend
+  // (open AND already started). 'upcoming' -> open AND starts_at
+  // in the future. 'completed' -> completed. The backend now does
+  // this filtering in SQL, so we no longer request a fixed page
+  // of 20 "all" challenges and filter client-side — that approach
+  // meant any status other than whatever was on the first page of
+  // 20 would silently show nothing.
+  async loadChallenges(tab = 'active') {
     const list = document.getElementById('challenge-list');
     if (!list) return;
     list.innerHTML = this.skeletons(3);
 
+    const statusMap = { active: 'open', upcoming: 'upcoming', completed: 'completed' };
+    const backendStatus = statusMap[tab] || 'open';
+
     try {
-      const data = await AURUM.ArenaAPI.getChallenges(20, 0);
-      /* Filter client-side by status if API returns all */
-      let challenges = data.challenges || [];
-      if (status !== 'all') {
-        const statusMap = { active: 'open', upcoming: 'draft', completed: 'completed' };
-        const dbStatus  = statusMap[status] || status;
-        challenges = challenges.filter(c =>
-          (c.status || 'open').toLowerCase() === dbStatus
-        );
-      }
-      if (!challenges.length) challenges = getMockChallenges(status);
+      const data = await AURUM.ArenaAPI.getChallenges(20, 0, backendStatus);
+      const challenges = data.challenges || [];
       this.renderChallenges(challenges);
       this.updateStats(challenges);
     } catch (err) {
-      const challenges = getMockChallenges(status);
-      this.renderChallenges(challenges);
-      this.updateStats(challenges);
+      // Finding 6: no more mock-data fallback. A failed or empty
+      // fetch shows the real empty state so problems are visible
+      // instead of being masked by fake challenges.
+      this.renderChallenges([]);
+      this.updateStats([]);
+      AURUM.showToast('Could not load challenges.', 'error');
     }
   },
 
@@ -355,24 +382,37 @@ window.ArenaPage = {
     this.bindChallengeEvents();
   },
 
+  // Finding 5: displayStatus derives whether an 'open' challenge
+  // should visually read as "upcoming" (future starts_at) or
+  // "open" (already started) — the raw backend status is always
+  // one of 'open' / 'completed', never 'active'.
+  getDisplayStatus(ch) {
+    if (ch.status === 'open' && ch.starts_at && new Date(ch.starts_at) > new Date()) {
+      return 'upcoming';
+    }
+    return ch.status || 'open';
+  },
+
   challengeHTML(ch, index) {
     const typeIcons = {
       revenue: '💰', deals: '🤝', growth: '📈',
       savings: '🏦', charity: '🏆',
     };
     const statusColors = {
-      active:    'var(--color-success)',
+      open:      'var(--color-success)',
       upcoming:  'var(--color-gold)',
       completed: 'var(--color-text-muted)',
     };
-    const icon        = typeIcons[ch.type] || '⚔️';
-    const statusColor = statusColors[ch.status] || 'var(--color-text-muted)';
-    const timeLeft    = this.getTimeLeft(ch.ends_at);
-    const poolAmount  = AURUM.formatAmount(ch.pool_amount || 0);
-    const entryFee    = AURUM.formatAmount(ch.entry_fee || 0);
-    const goldCount   = ch.gold_count || 0;
-    const userGolded  = ch.user_golded || false;
-    const isBoosted   = ch.is_boosted || false;
+    const icon          = typeIcons[ch.type] || '⚔️';
+    const displayStatus = this.getDisplayStatus(ch);
+    const statusColor   = statusColors[displayStatus] || 'var(--color-text-muted)';
+    const timeLeft       = this.getTimeLeft(ch.ends_at);
+    const poolAmount     = AURUM.formatAmount(ch.pool_amount || 0);
+    const entryFee       = AURUM.formatAmount(ch.entry_fee || 0);
+    const goldCount      = ch.gold_count || 0;
+    const userGolded     = ch.user_golded || false;
+    const isBoosted      = ch.is_boosted || false;
+    const canEnter       = displayStatus === 'open';
 
     return `
       <div class="challenge-card card fade-in" style="animation-delay:${index * 80}ms;">
@@ -394,7 +434,7 @@ window.ArenaPage = {
             <div class="challenge-meta">
               <span class="badge badge-muted" style="font-size:9px;">${ch.type || 'achievement'}</span>
               <span style="font-size:10px;color:${statusColor};letter-spacing:0.06em;
-                text-transform:uppercase;">${ch.status || 'active'}</span>
+                text-transform:uppercase;">${displayStatus}</span>
             </div>
           </div>
           <div class="challenge-pool">
@@ -414,7 +454,7 @@ window.ArenaPage = {
           </div>
           <div class="challenge-detail">
             <span class="challenge-detail-value mono"
-              style="color:${ch.status === 'active'
+              style="color:${canEnter
                 ? 'var(--color-danger)' : 'var(--color-text-muted)'};">
               ${timeLeft}
             </span>
@@ -424,7 +464,7 @@ window.ArenaPage = {
 
         <div style="display:flex;gap:var(--space-2);align-items:center;">
 
-          ${ch.status === 'active' ? `
+          ${canEnter ? `
             <button class="btn btn-outline btn-full btn-sm btn-enter-challenge"
               data-challenge-id="${ch.id}"
               data-entry-fee="${ch.entry_fee}"
@@ -433,7 +473,7 @@ window.ArenaPage = {
             </button>
           ` : `
             <button class="btn btn-ghost btn-full btn-sm" disabled>
-              ${ch.status === 'completed' ? 'Completed' : 'Starting Soon'}
+              ${displayStatus === 'completed' ? 'Completed' : 'Starting Soon'}
             </button>
           `}
 
@@ -550,6 +590,9 @@ window.ArenaPage = {
       revenue: '💰', deals: '🤝', growth: '📈',
       savings: '🏦', charity: '🏆',
     };
+    const displayStatus = this.getDisplayStatus(ch);
+    const canEnter       = displayStatus === 'open';
+
     return `
       <div style="display:flex;align-items:center;gap:var(--space-3);
         margin-bottom:var(--space-5);">
@@ -618,7 +661,7 @@ window.ArenaPage = {
         </button>
       </div>
 
-      ${ch.status === 'active' ? `
+      ${canEnter ? `
         <button class="btn btn-primary btn-full btn-enter-challenge-detail"
           data-challenge-id="${ch.id}"
           data-entry-fee="${ch.entry_fee}"
@@ -688,6 +731,10 @@ window.ArenaPage = {
 
   /* --------------------------------------------------
      DUELS
+     Fix 12 note: POST /api/duels has not been confirmed broken
+     or working in this pass (no duel route/service file was
+     provided). The "+ New Duel" button below is left as-is.
+     Flag this back if you want it hidden pending confirmation.
   -------------------------------------------------- */
   async loadDuels() {
     const list = document.getElementById('duel-list');
@@ -1105,13 +1152,15 @@ window.ArenaPage = {
 
   /* --------------------------------------------------
      CREATE CHALLENGE
+     Fix 6: description textarea value now collected and sent.
   -------------------------------------------------- */
   async submitChallenge() {
-    const title    = document.getElementById('ch-title')?.value.trim();
-    const type     = document.getElementById('ch-type')?.value;
-    const fee      = document.getElementById('ch-fee')?.value;
-    const duration = document.getElementById('ch-duration')?.value;
-    const btn      = document.getElementById('btn-submit-challenge');
+    const title       = document.getElementById('ch-title')?.value.trim();
+    const type        = document.getElementById('ch-type')?.value;
+    const description = document.getElementById('ch-description')?.value.trim();
+    const fee         = document.getElementById('ch-fee')?.value;
+    const duration    = document.getElementById('ch-duration')?.value;
+    const btn         = document.getElementById('btn-submit-challenge');
 
     if (!title) {
       AURUM.showToast('Add a challenge title.', 'error'); return;
@@ -1128,11 +1177,13 @@ window.ArenaPage = {
       await AURUM.ArenaAPI.createChallenge({
         title,
         type,
-        entry_fee: parseFloat(fee),
-        ends_at:   endsAt,
+        description: description || null,
+        entry_fee:   parseFloat(fee),
+        ends_at:     endsAt,
       });
       document.getElementById('create-modal').style.display = 'none';
       document.getElementById('ch-title').value = '';
+      document.getElementById('ch-description').value = '';
       AURUM.showToast('Challenge live in the Arena.', 'gold');
       this.loadChallenges('active');
     } catch (err) {
@@ -1145,9 +1196,10 @@ window.ArenaPage = {
 
   /* --------------------------------------------------
      STATS BAR
+     Finding 5: 'active' -> 'open' (the real backend status value).
   -------------------------------------------------- */
   updateStats(challenges) {
-    const active   = challenges.filter(c => c.status === 'active');
+    const active   = challenges.filter(c => c.status === 'open');
     const ending   = active.filter(c => {
       const h = this.hoursLeft(c.ends_at);
       return h <= 24 && h > 0;
@@ -1444,44 +1496,3 @@ window.ArenaPage = {
     document.head.appendChild(style);
   },
 };
-
-/* ---- Mock challenges fallback ---- */
-function getMockChallenges(status = 'active') {
-  const now = new Date();
-  return [
-    {
-      id: '1',
-      title: 'Most Revenue — June Edition',
-      type: 'revenue',
-      status,
-      pool_amount: 4750,
-      entry_fee: 50,
-      entries: 95,
-      gold_count: 23,
-      ends_at: new Date(now.getTime() + 172800000).toISOString(),
-    },
-    {
-      id: '2',
-      title: 'Most Deals Closed This Week',
-      type: 'deals',
-      status,
-      pool_amount: 1200,
-      entry_fee: 25,
-      entries: 48,
-      gold_count: 11,
-      ends_at: new Date(now.getTime() + 86400000).toISOString(),
-    },
-    {
-      id: '3',
-      title: 'Charity Brawl — Build Africa Fund',
-      type: 'charity',
-      status,
-      pool_amount: 8500,
-      entry_fee: 100,
-      entries: 85,
-      gold_count: 47,
-      is_boosted: true,
-      ends_at: new Date(now.getTime() + 604800000).toISOString(),
-    },
-  ];
-}
