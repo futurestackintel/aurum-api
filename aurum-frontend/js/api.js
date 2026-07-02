@@ -1,6 +1,13 @@
 /* ============================================================
-   AURUM — API Module — Module Chat G
-   Token refresh, path fixes, new APIs
+   AURUM — API Module — Final Fix Chat
+   Fix 2a: SettingsAPI.updateBankAccount now points to
+           POST /api/wallet/bank-details (was PATCH /api/users/me/bank,
+           a route that never existed).
+   Fix 2b: WalletAPI.getBankDetails added, used by settings.html to
+           prefill saved bank details on page load.
+   Fix 8:  ArenaAPI.getChallenges accepts an optional status param
+           ('open' | 'upcoming' | 'completed') and forwards it as
+           a query string so filtering happens server-side.
 ============================================================ */
 
 const API_BASE = 'https://aurum-api.futurestack001.workers.dev';
@@ -93,10 +100,14 @@ const LedgerAPI = {
 /* --- Challenges / Arena ---
      fundChallenge / verifyChallenge / payoutChallenge removed.
      Entry = POST /api/challenges/:id/join  (joinChallenge)
+     Fix 8: getChallenges now takes an optional status filter.
 */
 const ArenaAPI = {
-  getChallenges:   (limit = 20, offset = 0) =>
-    apiRequest('GET', `/api/challenges?limit=${limit}&offset=${offset}`, null, false),
+  getChallenges: (limit = 20, offset = 0, status) => {
+    let path = `/api/challenges?limit=${limit}&offset=${offset}`;
+    if (status) path += `&status=${encodeURIComponent(status)}`;
+    return apiRequest('GET', path, null, false);
+  },
 
   getChallenge:    (id) =>
     apiRequest('GET', `/api/challenges/${id}`, null, false),
@@ -181,8 +192,10 @@ const SettingsAPI = {
   updateNotifications: (data) =>
     apiRequest('PATCH', '/api/users/me/notifications', data),
 
+  // Fix 2a: was PATCH /api/users/me/bank (route never existed).
+  // Now calls the real bank-details endpoint added to wallet.js.
   updateBankAccount: (data) =>
-    apiRequest('PATCH', '/api/users/me/bank', data),
+    apiRequest('POST', '/api/wallet/bank-details', data),
 
   deleteAccount: () =>
     apiRequest('POST', '/api/users/me/delete'),
@@ -207,6 +220,10 @@ const WalletAPI = {
 
   getTransactions: (page = 0) =>
     apiRequest('GET', `/api/wallet/transactions?limit=20&offset=${page * 20}`),
+
+  // Fix 2b: fetch saved bank details to prefill settings on load.
+  getBankDetails: () =>
+    apiRequest('GET', '/api/wallet/bank-details'),
 };
 
 /* --- Founding Member --- */
