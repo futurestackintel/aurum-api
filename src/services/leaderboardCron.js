@@ -180,25 +180,25 @@ function buildPeriods(now) {
 // PRAGMA table_info(tips)), added `t.status = 'completed'` filter
 // (confirmed column exists), and convert cents to dollars for score.
 
-function buildMostGenerousQuery(since) {
-  const conditions = [`t.status = 'completed'`];
-  if (since) conditions.push(`t.created_at >= ?`);
+function buildMostWinsQuery(since) {
+  const conditions = [`c.status = 'completed'`, `c.winner_id IS NOT NULL`];
+  if (since) conditions.push(`c.updated_at >= ?`);
   const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
   return `
     SELECT
-      t.sender_id                                       as user_id,
+      c.winner_id                                       as user_id,
       CASE WHEN u.stealth_mode = 1
         THEN 'Anonymous'
         ELSE u.username
       END                                               as display_name,
       u.avatar_url,
       u.league,
-      CAST(SUM(t.amount_cents) / 100.0 AS REAL)         as score
-    FROM tips t
-    JOIN users u ON u.id = t.sender_id
+      COUNT(*)                                          as score
+    FROM challenges c
+    JOIN users u ON u.id = c.winner_id
     ${whereClause}
-    GROUP BY t.sender_id
+    GROUP BY c.winner_id
     ORDER BY score DESC
     LIMIT 100
   `;
