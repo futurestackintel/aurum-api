@@ -1,6 +1,7 @@
 // ============================================================
 // DROP CIRCLE ROUTES
 // GET  /api/challenges                        — list open challenges
+//   Fix 8: now accepts ?status=open|upcoming|completed
 // POST /api/challenges                        — create challenge
 // GET  /api/challenges/:id                    — get single challenge
 // POST /api/challenges/:id/join               — join + fund entry
@@ -10,6 +11,12 @@
 // POST /api/challenges/:id/gold               — give gold button (Feature 1)
 // POST /api/challenges/:id/boost              — boost challenge (Feature 2)
 // POST /api/challenges/free-entry             — free monthly entry (Feature 7)
+//
+// Finding 7: streakMiddleware(...) is now awaited. Previously it was
+// called without await inside a try/catch — if it's async and throws,
+// the rejection happened outside the catch and could surface as an
+// unhandled rejection instead of a clean 500. Awaiting it puts any
+// throw back inside the existing try/catch.
 // ============================================================
 
 import {
@@ -36,7 +43,8 @@ export async function handleChallengeRoutes(path, method, request, env) {
       const url    = new URL(request.url);
       const limit  = parseInt(url.searchParams.get('limit')  ?? '20');
       const offset = parseInt(url.searchParams.get('offset') ?? '0');
-      const challenges = await getChallenges(limit, offset, db);
+      const status = url.searchParams.get('status') ?? undefined; // 'open' | 'upcoming' | 'completed'
+      const challenges = await getChallenges(limit, offset, db, status);
       return jsonResponse({ challenges });
     } catch (err) {
       console.error('Get challenges error:', err);
@@ -66,7 +74,7 @@ export async function handleChallengeRoutes(path, method, request, env) {
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
-      streakMiddleware(user.id, db);
+      await streakMiddleware(user.id, db);
       const body   = await request.json();
       const result = await createChallenge(user.id, body, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
@@ -97,7 +105,7 @@ export async function handleChallengeRoutes(path, method, request, env) {
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
-      streakMiddleware(user.id, db);
+      await streakMiddleware(user.id, db);
       const result = await joinChallenge(joinMatch[1], user.id, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
