@@ -560,37 +560,6 @@ async function handlePostCheer(postId, request, env) {
   return jsonResponse({ cheered: true, post_id: postId });
 }
 
-// ── Fix 3: manual leaderboard snapshot trigger (admin only) ──
-// Temporary endpoint. Remove after the leaderboard_snapshots
-// table has been confirmed populated by a successful manual run.
-// Admin check reads env.ADMIN_USER_IDS (wrangler.toml) — supports
-// a single id or a comma-separated list.
-async function handleRunSnapshotAdmin(request, env) {
-  const user = await requireAuth(request, env);
-  if (user.error) return jsonResponse({ error: user.error }, 401);
-
-  const adminIds = (env.ADMIN_USER_IDS || '')
-    .split(',')
-    .map(id => id.trim())
-    .filter(Boolean);
-
-  if (!adminIds.includes(user.id)) {
-    return jsonResponse({ error: 'Forbidden' }, 403);
-  }
-
-  try {
-    await runLeaderboardSnapshot(env);
-    return jsonResponse({
-      triggered: true,
-      message:   'Leaderboard snapshot run complete. Check leaderboard_snapshots table.',
-      ran_at:    new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error('[handleRunSnapshotAdmin] Snapshot failed:', err);
-    return jsonResponse({ error: 'Snapshot run failed', detail: err.message }, 500);
-  }
-}
-
 // ── KYC gate helper ───────────────────────────────────────────
 async function checkKycGate(userId, db) {
   const user = await db
