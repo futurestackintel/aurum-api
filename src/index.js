@@ -5,10 +5,6 @@
 // Fix 2: resolve internal DB user id from Clerk id in
 //        handleUpdateProfile / handleUpdateNotifications /
 //        handleDeleteAccount / handlePostCheer / KYC withdrawal gate
-// Fix 3: temporary admin-only manual leaderboard snapshot
-//        trigger — POST /api/admin/run-snapshot
-//        Admin check now reads env.ADMIN_USER_IDS (wrangler.toml)
-//        instead of a hardcoded constant.
 // ============================================================
 
 import { handleWebhookRoutes }          from './routes/webhook.js';
@@ -687,12 +683,6 @@ export default {
       const cheerMatch = pathname.match(/^\/api\/posts\/([^/]+)\/cheer$/);
       if (cheerMatch && request.method === 'POST') {
         const res = await handlePostCheer(cheerMatch[1], request, env);
-        return withCors(res, cors);
-      }
-
-      // ── Fix 3: manual leaderboard snapshot trigger (admin) ──
-      if (pathname === '/api/admin/run-snapshot' && request.method === 'POST') {
-        const res = await handleRunSnapshotAdmin(request, env);
         return withCors(res, cors);
       }
 
