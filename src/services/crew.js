@@ -1,11 +1,9 @@
 // ============================================================
 // CREW BATTLES SERVICE — Module Chat F Feature 6
-// Crews are persistent squads. Any member can create one.
-// Crew battles are competitive pools between two crews.
-// Routes: POST /api/crews
-//         POST /api/crews/:id/join
-//         POST /api/crews/:id/battle
-//         POST /api/crew-battles/:id/resolve
+// Fix (Finding 3): all three entry points receive the CLERK id
+// from the route layer (requireAuth), but wallets/crews/crew_members
+// are keyed on the INTERNAL DB user id. Resolve clerk_id -> id
+// before any read/write against those tables.
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
@@ -16,7 +14,14 @@ function nowISO() {
 
 // ── CREATE CREW ──────────────────────────────────────────────
 
-export async function createCrew(userId, body, db) {
+export async function createCrew(clerkId, body, db) {
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
   const { name, description } = body;
 
   if (!name || name.trim().length === 0) return { error: 'Crew name is required' };
@@ -66,7 +71,14 @@ export async function createCrew(userId, body, db) {
 
 // ── JOIN CREW ────────────────────────────────────────────────
 
-export async function joinCrew(crewId, userId, db) {
+export async function joinCrew(crewId, clerkId, db) {
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
   const crew = await db
     .prepare(`SELECT * FROM crews WHERE id = ?`)
     .bind(crewId)
@@ -104,7 +116,14 @@ export async function joinCrew(crewId, userId, db) {
 
 // ── CREATE CREW BATTLE ───────────────────────────────────────
 
-export async function createCrewBattle(challengerCrewId, userId, body, db) {
+export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
   const { target_crew_name, title, entry_contribution_usd, ends_at } = body;
 
   if (!target_crew_name)                    return { error: 'target_crew_name is required' };
@@ -201,7 +220,8 @@ export async function createCrewBattle(challengerCrewId, userId, body, db) {
   };
 }
 
-// ── RESOLVE CREW BATTLE ──────────────────────────────────────
+// ── RESOLVE CREW BATTLE (admin — moderatorId not clerk-resolved,
+//    kept as-is since it's only used for logging/attribution) ──
 
 export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db) {
   const battle = await db
