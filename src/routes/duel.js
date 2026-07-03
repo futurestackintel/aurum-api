@@ -1,5 +1,9 @@
 // ============================================================
-// CHALLENGER DUEL ROUTES — Module Chat F
+// CHALLENGER DUEL ROUTES — Final Fix Chat
+// Finding 7 pattern applied here too: streakMiddleware(...) is
+// now awaited (was previously fired without await inside a
+// try/catch — if async and throwing, the rejection escaped the
+// catch instead of producing a clean 500).
 // GET  /api/duels                         — list active/pending duels
 // POST /api/duels                         — create a duel challenge
 // GET  /api/duels/:id                     — get single duel
@@ -54,7 +58,7 @@ export async function handleDuelRoutes(path, method, request, env) {
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
-      streakMiddleware(user.id, db);
+      await streakMiddleware(user.id, db);
       const body   = await request.json();
       const result = await createDuel(user.id, body, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
@@ -85,7 +89,7 @@ export async function handleDuelRoutes(path, method, request, env) {
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
-      streakMiddleware(user.id, db);
+      await streakMiddleware(user.id, db);
       const result = await acceptDuel(acceptMatch[1], user.id, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
