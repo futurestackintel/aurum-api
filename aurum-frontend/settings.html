@@ -322,6 +322,32 @@
       from { opacity: 0; }
       to   { opacity: 1; }
     }
+
+    /* ---- Coming soon currency block (Fix 10) ---- */
+    .currency-coming-soon {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius-md);
+      opacity: 0.45;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .currency-coming-soon-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .currency-coming-soon-list {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--color-text-dim);
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -496,7 +522,8 @@
       <p class="settings-section-title">Wallet &amp; Payments</p>
     </div>
 
-    <!-- Currency preference -->
+    <!-- Currency preference — Fix 10: USD only, African currencies
+         removed, greyed "coming soon" block added -->
     <div class="settings-edit-row" style="border-radius:var(--radius-lg)
       var(--radius-lg) 0 0;">
       <div class="settings-row-left">
@@ -508,14 +535,16 @@
       <select class="input" id="currency-select"
         style="max-width:160px;margin-top:var(--space-3);">
         <option value="USD">USD — US Dollar</option>
-        <option value="NGN">NGN — Nigerian Naira</option>
-        <option value="GHS">GHS — Ghanaian Cedi</option>
-        <option value="KES">KES — Kenyan Shilling</option>
-        <option value="ZAR">ZAR — South African Rand</option>
       </select>
+      <div class="currency-coming-soon">
+        <span class="currency-coming-soon-label">
+          🔒 More currencies coming soon
+        </span>
+        <div class="currency-coming-soon-list">NGN · GHS · KES · ZAR</div>
+      </div>
     </div>
 
-    <!-- Bank account -->
+    <!-- Bank account — Fix 11: generic placeholder examples -->
     <div class="settings-edit-row">
       <div class="settings-row-left" style="margin-bottom:var(--space-3);">
         <span class="settings-row-label">Withdrawal Bank Account</span>
@@ -527,7 +556,7 @@
         <div class="input-group">
           <label class="input-label">Bank Name</label>
           <input class="input" type="text" id="bank-name"
-            placeholder="e.g. Access Bank" />
+            placeholder="e.g. XYZ Bank" />
         </div>
         <div class="input-group">
           <label class="input-label">Account Number</label>
@@ -537,7 +566,7 @@
         <div class="input-group">
           <label class="input-label">Account Name</label>
           <input class="input" type="text" id="bank-account-name"
-            placeholder="As on bank statement" />
+            placeholder="e.g. John Doe" />
         </div>
         <button class="btn btn-outline btn-sm" id="btn-save-bank"
           style="align-self:flex-start;">
@@ -765,6 +794,9 @@
   /* ============================================
      AURUM — Settings Page
      Auth-gated, all sections wired.
+     Fix 2b: loadSettings() now also fetches saved bank details
+     from GET /api/wallet/bank-details and prefills the bank
+     fields, since that data no longer lives on the user object.
   ============================================ */
 
   let currentUser = null;
@@ -836,6 +868,21 @@
     } catch (err) {
       if (cached) populateSettings(cached);
     }
+
+    /* Fix 2b: bank details now live in their own table, not on
+       the user object — fetch and prefill separately. Failure
+       here (e.g. nothing saved yet) is expected and silent. */
+    try {
+      const bankData = await AURUM.WalletAPI.getBankDetails();
+      const details  = bankData.bank_details;
+      if (details) {
+        setVal('bank-name',         details.bank_name);
+        setVal('bank-account',      details.account_number);
+        setVal('bank-account-name', details.account_name);
+      }
+    } catch (err) {
+      /* no saved bank details yet, or fetch failed — leave fields blank */
+    }
   }
 
   function populateSettings(user) {
@@ -882,16 +929,12 @@
       if (stealthBadge) stealthBadge.style.display = 'inline-flex';
     }
 
-    /* Currency */
+    /* Currency — only USD is selectable now, but keep this in case
+       the backend ever returns something else for a legacy user */
     const currencySelect = document.getElementById('currency-select');
-    if (currencySelect && user.currency) {
-      currencySelect.value = user.currency;
+    if (currencySelect && user.currency === 'USD') {
+      currencySelect.value = 'USD';
     }
-
-    /* Bank details */
-    if (user.bank_name)         setVal('bank-name',         user.bank_name);
-    if (user.bank_account)      setVal('bank-account',      user.bank_account);
-    if (user.bank_account_name) setVal('bank-account-name', user.bank_account_name);
 
     /* Notification toggles */
     const notifs = user.notifications || {};
@@ -1111,6 +1154,8 @@
 
   /* --------------------------------------------------
      WALLET — Bank account
+     Fix 2a: now saved via AURUM.SettingsAPI.updateBankAccount,
+     which calls POST /api/wallet/bank-details (js/api.js).
   -------------------------------------------------- */
   document.getElementById('btn-save-bank')
     ?.addEventListener('click', async () => {
