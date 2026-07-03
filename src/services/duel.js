@@ -1,9 +1,19 @@
 // ============================================================
-// CHALLENGER DUEL SYSTEM — Module Chat F
-// New features added:
-//   Feature 3 — Async duel format with countdown + stream
-//   Feature 4 — Audience tipping on duels
-//   Feature 5 — Community vote on duel resolution
+// CHALLENGER DUEL SYSTEM — Final Fix Chat
+// Fix 12 (Finding 9): every function below that receives a user id
+// from the route layer was using the raw CLERK id directly against
+// tables keyed on the INTERNAL DB user id (duels.challenger_id,
+// duels.target_id, wallets.user_id, duel_watchers.user_id,
+// duel_votes.voter_id). That mismatch meant:
+//   - createDuel wrote the wrong id into challenger_id and its own
+//     username lookup for the response always failed
+//   - acceptDuel / declineDuel / submitDuelProof / announceDuel all
+//     compared a Clerk id against an internal id, so a real target
+//     user could never successfully act on a duel sent to them
+//   - audienceTip / castDuelVote checked/debited the wrong wallet
+// Fixed by resolving `SELECT id FROM users WHERE clerk_id = ?`
+// at the top of every function that needs it, same pattern used
+// in services/crew.js and services/dropCircle.js.
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
@@ -18,9 +28,20 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+async function resolveUserId(clerkId, db) {
+  const row = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  return row?.id ?? null;
+}
+
 // ── CREATE DUEL ──────────────────────────────────────────────
 
-export async function createDuel(challengerId, body, db) {
+export async function createDuel(clerkId, body, db) {
+  const challengerId = await resolveUserId(clerkId, db);
+  if (!challengerId) return { error: 'User not found' };
+
   const { target_username, title, description, duel_tip_amount } = body;
 
   if (!target_username)                          return { error: 'target_username is required' };
@@ -81,7 +102,7 @@ export async function createDuel(challengerId, body, db) {
   return {
     duel: {
       id:              duelId,
-      challenger:      challenger.username,
+      challenger:      challenger?.username ?? null,
       target:          target.username,
       title:           title.trim(),
       description:     description ?? null,
@@ -95,7 +116,10 @@ export async function createDuel(challengerId, body, db) {
 
 // ── ACCEPT DUEL ──────────────────────────────────────────────
 
-export async function acceptDuel(duelId, userId, db) {
+export async function acceptDuel(duelId, clerkId, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const duel = await db
     .prepare(`SELECT * FROM duels WHERE id = ?`)
     .bind(duelId)
@@ -133,7 +157,10 @@ export async function acceptDuel(duelId, userId, db) {
 
 // ── DECLINE DUEL ─────────────────────────────────────────────
 
-export async function declineDuel(duelId, userId, db) {
+export async function declineDuel(duelId, clerkId, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const duel = await db
     .prepare(`SELECT * FROM duels WHERE id = ?`)
     .bind(duelId)
@@ -153,7 +180,10 @@ export async function declineDuel(duelId, userId, db) {
 
 // ── SUBMIT PROOF ─────────────────────────────────────────────
 
-export async function submitDuelProof(duelId, userId, body, db) {
+export async function submitDuelProof(duelId, clerkId, body, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const { proof_url, proof_description, proof_value } = body;
 
   if (!proof_url && !proof_description) {
@@ -198,6 +228,11 @@ export async function submitDuelProof(duelId, userId, body, db) {
 }
 
 // ── RESOLVE DUEL ─────────────────────────────────────────────
+// Note: winnerId/loserId here come from duel.challenger_id /
+// duel.target_id, which are already internal ids (fixed above at
+// creation time), so no additional resolution is needed inside
+// this function itself. moderatorId is only used for admin
+// attribution and isn't written to any user-id-keyed column here.
 
 export async function resolveDuel(duelId, winnerId, moderatorId, db) {
   const duel = await db
@@ -285,7 +320,10 @@ export async function resolveDuel(duelId, winnerId, moderatorId, db) {
 
 // ── FEATURE 3: ANNOUNCE DUEL ─────────────────────────────────
 
-export async function announceDuel(duelId, userId, db) {
+export async function announceDuel(duelId, clerkId, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const duel = await db
     .prepare(`SELECT * FROM duels WHERE id = ?`)
     .bind(duelId)
@@ -342,7 +380,10 @@ export async function announceDuel(duelId, userId, db) {
 
 // ── FEATURE 3: SUBSCRIBE TO DUEL UPDATES ────────────────────
 
-export async function watchDuel(duelId, userId, db) {
+export async function watchDuel(duelId, clerkId, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const duel = await db
     .prepare(`SELECT id FROM duels WHERE id = ?`)
     .bind(duelId)
@@ -369,6 +410,8 @@ export async function watchDuel(duelId, userId, db) {
 }
 
 // ── FEATURE 3: ADMIN SET STREAM READY ───────────────────────
+// No user-id resolution needed — admin-only action, no user-keyed
+// column touched.
 
 export async function setStreamReady(duelId, body, db) {
   const { stream_url } = body;
@@ -392,8 +435,14 @@ export async function setStreamReady(duelId, body, db) {
 }
 
 // ── FEATURE 4: AUDIENCE TIP ──────────────────────────────────
+// participantId arrives from the frontend as duel.challenger_id /
+// duel.target_id (already internal ids, per duelHTML in arena.js),
+// so only tipperId (the route-layer Clerk id) needs resolving.
 
-export async function audienceTip(duelId, participantId, tipperId, body, db) {
+export async function audienceTip(duelId, participantId, clerkId, body, db) {
+  const tipperId = await resolveUserId(clerkId, db);
+  if (!tipperId) return { error: 'User not found' };
+
   const { amount_usd } = body;
 
   if (!amount_usd || amount_usd <= 0) {
@@ -474,8 +523,13 @@ export async function audienceTip(duelId, participantId, tipperId, body, db) {
 }
 
 // ── FEATURE 5: COMMUNITY VOTE ────────────────────────────────
+// Same as audienceTip — participantId is already an internal id
+// from the frontend; only voterId (Clerk id) needs resolving.
 
-export async function castDuelVote(duelId, participantId, voterId, db) {
+export async function castDuelVote(duelId, participantId, clerkId, db) {
+  const voterId = await resolveUserId(clerkId, db);
+  if (!voterId) return { error: 'User not found' };
+
   const duel = await db
     .prepare(`SELECT * FROM duels WHERE id = ?`)
     .bind(duelId)
