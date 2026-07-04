@@ -1,7 +1,10 @@
 /* ============================================
-   AURUM — The Ledger (Main Feed) — Module G
-   Offset pagination, fixed tips, skeleton loaders,
-   optimistic UI.
+   AURUM — The Ledger (Main Feed) — Final Fix Chat
+   Fix: tip button now sends receiver_id and amount_usd, matching
+   POST /api/tips' actual required body shape. Previously sent
+   { post_id, amount: 1 } — missing receiver_id entirely and using
+   the wrong field name for the amount, so every tip attempt
+   returned 400 "post_id, receiver_id, and amount_usd required".
 ============================================ */
 
 /* ---- Fix 1: Aurum-branded amount formatter (₳ not $) ---- */
@@ -211,15 +214,24 @@ window.LedgerPage = {
   },
 
   bindPostEvents() {
-    /* ---- Tip buttons — optimistic UI ---- */
+    /* ---- Tip buttons — optimistic UI ----
+       Fix: now reads data-receiver-id (the post author's internal
+       user id) and sends { post_id, receiver_id, amount_usd }
+       matching what POST /api/tips actually requires. */
     document.querySelectorAll('.btn-tip').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
 
       btn.addEventListener('click', async () => {
-        const postId   = btn.dataset.postId;
-        const counterEl = document.querySelector(`[data-tips="${postId}"]`);
-        const prev      = parseFloat(counterEl?.dataset.total || '0');
+        const postId     = btn.dataset.postId;
+        const receiverId = btn.dataset.receiverId;
+        const counterEl  = document.querySelector(`[data-tips="${postId}"]`);
+        const prev       = parseFloat(counterEl?.dataset.total || '0');
+
+        if (!receiverId) {
+          AURUM.showToast('Could not identify post author for tip.', 'error');
+          return;
+        }
 
         /* Optimistic update */
         if (counterEl) {
@@ -231,8 +243,9 @@ window.LedgerPage = {
 
         try {
           await AURUM.TipsAPI.send({
-            post_id: postId,
-            amount:  1,
+            post_id:     postId,
+            receiver_id: receiverId,
+            amount_usd:  1,
           });
           AURUM.showToast('Tip sent!', 'gold');
         } catch (err) {
@@ -242,7 +255,7 @@ window.LedgerPage = {
             counterEl.dataset.total = prev;
             btn.style.color         = '';
           }
-          AURUM.showToast('Tip failed.', 'error');
+          AURUM.showToast(err.message || 'Tip failed.', 'error');
         }
       });
     });
@@ -326,7 +339,8 @@ window.LedgerPage = {
         <div class="post-actions">
 
           <!-- Tip button -->
-          <button class="btn-tip post-action-btn" data-post-id="${post.id}">
+          <button class="btn-tip post-action-btn" data-post-id="${post.id}"
+            data-receiver-id="${post.user_id || ''}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
@@ -351,7 +365,7 @@ window.LedgerPage = {
             <span class="cheer-count post-action-value mono">${cheers}</span>
           </button>
 
-          <!-- Comments (disabled — placeholder) -->
+          <!-- Comments (disabled — placeholder, not yet built) -->
           <button class="post-action-btn" disabled>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2">
@@ -641,4 +655,4 @@ function getMockPosts() {
       created_at: new Date(Date.now() - 86400000).toISOString(),
     },
   ];
-		 }
+}
