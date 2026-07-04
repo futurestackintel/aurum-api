@@ -578,7 +578,10 @@
       </div>
     </div>
 
-    <!-- Wallet link -->
+    <!-- Wallet link
+         NOTE: still points at history.back() as a placeholder — I
+         don't yet know the actual filename of your wallet/transactions
+         page. Tell me and I'll wire this to navigate there properly. -->
     <div class="settings-row"
       style="border-radius:0 0 var(--radius-lg) var(--radius-lg);
       cursor:pointer;" onclick="history.back()">
@@ -794,9 +797,16 @@
   /* ============================================
      AURUM — Settings Page
      Auth-gated, all sections wired.
-     Fix 2b: loadSettings() now also fetches saved bank details
-     from GET /api/wallet/bank-details and prefills the bank
-     fields, since that data no longer lives on the user object.
+     FIX (this pass): savePrivacy() and populateSettings() were
+     using field names that don't match the backend contract:
+       - sent "profile_public" (boolean) → backend expects
+         "profile_visibility" (enum: 'public'|'members'|'private')
+       - sent "hide_score" → backend expects "hide_aurum_score"
+     Both toggles previously appeared to save successfully (the
+     backend just silently ignored the unrecognized fields as long
+     as stealth_mode was present) but never actually persisted.
+     Also: currency now loads from WalletAPI.getBalance()
+     (currency_preference lives on the wallet, not the user row).
   ============================================ */
 
   let currentUser = null;
@@ -869,9 +879,7 @@
       if (cached) populateSettings(cached);
     }
 
-    /* Fix 2b: bank details now live in their own table, not on
-       the user object — fetch and prefill separately. Failure
-       here (e.g. nothing saved yet) is expected and silent. */
+    /* Bank details — separate table, fetched separately */
     try {
       const bankData = await AURUM.WalletAPI.getBankDetails();
       const details  = bankData.bank_details;
@@ -882,6 +890,18 @@
       }
     } catch (err) {
       /* no saved bank details yet, or fetch failed — leave fields blank */
+    }
+
+    /* FIX: currency_preference lives on the wallet row, not the
+       user row — /api/auth/me never returns it. Fetch separately. */
+    try {
+      const balanceData = await AURUM.WalletAPI.getBalance();
+      const currencySelect = document.getElementById('currency-select');
+      if (currencySelect && balanceData.currency_preference) {
+        currencySelect.value = balanceData.currency_preference;
+      }
+    } catch (err) {
+      /* balance fetch failed — leave currency selector at default */
     }
   }
 
@@ -905,9 +925,12 @@
     const newUsernameInput = document.getElementById('new-username');
     if (newUsernameInput) newUsernameInput.value = username;
 
-    /* Privacy toggles */
-    setToggle('toggle-public-profile', user.profile_public !== false);
-    setToggle('toggle-hide-score',     !!user.hide_score);
+    /* Privacy toggles
+       FIX: read the real backend field names now that GET /api/auth/me
+       actually returns them — profile_visibility (enum) and
+       hide_aurum_score, not profile_public / hide_score. */
+    setToggle('toggle-public-profile', user.profile_visibility !== 'private');
+    setToggle('toggle-hide-score',     !!user.hide_aurum_score);
     setToggle('toggle-hide-league',    !!user.hide_league);
 
     /* Stealth Mode — Sovereign only */
@@ -929,14 +952,11 @@
       if (stealthBadge) stealthBadge.style.display = 'inline-flex';
     }
 
-    /* Currency — only USD is selectable now, but keep this in case
-       the backend ever returns something else for a legacy user */
-    const currencySelect = document.getElementById('currency-select');
-    if (currencySelect && user.currency === 'USD') {
-      currencySelect.value = 'USD';
-    }
-
-    /* Notification toggles */
+    /* Notification toggles
+       NOTE: there is currently no GET endpoint for saved notification
+       preferences, so these always fall back to their HTML defaults
+       (all checked) rather than reflecting a real saved state. Not
+       fixed in this pass — flagging so it isn't mistaken for working. */
     const notifs = user.notifications || {};
     setToggle('notif-tips',       notifs.tips       !== false);
     setToggle('notif-challenges', notifs.challenges !== false);
@@ -1117,14 +1137,17 @@
 
   /* --------------------------------------------------
      PRIVACY — auto-save on toggle change
+     FIX: send profile_visibility (enum) and hide_aurum_score,
+     matching the backend contract in handleUpdateProfile.
   -------------------------------------------------- */
   const savePrivacy = debounce(async () => {
     try {
+      const isPublic = getToggle('toggle-public-profile');
       await AURUM.SettingsAPI.updateProfile({
-        profile_public: getToggle('toggle-public-profile'),
-        hide_score:     getToggle('toggle-hide-score'),
-        hide_league:    getToggle('toggle-hide-league'),
-        stealth_mode:   getToggle('toggle-stealth'),
+        profile_visibility: isPublic ? 'public' : 'private',
+        hide_aurum_score:   getToggle('toggle-hide-score'),
+        hide_league:        getToggle('toggle-hide-league'),
+        stealth_mode:       getToggle('toggle-stealth'),
       });
       AURUM.ProfileCache.clear();
       AURUM.showToast('Privacy settings saved.', 'gold');
@@ -1154,8 +1177,6 @@
 
   /* --------------------------------------------------
      WALLET — Bank account
-     Fix 2a: now saved via AURUM.SettingsAPI.updateBankAccount,
-     which calls POST /api/wallet/bank-details (js/api.js).
   -------------------------------------------------- */
   document.getElementById('btn-save-bank')
     ?.addEventListener('click', async () => {
