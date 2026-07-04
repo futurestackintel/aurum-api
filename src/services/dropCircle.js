@@ -1,14 +1,15 @@
 // ============================================================
 // DROP CIRCLE (ARENA) — FULL LIFECYCLE
-// Fix 5: getChallengeById wrapped in try/catch, returns null on
-//        DB error instead of throwing past the caller.
-// Fix 7: expireChallenges() added for cron — flips 'open' ->
-//        'completed' once ends_at has passed.
-// Fix 8: getChallenges() now accepts a status filter:
-//        'open'      -> status='open' AND already started
-//        'upcoming'  -> status='open' AND starts_at is in the future
-//        'completed' -> status='completed'
-//        (no status)  -> preserves old default behavior (open only)
+// CRITICAL FIX: the same Clerk-ID-vs-internal-ID bug found in
+// crew.js and duel.js was ALSO present here in joinChallenge,
+// submitProof, giveGoldButton, boostChallenge, and
+// freeMonthlyEntry — none of them resolved the Clerk id coming
+// from the route layer before using it against tables keyed on
+// the internal DB user id (challenge_entries.user_id,
+// wallets.user_id, challenge_gold_buttons.user_id,
+// challenge_boosts.user_id, free_challenge_entries.user_id,
+// users.id). createChallenge already resolved correctly — that
+// one was fine. All others below now use resolveUserId() first.
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
@@ -21,16 +22,17 @@ function nowISO() {
   return new Date().toISOString();
 }
 
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+async function resolveUserId(clerkId, db) {
+  const row = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  return row?.id ?? null;
 }
 
-// ── STAGE 1: CREATE CHALLENGE ────────────────────────────────
+// ── STAGE 1: CREATE CHALLENGE (already correct) ──────────────
 
-export async function createChallenge(userId, body, db) {
+export async function createChallenge(clerkId, body, db) {
   const {
     title,
     type,
@@ -65,13 +67,8 @@ export async function createChallenge(userId, body, db) {
   const now          = nowISO();
   const challengeId  = crypto.randomUUID();
 
-  // Resolve internal user ID from Clerk ID
-  const userRow = await db
-    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
-    .bind(userId)
-    .first();
-  if (!userRow) return { error: 'User not found' };
-  const internalUserId = userRow.id;
+  const internalUserId = await resolveUserId(clerkId, db);
+  if (!internalUserId) return { error: 'User not found' };
 
   // entry_fee stored as cents in DB
   const entryFeeCents = Math.round(entry_fee * 100);
@@ -128,7 +125,10 @@ export async function createChallenge(userId, body, db) {
 
 // ── STAGE 2: JOIN AND FUND POOL ──────────────────────────────
 
-export async function joinChallenge(challengeId, userId, db) {
+export async function joinChallenge(challengeId, clerkId, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const challenge = await db
     .prepare(`SELECT * FROM challenges WHERE id = ?`)
     .bind(challengeId)
@@ -213,7 +213,10 @@ export async function joinChallenge(challengeId, userId, db) {
 
 // ── STAGE 3: SUBMIT ACHIEVEMENT PROOF ───────────────────────
 
-export async function submitProof(challengeId, userId, body, db) {
+export async function submitProof(challengeId, clerkId, body, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const { proof_url, proof_description, proof_value } = body;
 
   if (!proof_url && !proof_description) {
@@ -256,7 +259,9 @@ export async function submitProof(challengeId, userId, body, db) {
   };
 }
 
-// ── STAGE 4: SCORE ENTRIES ───────────────────────────────────
+// ── STAGE 4: SCORE ENTRIES (admin — entryUserId is an internal
+//    id supplied directly in the URL by an admin tool, not a
+//    Clerk id from requireAuth, so no resolution needed here) ──
 
 export async function scoreEntry(challengeId, entryUserId, score, db) {
   if (score < 0 || score > 100) return { error: 'Score must be between 0 and 100' };
@@ -276,7 +281,7 @@ export async function scoreEntry(challengeId, entryUserId, score, db) {
   return { scored: true, challenge_id: challengeId, user_id: entryUserId, score };
 }
 
-// ── STAGE 5: RESOLVE WINNER ──────────────────────────────────
+// ── STAGE 5: RESOLVE WINNER (admin) ──────────────────────────
 
 export async function resolveChallenge(challengeId, moderatorId, db) {
   const challenge = await db
@@ -369,7 +374,10 @@ export async function resolveChallenge(challengeId, moderatorId, db) {
 
 // ── FEATURE 1: GOLD BUTTON ───────────────────────────────────
 
-export async function giveGoldButton(challengeId, userId, db) {
+export async function giveGoldButton(challengeId, clerkId, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const challenge = await db
     .prepare(`SELECT id, status FROM challenges WHERE id = ?`)
     .bind(challengeId)
@@ -404,7 +412,10 @@ export async function giveGoldButton(challengeId, userId, db) {
 
 // ── FEATURE 2: CHALLENGE BOOST ───────────────────────────────
 
-export async function boostChallenge(challengeId, userId, body, db) {
+export async function boostChallenge(challengeId, clerkId, body, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   const { amount_usd } = body;
 
   if (!amount_usd || amount_usd <= 0) return { error: 'amount_usd is required and must be positive' };
@@ -458,7 +469,10 @@ export async function boostChallenge(challengeId, userId, body, db) {
 
 // ── FEATURE 7a: FREE MONTHLY CHALLENGE ENTRY ─────────────────
 
-export async function freeMonthlyEntry(userId, db) {
+export async function freeMonthlyEntry(clerkId, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
   // Explorer tier only
   const user = await db
     .prepare(`SELECT tier FROM users WHERE id = ?`)
@@ -496,7 +510,13 @@ export async function freeMonthlyEntry(userId, db) {
     .first();
 
   if (!freeChallenge) {
-    // Auto-create this month's free challenge
+    // Auto-create this month's free challenge.
+    // Note: createChallenge expects a Clerk id as its first arg and
+    // resolves it internally — 'system' won't resolve to a real user,
+    // so this auto-create path only works once a 'system' Clerk
+    // account actually exists. If it doesn't, this returns an error
+    // and freeMonthlyEntry surfaces "Could not find or create free
+    // monthly challenge" below rather than crashing.
     const result = await createChallenge(
       'system',
       {
@@ -509,7 +529,7 @@ export async function freeMonthlyEntry(userId, db) {
       },
       db,
     );
-    // createChallenge returns { challenge: { id } }
+    // createChallenge returns { challenge: { id } } on success
     freeChallenge = { id: result.challenge?.id };
   }
 
@@ -545,19 +565,12 @@ export async function freeMonthlyEntry(userId, db) {
 }
 
 // ── GET CHALLENGES (Arena feed) ──────────────────────────────
-// Fix 8: status param drives which bucket of challenges is returned.
-//   'open'      -> status='open' AND (starts_at is null OR already started)
-//   'upcoming'  -> status='open' AND starts_at is in the future
-//   'completed' -> status='completed'
-//   (omitted)   -> defaults to 'open' bucket, same as prior behavior
-/**
- * Order: boosted (active boost) → gold button count → created_at
- */
+
 export async function getChallenges(limit, offset, db, status) {
   const now = nowISO();
 
   let statusClause;
-  const params = [now]; // used by is_boosted CASE regardless of branch
+  const params = [now];
 
   if (status === 'upcoming') {
     statusClause = `c.status = 'open' AND c.starts_at > ?`;
@@ -565,7 +578,6 @@ export async function getChallenges(limit, offset, db, status) {
   } else if (status === 'completed') {
     statusClause = `c.status = 'completed'`;
   } else {
-    // 'open' or default
     statusClause = `c.status = 'open' AND (c.starts_at IS NULL OR c.starts_at <= ?)`;
     params.push(now);
   }
@@ -597,9 +609,6 @@ export async function getChallenges(limit, offset, db, status) {
 }
 
 // ── GET SINGLE CHALLENGE ─────────────────────────────────────
-// Fix 5: wrapped in try/catch so a malformed id or transient DB
-// error returns null instead of throwing past the caller, and the
-// modal can show a clean "not found" state instead of nothing.
 
 export async function getChallengeById(challengeId, db) {
   try {
@@ -645,12 +654,7 @@ export async function getChallengeById(challengeId, db) {
   }
 }
 
-// ── FEATURE (Fix 7): EXPIRE CHALLENGES ───────────────────────
-// Run on cron. Flips any 'open' challenge whose ends_at has
-// passed to 'completed'. This does NOT resolve a winner or move
-// funds — that still requires an admin/moderator call to
-// resolveChallenge(). It only stops "open" challenges from
-// staying open (and joinable) forever once their clock runs out.
+// ── FIX 7: EXPIRE CHALLENGES ──────────────────────────────────
 
 export async function expireChallenges(db) {
   const now = nowISO();
