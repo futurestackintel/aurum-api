@@ -2,6 +2,12 @@
 // AURUM Auth Routes
 // POST /auth/register
 // GET  /auth/me
+// FIX: GET /api/auth/me was missing profile_visibility,
+// hide_aurum_score, and hide_league in its SELECT — settings.html
+// reads these to set toggle states on page load, so without them
+// the Public Profile / Hide Aurum Score / Hide League toggles could
+// never reflect what was actually saved, regardless of what the
+// save side does. Added below.
 // ============================================================
 
 import { requireAuth } from "../middleware/auth.js";
@@ -121,7 +127,8 @@ export async function handleAuthRoutes(pathname, request, env) {
             total_tips_sent_cents, total_tips_received_cents,
             total_challenges_won, stealth_mode,
             is_verified, is_founding_member,
-            kyc_status, created_at
+            kyc_status, created_at,
+            profile_visibility, hide_aurum_score, hide_league
           FROM users
           WHERE clerk_id = ? AND deleted_at IS NULL
         `)
