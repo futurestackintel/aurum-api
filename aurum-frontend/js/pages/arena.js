@@ -1,21 +1,17 @@
 /* ============================================
-   AURUM — The Arena — Final Fix Chat
-   Fix 6: description textarea added to create-challenge modal.
-   Fix 8: status tabs now pass a real status filter to the backend
-          instead of filtering an already-truncated 20-item page
-          client-side. 'upcoming' = open challenges with a future
-          starts_at (Finding 4, Option A).
-   Finding 5: every `ch.status === 'active'` check replaced with
-          `ch.status === 'open'` — the backend never returns
-          'active', only 'open' / 'completed', so those checks
-          always fell through to the "Starting Soon" / zero-stats
-          branch even for real, live challenges.
-   Finding 6: mock-data fallback removed. An empty result now shows
-          the real empty state instead of silently substituting
-          fake challenges, so real failures are visible.
-   Fix 9: confirmed — loadChallenges already unwraps
-          `data.challenges || []` before calling updateStats.
-          No change needed there.
+   AURUM — The Arena — Final Fix Chat (continued)
+   FIX (this pass) — Duel creation:
+   The create-duel modal was sending { opponent_username,
+   stake_amount, type, duration_hours } to POST /api/duels, but
+   the backend (services/duel.js createDuel) requires
+   { target_username, title, duel_tip_amount } — it has no concept
+   of "type" or "duration" for duels at all (those fields were
+   silently ignored even if sent), and "title" was never collected
+   or sent, which is why creation failed with "target_username is
+   required" / title-related 400s.
+   Fixed: added a required Title field, removed the Type and
+   Duration selectors (they did nothing on the backend), and
+   renamed the submit payload to match the real contract.
 ============================================ */
 
 window.ArenaPage = {
@@ -164,12 +160,21 @@ window.ArenaPage = {
         </div>
       </div>
 
-      <!-- Create Duel Modal -->
+      <!-- Create Duel Modal
+           FIX: added required Title field. Removed Challenge Type
+           and Duration selectors — the backend never accepted or
+           stored either of them (duels have no "type" column, and
+           the accept/resolve windows are fixed server-side at
+           48h / 7 days, not user-selectable). -->
       <div class="modal-overlay" id="create-duel-modal" style="display:none;">
         <div class="modal">
           <div class="modal-handle"></div>
           <h3 class="modal-title">New Duel</h3>
           <div style="display:flex;flex-direction:column;gap:var(--space-4);">
+            <div class="input-group">
+              <label class="input-label">Duel Title</label>
+              <input class="input" id="duel-title" placeholder="e.g. Most Revenue This Week" />
+            </div>
             <div class="input-group">
               <label class="input-label">Opponent Username</label>
               <input class="input" id="duel-opponent" placeholder="@username" />
@@ -185,21 +190,10 @@ window.ArenaPage = {
               </select>
             </div>
             <div class="input-group">
-              <label class="input-label">Challenge Type</label>
-              <select class="input" id="duel-type">
-                <option value="revenue">Most Revenue</option>
-                <option value="deals">Most Deals</option>
-                <option value="growth">Best Growth</option>
-                <option value="savings">Most Saved</option>
-              </select>
-            </div>
-            <div class="input-group">
-              <label class="input-label">Duration</label>
-              <select class="input" id="duel-duration">
-                <option value="24">24 Hours</option>
-                <option value="48">48 Hours</option>
-                <option value="168">7 Days</option>
-              </select>
+              <label class="input-label">Description (optional)</label>
+              <textarea class="input" id="duel-description"
+                placeholder="What are you proving with this duel?" rows="2"
+                style="resize:none;font-family:var(--font-body);"></textarea>
             </div>
             <div style="display:flex;gap:var(--space-3);">
               <button class="btn btn-ghost btn-full" id="btn-cancel-duel">Cancel</button>
@@ -333,14 +327,6 @@ window.ArenaPage = {
      CHALLENGES
   -------------------------------------------------- */
 
-  // Fix 8: maps the frontend tab label to the backend's status
-  // filter value. 'active' tab -> 'open' bucket on the backend
-  // (open AND already started). 'upcoming' -> open AND starts_at
-  // in the future. 'completed' -> completed. The backend now does
-  // this filtering in SQL, so we no longer request a fixed page
-  // of 20 "all" challenges and filter client-side — that approach
-  // meant any status other than whatever was on the first page of
-  // 20 would silently show nothing.
   async loadChallenges(tab = 'active') {
     const list = document.getElementById('challenge-list');
     if (!list) return;
@@ -355,9 +341,6 @@ window.ArenaPage = {
       this.renderChallenges(challenges);
       this.updateStats(challenges);
     } catch (err) {
-      // Finding 6: no more mock-data fallback. A failed or empty
-      // fetch shows the real empty state so problems are visible
-      // instead of being masked by fake challenges.
       this.renderChallenges([]);
       this.updateStats([]);
       AURUM.showToast('Could not load challenges.', 'error');
@@ -382,10 +365,6 @@ window.ArenaPage = {
     this.bindChallengeEvents();
   },
 
-  // Finding 5: displayStatus derives whether an 'open' challenge
-  // should visually read as "upcoming" (future starts_at) or
-  // "open" (already started) — the raw backend status is always
-  // one of 'open' / 'completed', never 'active'.
   getDisplayStatus(ch) {
     if (ch.status === 'open' && ch.starts_at && new Date(ch.starts_at) > new Date()) {
       return 'upcoming';
@@ -731,10 +710,6 @@ window.ArenaPage = {
 
   /* --------------------------------------------------
      DUELS
-     Fix 12 note: POST /api/duels has not been confirmed broken
-     or working in this pass (no duel route/service file was
-     provided). The "+ New Duel" button below is left as-is.
-     Flag this back if you want it hidden pending confirmation.
   -------------------------------------------------- */
   async loadDuels() {
     const list = document.getElementById('duel-list');
@@ -775,7 +750,7 @@ window.ArenaPage = {
       : 0;
 
     const challenger = duel.challenger_username || 'Challenger';
-    const opponent   = duel.opponent_username   || 'Opponent';
+    const opponent   = duel.target_username     || 'Opponent';
 
     return `
       <div class="challenge-card card fade-in" style="animation-delay:${index * 80}ms;">
@@ -783,7 +758,7 @@ window.ArenaPage = {
         <!-- Duel header -->
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <span class="badge badge-muted" style="font-size:9px;">
-            ${duel.type || 'duel'}
+            duel
           </span>
           <span style="font-size:10px;letter-spacing:0.06em;text-transform:uppercase;
             color:${isActive ? 'var(--color-success)' : isEnded
@@ -791,6 +766,8 @@ window.ArenaPage = {
             ${duel.status || 'pending'}
           </span>
         </div>
+
+        <p class="challenge-title" style="margin: 0;">${duel.title || 'Untitled Duel'}</p>
 
         <!-- Combatants -->
         <div style="display:flex;align-items:center;justify-content:space-between;
@@ -816,7 +793,7 @@ window.ArenaPage = {
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="font-family:var(--font-mono);font-size:var(--text-sm);
             color:var(--color-gold);">
-            ${AURUM.formatAmount(duel.stake_amount || 0)} stake
+            ${AURUM.formatAmount(duel.duel_tip_amount || 0)} stake
           </span>
           ${isActive ? `
             <span class="duel-countdown mono" style="font-size:var(--text-xs);
@@ -847,7 +824,7 @@ window.ArenaPage = {
             </button>
             <button class="btn btn-ghost btn-sm btn-tip-opponent"
               data-duel-id="${duel.id}"
-              data-participant-id="${duel.opponent_id}"
+              data-participant-id="${duel.target_id}"
               style="flex:1;">
               Tip ${opponent.split(' ')[0]} ₳1
             </button>
@@ -863,7 +840,7 @@ window.ArenaPage = {
             </button>
             <button class="btn btn-outline btn-sm btn-vote-duel"
               data-duel-id="${duel.id}"
-              data-participant-id="${duel.opponent_id}"
+              data-participant-id="${duel.target_id}"
               style="flex:1;">
               Vote ${opponent.split(' ')[0]}
             </button>
@@ -926,7 +903,7 @@ window.ArenaPage = {
         const participantId = btn.dataset.participantId;
         btn.disabled = true;
         try {
-          await AURUM.DuelAPI.tip(duelId, participantId, { amount: 1 });
+          await AURUM.DuelAPI.tip(duelId, participantId, { amount_usd: 1 });
           AURUM.showToast('Tip sent! ₳1', 'gold');
         } catch (err) {
           AURUM.showToast(err.message || 'Tip failed.', 'error');
@@ -995,13 +972,21 @@ window.ArenaPage = {
     });
   },
 
+  /* FIX: submitDuel now sends the fields the backend actually
+     expects — target_username, title, description, duel_tip_amount.
+     Previously sent opponent_username, stake_amount, type,
+     duration_hours, none of which matched the backend contract,
+     and never sent a title at all despite it being required. */
   async submitDuel() {
-    const opponent  = document.getElementById('duel-opponent')?.value.trim();
-    const stake     = document.getElementById('duel-stake')?.value;
-    const type      = document.getElementById('duel-type')?.value;
-    const duration  = document.getElementById('duel-duration')?.value;
-    const btn       = document.getElementById('btn-submit-duel');
+    const title       = document.getElementById('duel-title')?.value.trim();
+    const opponent    = document.getElementById('duel-opponent')?.value.trim();
+    const stake       = document.getElementById('duel-stake')?.value;
+    const description = document.getElementById('duel-description')?.value.trim();
+    const btn         = document.getElementById('btn-submit-duel');
 
+    if (!title) {
+      AURUM.showToast('Add a duel title.', 'error'); return;
+    }
     if (!opponent) {
       AURUM.showToast('Enter opponent username.', 'error'); return;
     }
@@ -1011,13 +996,15 @@ window.ArenaPage = {
 
     try {
       await AURUM.DuelAPI.createDuel({
-        opponent_username: opponent,
-        stake_amount:      parseFloat(stake),
-        type,
-        duration_hours:    parseInt(duration, 10),
+        target_username: opponent,
+        title,
+        description:     description || null,
+        duel_tip_amount: parseFloat(stake),
       });
       document.getElementById('create-duel-modal').style.display = 'none';
-      document.getElementById('duel-opponent').value = '';
+      document.getElementById('duel-title').value       = '';
+      document.getElementById('duel-opponent').value    = '';
+      document.getElementById('duel-description').value = '';
       AURUM.showToast('Duel challenge sent!', 'gold');
       this.loadDuels();
     } catch (err) {
@@ -1152,7 +1139,6 @@ window.ArenaPage = {
 
   /* --------------------------------------------------
      CREATE CHALLENGE
-     Fix 6: description textarea value now collected and sent.
   -------------------------------------------------- */
   async submitChallenge() {
     const title       = document.getElementById('ch-title')?.value.trim();
@@ -1196,7 +1182,6 @@ window.ArenaPage = {
 
   /* --------------------------------------------------
      STATS BAR
-     Finding 5: 'active' -> 'open' (the real backend status value).
   -------------------------------------------------- */
   updateStats(challenges) {
     const active   = challenges.filter(c => c.status === 'open');
