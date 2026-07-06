@@ -1,3 +1,16 @@
+// ============================================================
+// AURUM Paystack Provider
+// FIX: request() previously called res.json() directly, which
+// throws a generic "Unexpected end of JSON input" whenever
+// Paystack returns an empty or non-JSON body — giving zero
+// diagnostic information about WHY the call failed (bad key,
+// wrong mode, malformed request, etc). Now reads the raw text
+// first, tries to parse it, and if that fails or the response
+// isn't ok, throws an error that includes the real HTTP status
+// and the raw response body so wrangler tail actually shows you
+// something useful.
+// ============================================================
+
 export class PaystackProvider {
   constructor(secretKey) {
     this.secretKey = secretKey;
@@ -15,11 +28,36 @@ export class PaystackProvider {
     if (body) options.body = JSON.stringify(body);
 
     const res = await fetch(`${this.baseUrl}${path}`, options);
-    const data = await res.json();
+    const rawText = await res.text();
+
+    let data;
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch (parseErr) {
+      // Paystack returned something that isn't valid JSON at all —
+      // surface the actual status and raw body instead of a bare
+      // "Unexpected end of JSON input".
+      throw new Error(
+        `Paystack returned a non-JSON response (HTTP ${res.status} ${res.statusText}). ` +
+        `Raw body: ${rawText ? rawText.slice(0, 500) : '(empty)'}`
+      );
+    }
+
+    if (!data) {
+      throw new Error(
+        `Paystack returned an empty response body (HTTP ${res.status} ${res.statusText}). ` +
+        `This usually means an invalid/wrong-mode secret key, or the request was rejected ` +
+        `before Paystack processed it. Check that PAYSTACK_SECRET_KEY is a valid live key ` +
+        `matching your Paystack dashboard, and that it wasn't swapped with PAYSTACK_PUBLIC_KEY.`
+      );
+    }
 
     if (!data.status) {
-      throw new Error(data.message || "Paystack request failed");
+      throw new Error(
+        `Paystack request failed (HTTP ${res.status}): ${data.message || 'Unknown error'}`
+      );
     }
+
     return data.data;
   }
 
