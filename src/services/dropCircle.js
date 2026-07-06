@@ -1,15 +1,16 @@
 // ============================================================
 // DROP CIRCLE (ARENA) — FULL LIFECYCLE
-// CRITICAL FIX: the same Clerk-ID-vs-internal-ID bug found in
-// crew.js and duel.js was ALSO present here in joinChallenge,
-// submitProof, giveGoldButton, boostChallenge, and
-// freeMonthlyEntry — none of them resolved the Clerk id coming
-// from the route layer before using it against tables keyed on
-// the internal DB user id (challenge_entries.user_id,
-// wallets.user_id, challenge_gold_buttons.user_id,
-// challenge_boosts.user_id, free_challenge_entries.user_id,
-// users.id). createChallenge already resolved correctly — that
-// one was fine. All others below now use resolveUserId() first.
+// CRITICAL FIX: challenge_entries columns corrected to match the
+// REAL production schema (confirmed via PRAGMA table_info and a
+// full sqlite_master dump). The code previously wrote to columns
+// that never existed:
+//   entry_amount     -> real column is entry_fee_paid_cents (INTEGER, cents)
+//   achievement_proof -> real columns are achievement_proof_urls (TEXT)
+//                        and proof_description (TEXT), separately
+//   joined_at        -> real column is created_at
+// This was silently breaking joinChallenge, submitProof,
+// getChallengeById's entry list, resolveChallenge's entry query,
+// and freeMonthlyEntry's entry insert. Fixed below.
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
@@ -30,7 +31,8 @@ async function resolveUserId(clerkId, db) {
   return row?.id ?? null;
 }
 
-// ── STAGE 1: CREATE CHALLENGE (already correct) ──────────────
+// ── STAGE 1: CREATE CHALLENGE (already correct — challenges
+//    table schema matches what's coded here) ──────────────────
 
 export async function createChallenge(clerkId, body, db) {
   const {
@@ -124,6 +126,9 @@ export async function createChallenge(clerkId, body, db) {
 }
 
 // ── STAGE 2: JOIN AND FUND POOL ──────────────────────────────
+// FIX: insert now uses entry_fee_paid_cents (real column) instead
+// of entry_amount. status/created_at/updated_at rely on the
+// table's own defaults ('entered', now(), now()).
 
 export async function joinChallenge(challengeId, clerkId, db) {
   const userId = await resolveUserId(clerkId, db);
@@ -174,14 +179,15 @@ export async function joinChallenge(challengeId, clerkId, db) {
   const now     = nowISO();
   const entryId = crypto.randomUUID();
   const newPool = (challenge.pool_total_cents ?? 0) + (challenge.entry_fee_cents ?? 0);
+  const entryFeePaidCents = challenge.entry_fee_cents ?? 0;
 
   // Wrap pool sync in D1 batch
   await db.batch([
     db.prepare(`
       INSERT INTO challenge_entries
-        (id, challenge_id, user_id, entry_amount, achievement_proof, score, joined_at)
-      VALUES (?, ?, ?, ?, NULL, 0, ?)
-    `).bind(entryId, challengeId, userId, entryFeeUsd, now),
+        (id, challenge_id, user_id, entry_fee_paid_cents)
+      VALUES (?, ?, ?, ?)
+    `).bind(entryId, challengeId, userId, entryFeePaidCents),
 
     db.prepare(`
       UPDATE challenges
@@ -212,6 +218,9 @@ export async function joinChallenge(challengeId, clerkId, db) {
 }
 
 // ── STAGE 3: SUBMIT ACHIEVEMENT PROOF ───────────────────────
+// FIX: writes to the real columns — achievement_proof_urls,
+// proof_description, submitted_at, proof_value — instead of a
+// single nonexistent "achievement_proof" JSON blob column.
 
 export async function submitProof(challengeId, clerkId, body, db) {
   const userId = await resolveUserId(clerkId, db);
@@ -236,20 +245,21 @@ export async function submitProof(challengeId, clerkId, body, db) {
   if (!entry)                        return { error: 'You are not entered in this challenge' };
   if (entry.status === 'completed')  return { error: 'Challenge already resolved' };
 
-  const proof = JSON.stringify({
-    url:          proof_url         ?? null,
-    description:  proof_description ?? null,
-    value:        proof_value       ?? null,
-    submitted_at: nowISO(),
-  });
-
   await db
     .prepare(`
       UPDATE challenge_entries
-      SET achievement_proof = ?, proof_value = ?
+      SET achievement_proof_urls = ?, proof_description = ?,
+          proof_value = ?, submitted_at = ?
       WHERE challenge_id = ? AND user_id = ?
     `)
-    .bind(proof, proof_value ?? 0, challengeId, userId)
+    .bind(
+      proof_url ?? null,
+      proof_description ?? null,
+      proof_value ?? 0,
+      nowISO(),
+      challengeId,
+      userId,
+    )
     .run();
 
   return {
@@ -259,9 +269,7 @@ export async function submitProof(challengeId, clerkId, body, db) {
   };
 }
 
-// ── STAGE 4: SCORE ENTRIES (admin — entryUserId is an internal
-//    id supplied directly in the URL by an admin tool, not a
-//    Clerk id from requireAuth, so no resolution needed here) ──
+// ── STAGE 4: SCORE ENTRIES (admin) — unchanged, columns match ──
 
 export async function scoreEntry(challengeId, entryUserId, score, db) {
   if (score < 0 || score > 100) return { error: 'Score must be between 0 and 100' };
@@ -282,6 +290,10 @@ export async function scoreEntry(challengeId, entryUserId, score, db) {
 }
 
 // ── STAGE 5: RESOLVE WINNER (admin) ──────────────────────────
+// FIX: removed ce.entry_amount from the SELECT — that column
+// doesn't exist, and the returned value was never actually used
+// anywhere in this function anyway (pool math comes from the
+// challenges table, not per-entry amounts). Dead reference removed.
 
 export async function resolveChallenge(challengeId, moderatorId, db) {
   const challenge = await db
@@ -295,7 +307,7 @@ export async function resolveChallenge(challengeId, moderatorId, db) {
 
   const { results: entries } = await db
     .prepare(`
-      SELECT ce.user_id, ce.score, ce.entry_amount, u.username
+      SELECT ce.user_id, ce.score, u.username
       FROM challenge_entries ce
       JOIN users u ON u.id = ce.user_id
       WHERE ce.challenge_id = ?
@@ -372,7 +384,7 @@ export async function resolveChallenge(challengeId, moderatorId, db) {
   };
 }
 
-// ── FEATURE 1: GOLD BUTTON ───────────────────────────────────
+// ── FEATURE 1: GOLD BUTTON (columns confirmed correct) ────────
 
 export async function giveGoldButton(challengeId, clerkId, db) {
   const userId = await resolveUserId(clerkId, db);
@@ -410,7 +422,7 @@ export async function giveGoldButton(challengeId, clerkId, db) {
   return { gold_button: true, challenge_id: challengeId };
 }
 
-// ── FEATURE 2: CHALLENGE BOOST ───────────────────────────────
+// ── FEATURE 2: CHALLENGE BOOST (columns confirmed correct) ────
 
 export async function boostChallenge(challengeId, clerkId, body, db) {
   const userId = await resolveUserId(clerkId, db);
@@ -468,6 +480,8 @@ export async function boostChallenge(challengeId, clerkId, body, db) {
 }
 
 // ── FEATURE 7a: FREE MONTHLY CHALLENGE ENTRY ─────────────────
+// FIX: the challenge_entries insert here had the exact same bug
+// as joinChallenge — corrected to entry_fee_paid_cents.
 
 export async function freeMonthlyEntry(clerkId, db) {
   const userId = await resolveUserId(clerkId, db);
@@ -511,12 +525,10 @@ export async function freeMonthlyEntry(clerkId, db) {
 
   if (!freeChallenge) {
     // Auto-create this month's free challenge.
-    // Note: createChallenge expects a Clerk id as its first arg and
-    // resolves it internally — 'system' won't resolve to a real user,
-    // so this auto-create path only works once a 'system' Clerk
-    // account actually exists. If it doesn't, this returns an error
-    // and freeMonthlyEntry surfaces "Could not find or create free
-    // monthly challenge" below rather than crashing.
+    // Note: createChallenge expects a Clerk id and resolves it
+    // internally — 'system' won't resolve to a real user unless a
+    // 'system' Clerk account actually exists. If it doesn't, this
+    // returns an error below rather than crashing.
     const result = await createChallenge(
       'system',
       {
@@ -529,7 +541,6 @@ export async function freeMonthlyEntry(clerkId, db) {
       },
       db,
     );
-    // createChallenge returns { challenge: { id } } on success
     freeChallenge = { id: result.challenge?.id };
   }
 
@@ -540,9 +551,9 @@ export async function freeMonthlyEntry(clerkId, db) {
   await db.batch([
     db.prepare(`
       INSERT INTO challenge_entries
-        (id, challenge_id, user_id, entry_amount, achievement_proof, score, joined_at)
-      VALUES (?, ?, ?, 0, NULL, 0, ?)
-    `).bind(crypto.randomUUID(), freeChallenge.id, userId, now),
+        (id, challenge_id, user_id, entry_fee_paid_cents)
+      VALUES (?, ?, ?, 0)
+    `).bind(crypto.randomUUID(), freeChallenge.id, userId),
 
     db.prepare(`
       UPDATE challenges
@@ -609,6 +620,10 @@ export async function getChallenges(limit, offset, db, status) {
 }
 
 // ── GET SINGLE CHALLENGE ─────────────────────────────────────
+// FIX: entry_list query used ce.joined_at, which doesn't exist —
+// real column is ce.created_at. This is what was throwing
+// "no such column: ce.joined_at" and breaking the three-dots
+// challenge detail view.
 
 export async function getChallengeById(challengeId, db) {
   try {
@@ -629,7 +644,7 @@ export async function getChallengeById(challengeId, db) {
 
     const { results: entryList } = await db
       .prepare(`
-        SELECT ce.user_id, ce.score, ce.joined_at, u.username, u.league
+        SELECT ce.user_id, ce.score, ce.created_at, u.username, u.league
         FROM challenge_entries ce
         JOIN users u ON u.id = ce.user_id
         WHERE ce.challenge_id = ?
