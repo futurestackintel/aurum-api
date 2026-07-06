@@ -579,12 +579,15 @@
     </div>
 
     <!-- Wallet link
-         NOTE: still points at history.back() as a placeholder — I
-         don't yet know the actual filename of your wallet/transactions
-         page. Tell me and I'll wire this to navigate there properly. -->
+         FIX: was silently doing history.back() as a placeholder,
+         which navigated backward instead of anywhere wallet-related.
+         No wallet/transactions page exists yet in the frontend, so
+         this now shows an honest "coming soon" toast instead of a
+         misleading dead link. Wire up real navigation once that
+         page is built. -->
     <div class="settings-row"
       style="border-radius:0 0 var(--radius-lg) var(--radius-lg);
-      cursor:pointer;" onclick="history.back()">
+      cursor:pointer;" id="row-wallet-transactions">
       <div class="settings-row-left">
         <span class="settings-row-label">Wallet &amp; Transactions</span>
         <span class="settings-row-sub">
@@ -1294,9 +1297,18 @@
     });
 
   /* --------------------------------------------------
+     WALLET & TRANSACTIONS — placeholder until page exists
+  -------------------------------------------------- */
+  document.getElementById('row-wallet-transactions')
+    ?.addEventListener('click', () => {
+      AURUM.showToast('Wallet page coming soon.', 'default');
+    });
+
+  /* --------------------------------------------------
      BOOT
   -------------------------------------------------- */
   window.addEventListener('load', init);
   </script>
 </body>
 </html>
+
