@@ -1,5 +1,8 @@
 // ============================================================
 // STREAK TRACKING SERVICE
+// FIX: queried columns "streak" and "streak_last_active" — neither
+// exists. Real users table columns are streak_current,
+// streak_longest, streak_last_post_at. Corrected below.
 // Tracks daily login/activity streaks per user.
 // Streak feeds into Aurum Score (SCORE_WEIGHTS.streak_day).
 // Called on every authenticated request via middleware.
@@ -19,15 +22,16 @@ const STREAK_WINDOW_HOURS = 24; // gap > 24h breaks streak
  */
 export async function checkStreak(userId, db) {
   const user = await db
-    .prepare(`SELECT streak, streak_last_active FROM users WHERE id = ?`)
+    .prepare(`SELECT streak_current, streak_longest, streak_last_post_at FROM users WHERE id = ?`)
     .bind(userId)
     .first();
 
   if (!user) return { streak: 0, extended: false, broken: false, points_awarded: 0 };
 
   const now         = new Date();
-  const lastActive  = user.streak_last_active ? new Date(user.streak_last_active) : null;
-  const streak      = user.streak ?? 0;
+  const lastActive  = user.streak_last_post_at ? new Date(user.streak_last_post_at) : null;
+  const streak      = user.streak_current ?? 0;
+  const longest     = user.streak_longest ?? 0;
 
   // Already counted today (same UTC day) — no-op
   if (lastActive && isSameUTCDay(now, lastActive)) {
@@ -50,9 +54,15 @@ export async function checkStreak(userId, db) {
     broken = streak > 1; // only flag as broken if they had a real streak
   }
 
+  const newLongest = Math.max(longest, newStreak);
+
   await db
-    .prepare(`UPDATE users SET streak = ?, streak_last_active = ? WHERE id = ?`)
-    .bind(newStreak, now.toISOString(), userId)
+    .prepare(`
+      UPDATE users
+      SET streak_current = ?, streak_longest = ?, streak_last_post_at = ?
+      WHERE id = ?
+    `)
+    .bind(newStreak, newLongest, now.toISOString(), userId)
     .run();
 
   // Award score points for the new streak day
@@ -76,6 +86,11 @@ export async function checkStreak(userId, db) {
 /**
  * Streak middleware — attach to every authenticated route.
  * Runs async, does not block the response.
+ * NOTE: this intentionally does NOT return the checkStreak promise
+ * — it's designed as fire-and-forget with its own internal
+ * .catch(console.error), so a streak failure can never break the
+ * actual request it's attached to. That part of the design was
+ * always correct; only the column names inside checkStreak were wrong.
  */
 export function streakMiddleware(userId, db) {
   // Fire and forget — don't await in request path
