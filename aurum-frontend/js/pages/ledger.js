@@ -282,7 +282,9 @@ window.LedgerPage = {
           btn.classList.remove('cheered');
           btn.disabled = false;
           if (countEl) countEl.textContent = prevCount;
-          AURUM.showToast('Could not cheer post.', 'error');
+          // FIX: was a hardcoded generic message that hid the real
+          // backend reason (e.g. "already cheered", "user not found").
+          AURUM.showToast(err.message || 'Could not cheer post.', 'error');
         }
       });
     });
