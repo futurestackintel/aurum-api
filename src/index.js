@@ -696,6 +696,7 @@ export default {
         (await handleChallengeRoutes(pathname, request.method, request, env)) ||
         (await handleDuelRoutes(pathname, request.method, request, env))      ||
         (await handleCrewRoutes(pathname, request.method, request, env))      ||
+				(await handleCommentRoutes(pathname, request.method, request, env))  ||
         (await handleAdminRoutes(pathname, request.method, request, env));
 
       if (!response) {
