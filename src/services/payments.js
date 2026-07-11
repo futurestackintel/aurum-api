@@ -11,6 +11,19 @@ export class PaymentService {
   constructor(env) {
     this.provider = new PaystackProvider(env.PAYSTACK_SECRET_KEY);
     this.PLATFORM_FEE_PERCENT = 0.05;
+    this.currency = env.PAYSTACK_CURRENCY || "NGN";
+    this.usdToNgnRate = parseFloat(env.USD_TO_NGN_RATE) || 1600;
+  }
+
+  /**
+   * Converts a USD amount into whatever currency the Paystack
+   * account is currently charging in. When USD becomes enabled
+   * on the account, set PAYSTACK_CURRENCY=USD and this becomes
+   * a no-op passthrough — no code changes needed anywhere else.
+   */
+  toChargeAmount(usdAmount) {
+    if (this.currency === "USD") return usdAmount;
+    return Math.round(usdAmount * this.usdToNgnRate * 100) / 100;
   }
 
   // ── Customers ───────────────────────────────────────────────
@@ -37,12 +50,14 @@ export class PaymentService {
 
     const result = await this.provider.initializeTransaction({
       email,
-      amount,
+      amount: this.toChargeAmount(amount),
+      currency: this.currency,
       callback_url: callbackUrl,
       metadata: {
         type: "wallet_deposit",
         user_id: userId,
         reference,
+        usd_amount: amount,
       },
     });
 
