@@ -156,7 +156,7 @@ export async function handleWalletRoutes(pathname, request, env) {
         return json({ error: "Payment does not belong to this account" }, 403);
       }
 
-      const amountUsd = transaction.amount / 100;
+      const amountUsd = transaction.metadata?.usd_amount ?? (transaction.amount / 100);
       const now = new Date().toISOString();
       const wallet = await getWallet(user.id, env.DB);
       const newBalance = wallet.balance_usd + amountUsd;
