@@ -91,13 +91,15 @@ export class PaymentService {
 
     const result = await this.provider.initializeTransaction({
       email,
-      amount,
+      amount: this.toChargeAmount(amount),
+      currency: this.currency,
       callback_url: callbackUrl,
       metadata: {
         type: "subscription",
         tier,
         user_id: userId,
         reference,
+        usd_amount: amount,
       },
     });
 
