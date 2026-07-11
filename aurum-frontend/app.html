@@ -503,9 +503,15 @@
 
   <script>
   /* ============================================
-     AURUM App Shell — Module G
-     Performance: no loading block, parallel load,
-     profile cache, live token refresh
+     AURUM App Shell — Registration Root-Cause Fix
+     FIX: both places that call AURUM.AuthAPI.register() used to
+     wrap it in try{}catch(e){} with NOTHING in the catch block —
+     silently swallowing every registration failure. Combined with
+     api.js sending register() with no auth token (fixed
+     separately), this meant Clerk sign-up succeeded but the
+     matching row in the `users` table was silently never created,
+     for every single sign-up. Now failures are logged and shown
+     via toast so this class of bug can never hide again.
   ============================================ */
 
   let pendingSignUp = null;
@@ -810,6 +816,13 @@
 
   /* =====================================================
      SIGN UP
+     FIX: register() failures are now surfaced (console.error +
+     toast) instead of silently swallowed. Still proceeds to
+     showApp() since the Clerk session itself is valid — blocking
+     the user here would strand them outside the app entirely.
+     But now if registration fails, YOU will know about it
+     immediately instead of finding out days later via a
+     "user not found" error somewhere else.
   ===================================================== */
   document.getElementById('btn-signup').addEventListener('click', async () => {
     const username = document.getElementById('signup-username').value.trim();
@@ -839,7 +852,16 @@
         const token = await window.Clerk.session.getToken();
         AURUM.Auth.setToken(token);
         App.user = window.Clerk.user;
-        try { await AURUM.AuthAPI.register({ username, email }); } catch (e) {}
+        try {
+          await AURUM.AuthAPI.register({ username, email });
+        } catch (regErr) {
+          console.error('Registration failed:', regErr);
+          AURUM.showToast(
+            'Account created, but profile setup failed: ' + (regErr.message || 'unknown error') +
+            '. Please contact support if features seem broken.',
+            'error', 6000
+          );
+        }
         App.showApp();
       } else if (attempt.status === 'missing_requirements') {
         pendingSignUp = attempt;
@@ -863,6 +885,8 @@
 
   /* =====================================================
      OTP VERIFY
+     FIX: same register() error surfacing as the signup handler
+     above.
   ===================================================== */
   document.getElementById('btn-verify').addEventListener('click', async () => {
     const code  = document.getElementById('otp-input').value.trim();
@@ -889,7 +913,16 @@
         App.user = window.Clerk.user;
         const username = document.getElementById('signup-username').value.trim();
         const email    = document.getElementById('signup-email').value.trim();
-        try { await AURUM.AuthAPI.register({ username, email }); } catch (e) {}
+        try {
+          await AURUM.AuthAPI.register({ username, email });
+        } catch (regErr) {
+          console.error('Registration failed:', regErr);
+          AURUM.showToast(
+            'Account created, but profile setup failed: ' + (regErr.message || 'unknown error') +
+            '. Please contact support if features seem broken.',
+            'error', 6000
+          );
+        }
         pendingSignUp = null;
         App.showApp();
       } else {
