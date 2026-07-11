@@ -449,6 +449,7 @@ window.AURUM = {
   ArenaAPI,
   DuelAPI,
   TipsAPI,
+  CommentsAPI,
   SubAPI,
   ProfileAPI,
   SettingsAPI,
