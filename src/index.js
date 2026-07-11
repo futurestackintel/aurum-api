@@ -20,6 +20,7 @@ import { handleAdminRoutes }            from './routes/admin.js';
 import { handleWalletRoutes }           from './routes/wallet.js';
 import { handleFoundingRoutes }         from './routes/founding.js';
 import { handleCrewRoutes }             from './routes/crew.js';
+import { handleCommentRoutes }          from './routes/comments.js';
 import { runLeaderboardSnapshot }       from './services/leaderboardCron.js';
 import { updateExchangeRates }          from './services/currency.js';
 import { finaliseExpiredAppeals }       from './services/proofOfStake.js';
