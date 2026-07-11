@@ -620,7 +620,10 @@ export default {
         if (rl.limited) return rateLimitResponse(rl.retryAfter, cors);
       }
 
-      if (pathname.startsWith('/api/posts') && request.method === 'POST') {
+      if (pathname.match(/^\/api\/posts\/[^/]+\/comments$/) && request.method === 'POST') {
+        const rl = await checkRateLimit(ip, 'comments', 15, 60, env);
+        if (rl.limited) return rateLimitResponse(rl.retryAfter, cors);
+      } else if (pathname.startsWith('/api/posts') && request.method === 'POST') {
         const rl = await checkRateLimit(ip, 'posts', 5, 60, env);
         if (rl.limited) return rateLimitResponse(rl.retryAfter, cors);
       }
