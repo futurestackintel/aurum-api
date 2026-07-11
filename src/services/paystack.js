@@ -15,7 +15,6 @@
   constructor(secretKey) {
     this.secretKey = secretKey;
     this.baseUrl = "https://api.paystack.co";
-    console.log("PAYSTACK KEY DEBUG — length:", secretKey?.length, "| starts:", JSON.stringify(secretKey?.slice(0, 8)), "| ends:", JSON.stringify(secretKey?.slice(-6)));
   }
 
   async request(method, path, body = null) {
