@@ -359,8 +359,12 @@ window.ProfilePage = {
         btn.disabled    = true;
         try {
           const data = await AURUM.SubAPI.upgrade({ tier: 'contender' });
-          if (data.payment_url) window.location.href = data.payment_url;
-          else AURUM.showToast('Upgrade initiated.', 'gold');
+          if (data.authorization_url) window.location.href = data.authorization_url;
+          else {
+            AURUM.showToast('Upgrade failed to start. Please try again.', 'error');
+            btn.textContent = 'Upgrade — $29/mo';
+            btn.disabled    = false;
+          }
         } catch (err) {
           AURUM.showToast(err.message || 'Upgrade failed.', 'error');
           btn.textContent = 'Upgrade — $29/mo';
