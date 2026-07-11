@@ -1071,13 +1071,29 @@
   (async () => {
     const params = new URLSearchParams(window.location.search);
     const ref    = params.get('reference') || params.get('trxref');
-    if (ref) {
-      try {
+    const tier   = params.get('tier');
+    if (!ref) return;
+
+    try {
+      if (tier) {
+        /* Subscription payment returning from Paystack */
+        const data = await AURUM.SubAPI.verify({ reference: ref });
+        AURUM.showToast(data.message || `Upgraded to ${data.tier}`, 'gold', 5000);
+        AURUM.ProfileCache.clear();
+        if (App.user) {
+          await App._refreshProfile();
+        }
+      } else {
+        /* Wallet deposit payment returning from Paystack */
         await AURUM.WalletAPI.confirmDeposit({ reference: ref });
         AURUM.showToast('Deposit confirmed. Balance updated.', 'gold', 5000);
-        /* Clean URL */
-        history.replaceState({}, '', window.location.pathname);
-      } catch (e) { /* fail silently */ }
+        await App.loadWalletBalance();
+      }
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not confirm payment. Contact support if charged.', 'error', 6000);
+    } finally {
+      /* Clean URL either way */
+      history.replaceState({}, '', window.location.pathname);
     }
   })();
 
