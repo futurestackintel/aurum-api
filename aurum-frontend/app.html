@@ -194,7 +194,6 @@
     }
 
     /* ---- Clerk loading indicator (subtle, non-blocking) ---- */
-    /* ---- Clerk loading indicator (subtle, non-blocking) ---- */
     #clerk-loading-bar {
       position: fixed;
       top: 0;
@@ -207,7 +206,9 @@
     }
 
     /* ---- Full-screen boot loading overlay — prevents auth-screen
-         flash on refresh for already-logged-in users ---- */
+         flash on refresh for already-logged-in users. Both the
+         auth screen and the app shell stay hidden until checkAuth()
+         has definitively determined which one to show. ---- */
     #app-boot-loading {
       position: fixed;
       inset: 0;
@@ -281,8 +282,14 @@
   <!-- Subtle top bar — shows while Clerk loads, non-blocking -->
   <div id="clerk-loading-bar"></div>
 
+  <!-- Full-screen boot overlay — hides both auth and app screens
+       until we know for sure whether the user is logged in -->
+  <div id="app-boot-loading">
+    <p class="app-boot-logo">AURUM</p>
+  </div>
+
   <!-- =====================================================
-       AUTH SCREEN — shown immediately, no loading block
+       AUTH SCREEN — revealed only after auth check resolves
   ====================================================== -->
   <div id="auth-screen" style="display:none;">
     <p class="auth-logo">AURUM</p>
@@ -350,7 +357,7 @@
   </div>
 
   <!-- =====================================================
-       APP SHELL
+       APP SHELL — revealed only after auth check resolves
   ====================================================== -->
   <div id="app-shell" class="app-shell" style="display:none;">
 
@@ -455,21 +462,17 @@
       <div style="display:flex;flex-direction:column;gap:var(--space-4);">
         <div class="input-group">
           <label class="input-label">Amount (USD)</label>
-          <input class="input" type="number" id="deposit-amount" placeholder="25.00" min="1" step="0.01" />
+          <input class="input" type="number" id="deposit-amount" placeholder="25.00" min="5" step="0.01" />
         </div>
         <div class="input-group">
           <label class="input-label">Currency</label>
-          <select class="input" id="deposit-currency">
+          <select class="input" id="deposit-currency" disabled>
             <option value="USD">USD — US Dollar</option>
-            <option value="NGN">NGN — Nigerian Naira</option>
-            <option value="GHS">GHS — Ghanaian Cedi</option>
-            <option value="KES">KES — Kenyan Shilling</option>
-            <option value="ZAR">ZAR — South African Rand</option>
           </select>
         </div>
         <p style="font-size:var(--text-xs);color:var(--color-text-muted);line-height:1.6;">
           You will be redirected to Paystack to complete the payment securely.
-          Your Aurum Balance will update automatically on return.
+          Minimum deposit is $5. Your Aurum Balance will update automatically on return.
         </p>
         <div style="display:flex;gap:var(--space-3);">
           <button class="btn btn-ghost btn-full" id="btn-deposit-cancel">Cancel</button>
@@ -526,15 +529,20 @@
 
   <script>
   /* ============================================
-     AURUM App Shell — Registration Root-Cause Fix
-     FIX: both places that call AURUM.AuthAPI.register() used to
-     wrap it in try{}catch(e){} with NOTHING in the catch block —
-     silently swallowing every registration failure. Combined with
-     api.js sending register() with no auth token (fixed
-     separately), this meant Clerk sign-up succeeded but the
-     matching row in the `users` table was silently never created,
-     for every single sign-up. Now failures are logged and shown
-     via toast so this class of bug can never hide again.
+     AURUM App Shell
+     FIX (registration): both places that call AURUM.AuthAPI.register()
+     used to wrap it in try{}catch(e){} with NOTHING in the catch
+     block — silently swallowing every registration failure. Combined
+     with api.js sending register() with no auth token (fixed
+     separately), this meant Clerk sign-up succeeded but the matching
+     row in the `users` table was silently never created. Now
+     failures are logged and shown via toast.
+
+     FIX (boot flash): auth-screen and app-shell both stay hidden
+     behind a full-screen boot overlay until checkAuth() has
+     definitively resolved which one to show. Previously the auth
+     screen was shown immediately and unconditionally, causing a
+     visible flash for already-logged-in users on every refresh.
   ============================================ */
 
   let pendingSignUp = null;
@@ -545,14 +553,11 @@
     walletBalance: 0,
 
     /* -----------------------------------------
-       INIT — show auth immediately, load Clerk
-       in background with 3s timeout
+       INIT — boot overlay stays up the whole
+       time Clerk loads and auth is checked
     ----------------------------------------- */
     async init() {
-      /* Show auth form immediately — no blank screen */
-      this.showAuth();
-
-      /* Start Clerk loading bar animation */
+      /* Start Clerk loading bar animation — subtle, behind the boot overlay */
       const bar = document.getElementById('clerk-loading-bar');
       if (bar) { bar.style.width = '60%'; }
 
@@ -568,8 +573,24 @@
       document.getElementById('btn-signin').disabled = false;
       document.getElementById('btn-signup').disabled = false;
 
-      /* Check if already authenticated */
+      /* Check if already authenticated — this decides which screen
+         to show. Neither auth-screen nor app-shell is visible yet,
+         so there is nothing to flash regardless of the outcome. */
       await this.checkAuth();
+
+      /* The correct screen (showApp or showAuth) has already been
+         made visible inside checkAuth. Now it's safe to remove the
+         boot overlay. */
+      this.hideBootLoading();
+    },
+
+    hideBootLoading() {
+      const el = document.getElementById('app-boot-loading');
+      if (el) {
+        el.style.opacity    = '0';
+        el.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => el.remove(), 300);
+      }
     },
 
     waitForClerk() {
@@ -603,9 +624,12 @@
             return;
           }
         }
-        /* Not authenticated — auth form already visible */
+        /* Not authenticated — reveal the sign-in screen now,
+           for the first time, only after we're sure. */
+        this.showAuth();
       } catch (err) {
         console.warn('checkAuth:', err.message);
+        this.showAuth();
       }
     },
 
@@ -1004,6 +1028,11 @@
 
   /* =====================================================
      DEPOSIT MODAL
+     FIX: was sending {amount, currency} — backend expects
+     {amount_usd, callback_url}, neither of which was being sent.
+     Also was checking data.payment_url — backend returns
+     authorization_url. Both fixed. Minimum bumped to $5 client-side
+     to match the backend's actual minimum.
   ===================================================== */
   document.getElementById('deposit-modal').addEventListener('click', e => {
     if (e.target.id === 'deposit-modal') e.target.style.display = 'none';
@@ -1012,8 +1041,8 @@
     document.getElementById('deposit-modal').style.display = 'none';
   });
   document.getElementById('btn-deposit-confirm').addEventListener('click', async () => {
-    const amount   = parseFloat(document.getElementById('deposit-amount').value);
-    const btn      = document.getElementById('btn-deposit-confirm');
+    const amount = parseFloat(document.getElementById('deposit-amount').value);
+    const btn    = document.getElementById('btn-deposit-confirm');
 
     if (!amount || amount < 5) {
       AURUM.showToast('Minimum deposit is $5.', 'error'); return;
@@ -1089,7 +1118,10 @@
   });
 
   /* =====================================================
-     CHECK FOR PAYSTACK RETURN (deposit confirm)
+     CHECK FOR PAYSTACK RETURN (deposit confirm OR
+     subscription verify — branches on the presence of a
+     `tier` query param, since both flows now redirect back
+     to this same page)
   ===================================================== */
   (async () => {
     const params = new URLSearchParams(window.location.search);
