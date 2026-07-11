@@ -194,6 +194,7 @@
     }
 
     /* ---- Clerk loading indicator (subtle, non-blocking) ---- */
+    /* ---- Clerk loading indicator (subtle, non-blocking) ---- */
     #clerk-loading-bar {
       position: fixed;
       top: 0;
@@ -203,6 +204,28 @@
       z-index: 9999;
       width: 0%;
       transition: width 0.3s ease;
+    }
+
+    /* ---- Full-screen boot loading overlay — prevents auth-screen
+         flash on refresh for already-logged-in users ---- */
+    #app-boot-loading {
+      position: fixed;
+      inset: 0;
+      background: var(--color-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: var(--space-4);
+      z-index: 10000;
+    }
+
+    .app-boot-logo {
+      font-family: var(--font-display);
+      font-size: var(--text-3xl);
+      letter-spacing: 0.2em;
+      color: var(--color-gold);
+      animation: goldShimmer 2s ease-in-out infinite;
     }
 
     /* ---- OTP panel ---- */
