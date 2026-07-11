@@ -1,13 +1,14 @@
 /* ============================================================
-   AURUM — API Module — Final Fix Chat
-   Fix 2a: SettingsAPI.updateBankAccount now points to
-           POST /api/wallet/bank-details (was PATCH /api/users/me/bank,
-           a route that never existed).
-   Fix 2b: WalletAPI.getBankDetails added, used by settings.html to
-           prefill saved bank details on page load.
-   Fix 8:  ArenaAPI.getChallenges accepts an optional status param
-           ('open' | 'upcoming' | 'completed') and forwards it as
-           a query string so filtering happens server-side.
+   AURUM — API Module — Registration Root-Cause Fix
+   THE BUG: AuthAPI.register passed `false` as the requiresAuth
+   argument to apiRequest, meaning it NEVER attached the Clerk
+   token. The backend route requires auth. Every single
+   registration call has been failing silently (app.html wraps it
+   in try{}catch(e){}), meaning Clerk sign-up succeeded but the
+   matching row in the `users` table was never created — the exact
+   cause of every "user not found" error hit on crews, duels, and
+   gold buttons. Fixed: requiresAuth now defaults to true (omitted,
+   same as explicitly true) for this call.
 ============================================================ */
 
 const API_BASE = 'https://aurum-api.futurestack001.workers.dev';
@@ -68,9 +69,14 @@ async function apiRequest(method, path, body = null, requiresAuth = true) {
    API METHODS
 ============================================================ */
 
-/* --- Auth --- */
+/* --- Auth ---
+   FIX: register now requires auth (was `false`, the root cause
+   of the entire registration gap). At the moment register() is
+   called, Clerk sign-up has already completed and a session
+   token is available, so requiring auth here is correct and safe.
+*/
 const AuthAPI = {
-  register: (data) => apiRequest('POST', '/api/auth/register', data, false),
+  register: (data) => apiRequest('POST', '/api/auth/register', data, true),
   me:       ()     => apiRequest('GET',  '/api/auth/me'),
 };
 
@@ -100,7 +106,7 @@ const LedgerAPI = {
 /* --- Challenges / Arena ---
      fundChallenge / verifyChallenge / payoutChallenge removed.
      Entry = POST /api/challenges/:id/join  (joinChallenge)
-     Fix 8: getChallenges now takes an optional status filter.
+     getChallenges takes an optional status filter.
 */
 const ArenaAPI = {
   getChallenges: (limit = 20, offset = 0, status) => {
@@ -192,8 +198,6 @@ const SettingsAPI = {
   updateNotifications: (data) =>
     apiRequest('PATCH', '/api/users/me/notifications', data),
 
-  // Fix 2a: was PATCH /api/users/me/bank (route never existed).
-  // Now calls the real bank-details endpoint added to wallet.js.
   updateBankAccount: (data) =>
     apiRequest('POST', '/api/wallet/bank-details', data),
 
@@ -221,7 +225,6 @@ const WalletAPI = {
   getTransactions: (page = 0) =>
     apiRequest('GET', `/api/wallet/transactions?limit=20&offset=${page * 20}`),
 
-  // Fix 2b: fetch saved bank details to prefill settings on load.
   getBankDetails: () =>
     apiRequest('GET', '/api/wallet/bank-details'),
 };
