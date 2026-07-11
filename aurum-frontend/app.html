@@ -990,20 +990,22 @@
   });
   document.getElementById('btn-deposit-confirm').addEventListener('click', async () => {
     const amount   = parseFloat(document.getElementById('deposit-amount').value);
-    const currency = document.getElementById('deposit-currency').value;
     const btn      = document.getElementById('btn-deposit-confirm');
 
-    if (!amount || amount < 1) {
-      AURUM.showToast('Enter a valid amount.', 'error'); return;
+    if (!amount || amount < 5) {
+      AURUM.showToast('Minimum deposit is $5.', 'error'); return;
     }
 
     btn.textContent = 'Redirecting...';
     btn.disabled    = true;
 
     try {
-      const data = await AURUM.WalletAPI.deposit({ amount, currency });
-      if (data.payment_url) {
-        window.location.href = data.payment_url;
+      const data = await AURUM.WalletAPI.deposit({
+        amount_usd: amount,
+        callback_url: window.location.origin + window.location.pathname,
+      });
+      if (data.authorization_url) {
+        window.location.href = data.authorization_url;
       } else {
         AURUM.showToast('Deposit initiated.', 'gold');
         document.getElementById('deposit-modal').style.display = 'none';
