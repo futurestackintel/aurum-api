@@ -607,6 +607,7 @@ export async function getLedgerPosts(limit, offset, db) {
         ps.status               AS stake_status,
         u.username,
         u.league,
+        p.comment_count,
         EXISTS (
           SELECT 1 FROM badges b WHERE b.user_id = p.user_id LIMIT 1
         ) AS verified
