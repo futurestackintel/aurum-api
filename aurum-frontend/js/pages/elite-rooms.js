@@ -286,10 +286,12 @@ window.ElitePage = {
         btn.disabled    = true;
         try {
           const data = await AURUM.SubAPI.upgrade({ tier: 'sovereign' });
-          if (data.payment_url) {
-            window.location.href = data.payment_url;
+          if (data.authorization_url) {
+            window.location.href = data.authorization_url;
           } else {
-            AURUM.showToast('Upgrade initiated.', 'gold');
+            AURUM.showToast('Upgrade failed to start. Please try again.', 'error');
+            btn.textContent = 'Upgrade to Sovereign — $99/mo';
+            btn.disabled    = false;
           }
         } catch (err) {
           AURUM.showToast(err.message || 'Upgrade failed.', 'error');
