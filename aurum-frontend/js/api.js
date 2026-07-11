@@ -175,6 +175,18 @@ const TipsAPI = {
   send: (data) => apiRequest('POST', '/api/tips', data),
 };
 
+/* --- Comments --- */
+const CommentsAPI = {
+  getForPost: (postId) =>
+    apiRequest('GET', `/api/posts/${postId}/comments`, null, false),
+
+  create: (postId, data) =>
+    apiRequest('POST', `/api/posts/${postId}/comments`, data),
+
+  remove: (commentId) =>
+    apiRequest('DELETE', `/api/comments/${commentId}`),
+};
+
 /* --- Subscriptions --- */
 const SubAPI = {
   upgrade: (data) => apiRequest('POST', '/api/subscriptions/upgrade', data),
