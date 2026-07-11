@@ -1,19 +1,30 @@
 /* ============================================
-   AURUM — The Ledger (Main Feed) — Final Fix Chat
-   Fix: tip button now sends receiver_id and amount_usd, matching
-   POST /api/tips' actual required body shape. Previously sent
-   { post_id, amount: 1 } — missing receiver_id entirely and using
-   the wrong field name for the amount, so every tip attempt
-   returned 400 "post_id, receiver_id, and amount_usd required".
+   AURUM — The Ledger (Main Feed)
+   FIX (stake colors): stakeColor map previously checked for
+   'verified'/'pending'/'disputed', which never matched the real
+   stake_status values ('locked'/'returned'/'appeal_pending'/
+   'slashed') — every post fell through to the same dull grey
+   default regardless of actual state. Fixed to match real values.
+
+   FIX (media): postHTML read post.media_url (singular) but the
+   backend writes and returns media_urls (plural) — images never
+   rendered. Fixed to read the real field name.
+
+   NEW: comment threads. Each post can be expanded to show/post
+   threaded comments (replies to replies), matching the new
+   POST/GET /api/posts/:id/comments and DELETE /api/comments/:id
+   endpoints. 180 character limit per comment, author-only delete.
 ============================================ */
 
-/* ---- Fix 1: Aurum-branded amount formatter (₳ not $) ---- */
+/* ---- Aurum-branded amount formatter (₳ not $) ---- */
 function formatAurum(amount) {
   const n = parseFloat(amount) || 0;
   if (n >= 1000000) return `₳${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000)    return `₳${(n / 1000).toFixed(1)}K`;
   return `₳${n.toFixed(2)}`;
 }
+
+const COMMENT_MAX_LENGTH = 180;
 
 window.LedgerPage = {
   container:   null,
@@ -22,6 +33,12 @@ window.LedgerPage = {
   loading:     false,
   initialized: false,
   hasMore:     true,
+
+  /* Tracks which posts currently have their comment section open,
+     and caches loaded comment trees so re-opening doesn't refetch
+     unless explicitly refreshed. */
+  openComments: new Set(),
+  commentCache: new Map(),
 
   init(containerId) {
     this.container = document.getElementById(containerId);
@@ -214,10 +231,7 @@ window.LedgerPage = {
   },
 
   bindPostEvents() {
-    /* ---- Tip buttons — optimistic UI ----
-       Fix: now reads data-receiver-id (the post author's internal
-       user id) and sends { post_id, receiver_id, amount_usd }
-       matching what POST /api/tips actually requires. */
+    /* ---- Tip buttons — optimistic UI ---- */
     document.querySelectorAll('.btn-tip').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
@@ -282,25 +296,326 @@ window.LedgerPage = {
           btn.classList.remove('cheered');
           btn.disabled = false;
           if (countEl) countEl.textContent = prevCount;
-          // FIX: was a hardcoded generic message that hid the real
-          // backend reason (e.g. "already cheered", "user not found").
           AURUM.showToast(err.message || 'Could not cheer post.', 'error');
         }
       });
     });
+
+    /* ---- Comment toggle buttons ---- */
+    document.querySelectorAll('.btn-comment-toggle').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+
+      btn.addEventListener('click', () => {
+        const postId = btn.dataset.postId;
+        this.toggleComments(postId);
+      });
+    });
+
+    /* ---- Comment submit buttons (top-level, per post) ---- */
+    document.querySelectorAll('.btn-comment-submit').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+
+      btn.addEventListener('click', () => {
+        const postId = btn.dataset.postId;
+        this.submitComment(postId, null, btn);
+      });
+    });
+
+    /* ---- Comment input character counters (top-level) ---- */
+    document.querySelectorAll('.comment-input').forEach(input => {
+      if (input.dataset.bound) return;
+      input.dataset.bound = '1';
+
+      input.addEventListener('input', () => {
+        this.updateCharCount(input);
+      });
+    });
+  },
+
+  /* -----------------------------------------
+     COMMENTS — toggle open/closed per post
+  ----------------------------------------- */
+  async toggleComments(postId) {
+    const section = document.getElementById(`comments-${postId}`);
+    if (!section) return;
+
+    const isOpen = this.openComments.has(postId);
+
+    if (isOpen) {
+      this.openComments.delete(postId);
+      section.style.display = 'none';
+      return;
+    }
+
+    this.openComments.add(postId);
+    section.style.display = 'block';
+
+    /* Load from cache if we have it, otherwise fetch fresh */
+    if (this.commentCache.has(postId)) {
+      this.renderCommentList(postId, this.commentCache.get(postId));
+    } else {
+      await this.loadComments(postId);
+    }
+  },
+
+  async loadComments(postId) {
+    const listEl = document.getElementById(`comments-list-${postId}`);
+    if (!listEl) return;
+
+    listEl.innerHTML = `
+      <div class="skeleton" style="height:40px;border-radius:8px;margin-bottom:8px;"></div>
+      <div class="skeleton" style="height:40px;border-radius:8px;"></div>
+    `;
+
+    try {
+      const data = await AURUM.CommentsAPI.getForPost(postId);
+      const comments = data.comments || [];
+      this.commentCache.set(postId, comments);
+      this.renderCommentList(postId, comments);
+    } catch (err) {
+      listEl.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted);
+        padding:var(--space-3) 0;">Could not load comments.</p>`;
+    }
+  },
+
+  renderCommentList(postId, comments) {
+    const listEl = document.getElementById(`comments-list-${postId}`);
+    if (!listEl) return;
+
+    if (!comments.length) {
+      listEl.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted);
+        padding:var(--space-3) 0;">No comments yet. Be the first to say something.</p>`;
+      return;
+    }
+
+    listEl.innerHTML = comments.map(c => this.commentHTML(postId, c, 0)).join('');
+    this.bindCommentEvents(postId);
+  },
+
+  /* Recursive — a comment renders itself, then all of its
+     replies indented one level further. depth is capped
+     visually so deep threads don't run off-screen on mobile. */
+  commentHTML(postId, comment, depth) {
+    const initials    = comment.username?.charAt(0).toUpperCase() || '?';
+    const indent       = Math.min(depth, 4) * 20;
+    const isOwnComment = window.App?.user?.id === comment.user_id;
+
+    const repliesHTML = (comment.replies || [])
+      .map(reply => this.commentHTML(postId, reply, depth + 1))
+      .join('');
+
+    return `
+      <div class="comment-item" style="margin-left:${indent}px;" data-comment-id="${comment.id}">
+        <div class="comment-row">
+          <div class="avatar avatar-sm" style="width:24px;height:24px;font-size:11px;flex-shrink:0;">
+            ${initials}
+          </div>
+          <div class="comment-body">
+            <div class="comment-meta">
+              <span class="comment-username">${comment.username || 'Anonymous'}</span>
+              <span class="comment-time">${AURUM.timeAgo(comment.created_at)}</span>
+            </div>
+            <p class="comment-text">${this.escapeHTML(comment.content)}</p>
+            <div class="comment-actions">
+              <button class="comment-action-link btn-reply-toggle"
+                data-post-id="${postId}" data-comment-id="${comment.id}">
+                Reply
+              </button>
+              ${isOwnComment ? `
+                <button class="comment-action-link comment-action-danger btn-comment-delete"
+                  data-post-id="${postId}" data-comment-id="${comment.id}">
+                  Delete
+                </button>
+              ` : ''}
+            </div>
+            <div class="reply-input-wrap" id="reply-wrap-${comment.id}" style="display:none;">
+              <textarea class="comment-input reply-input" maxlength="${COMMENT_MAX_LENGTH}"
+                data-parent-id="${comment.id}" placeholder="Write a reply..." rows="1"></textarea>
+              <div class="comment-input-footer">
+                <span class="comment-char-count" data-max="${COMMENT_MAX_LENGTH}">0/${COMMENT_MAX_LENGTH}</span>
+                <button class="btn btn-primary btn-sm btn-reply-submit"
+                  data-post-id="${postId}" data-comment-id="${comment.id}">Reply</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        ${repliesHTML}
+      </div>
+    `;
+  },
+
+  bindCommentEvents(postId) {
+    /* Reply toggle — shows/hides the inline reply box under a comment */
+    document.querySelectorAll(`#comments-list-${postId} .btn-reply-toggle`).forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+
+      btn.addEventListener('click', () => {
+        const commentId = btn.dataset.commentId;
+        const wrap = document.getElementById(`reply-wrap-${commentId}`);
+        if (wrap) {
+          const showing = wrap.style.display !== 'none';
+          wrap.style.display = showing ? 'none' : 'block';
+          if (!showing) wrap.querySelector('textarea')?.focus();
+        }
+      });
+    });
+
+    /* Reply submit */
+    document.querySelectorAll(`#comments-list-${postId} .btn-reply-submit`).forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+
+      btn.addEventListener('click', () => {
+        const parentId = btn.dataset.commentId;
+        this.submitComment(postId, parentId, btn);
+      });
+    });
+
+    /* Reply textarea char counters */
+    document.querySelectorAll(`#comments-list-${postId} .reply-input`).forEach(input => {
+      if (input.dataset.bound) return;
+      input.dataset.bound = '1';
+
+      input.addEventListener('input', () => this.updateCharCount(input));
+    });
+
+    /* Delete own comment */
+    document.querySelectorAll(`#comments-list-${postId} .btn-comment-delete`).forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+
+      btn.addEventListener('click', () => {
+        const commentId = btn.dataset.commentId;
+        this.deleteComment(postId, commentId);
+      });
+    });
+  },
+
+  updateCharCount(input) {
+    const wrap    = input.closest('.reply-input-wrap') || input.closest('.comment-composer');
+    const counter = wrap?.querySelector('.comment-char-count');
+    if (!counter) return;
+    const max = parseInt(counter.dataset.max || COMMENT_MAX_LENGTH, 10);
+    const len = input.value.length;
+    counter.textContent = `${len}/${max}`;
+    counter.style.color = len >= max ? 'var(--color-danger)' : 'var(--color-text-muted)';
+  },
+
+  async submitComment(postId, parentId, triggerBtn) {
+    const inputSelector = parentId
+      ? `#reply-wrap-${parentId} .reply-input`
+      : `#comment-composer-${postId} .comment-input`;
+    const input = document.querySelector(inputSelector);
+    if (!input) return;
+
+    const content = input.value.trim();
+    if (!content) {
+      AURUM.showToast('Write something before posting.', 'error');
+      return;
+    }
+    if (content.length > COMMENT_MAX_LENGTH) {
+      AURUM.showToast(`Comments are limited to ${COMMENT_MAX_LENGTH} characters.`, 'error');
+      return;
+    }
+
+    const originalText = triggerBtn.textContent;
+    triggerBtn.textContent = 'Posting...';
+    triggerBtn.disabled    = true;
+
+    try {
+      await AURUM.CommentsAPI.create(postId, {
+        content,
+        parent_comment_id: parentId ?? undefined,
+      });
+      input.value = '';
+
+      /* Update the visible comment count on the post card */
+      const countEl = document.querySelector(`[data-comment-count="${postId}"]`);
+      if (countEl) {
+        countEl.textContent = (parseInt(countEl.textContent, 10) || 0) + 1;
+      }
+
+      /* Collapse the reply box if this was a reply */
+      if (parentId) {
+        const wrap = document.getElementById(`reply-wrap-${parentId}`);
+        if (wrap) wrap.style.display = 'none';
+      }
+
+      /* Refresh the thread from the server so the new comment
+         (and correct nesting) shows up immediately */
+      this.commentCache.delete(postId);
+      await this.loadComments(postId);
+
+      AURUM.showToast(parentId ? 'Reply posted.' : 'Comment posted.', 'gold');
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not post comment.', 'error');
+    } finally {
+      triggerBtn.textContent = originalText;
+      triggerBtn.disabled    = false;
+    }
+  },
+
+  async deleteComment(postId, commentId) {
+    if (!confirm('Delete this comment? This cannot be undone.')) return;
+
+    try {
+      await AURUM.CommentsAPI.remove(commentId);
+
+      /* Update the visible comment count on the post card */
+      const countEl = document.querySelector(`[data-comment-count="${postId}"]`);
+      if (countEl) {
+        countEl.textContent = Math.max((parseInt(countEl.textContent, 10) || 1) - 1, 0);
+      }
+
+      this.commentCache.delete(postId);
+      await this.loadComments(postId);
+      AURUM.showToast('Comment deleted.', 'default');
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not delete comment.', 'error');
+    }
+  },
+
+  escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
   },
 
   postHTML(post) {
     const initials    = post.username?.charAt(0).toUpperCase() || '?';
     const league      = post.league || 'bronze';
-    const stakeStatus = post.stake_status || 'pending';
+    const stakeStatus = post.stake_status || 'locked';
+
+    /* FIX: real stake_status values are locked / returned /
+       appeal_pending / slashed — not verified / pending / disputed. */
     const stakeColor  = {
-      verified: 'var(--color-success)',
-      pending:  'var(--color-gold)',
-      disputed: 'var(--color-danger)',
+      locked:         'var(--color-gold)',
+      returned:       'var(--color-success)',
+      appeal_pending: 'var(--color-danger)',
+      slashed:        'var(--color-danger)',
     }[stakeStatus] || 'var(--color-text-muted)';
 
+    const stakeStatusLabel = {
+      locked:         'Locked — Pending Review',
+      returned:       'Verified',
+      appeal_pending: 'Disputed — Appeal Open',
+      slashed:        'Removed — Fake Claim',
+    }[stakeStatus] || stakeStatus;
+
+    /* Tips are only meaningful once a post is verified.
+       Unverified posts can still be cheered — matches the
+       cheer-priority verification-queue idea. */
+    const tipsEnabled = stakeStatus === 'returned';
+
     const cheers = post.cheers || 0;
+    const commentCount = post.comment_count ?? post.comments ?? 0;
+
+    /* FIX: backend field is media_urls (plural) — was reading
+       media_url and silently never rendering any image. */
+    const mediaUrl = post.media_urls || post.media_url || null;
 
     return `
       <div class="post-card card fade-in">
@@ -334,15 +649,17 @@ window.LedgerPage = {
 
         <p class="post-content">${post.content || ''}</p>
 
-        ${post.media_url ? `
-          <img src="${post.media_url}" class="post-media" alt="Achievement proof" />
+        ${mediaUrl ? `
+          <img src="${mediaUrl}" class="post-media" alt="Achievement proof" />
         ` : ''}
 
         <div class="post-actions">
 
-          <!-- Tip button -->
+          <!-- Tip button — disabled with explanation until verified -->
           <button class="btn-tip post-action-btn" data-post-id="${post.id}"
-            data-receiver-id="${post.user_id || ''}">
+            data-receiver-id="${post.user_id || ''}"
+            ${tipsEnabled ? '' : 'disabled'}
+            title="${tipsEnabled ? 'Send a tip' : 'Tips unlock once this win is verified'}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
@@ -354,7 +671,7 @@ window.LedgerPage = {
             </span>
           </button>
 
-          <!-- Cheer (Gold Button) -->
+          <!-- Cheer (Gold Button) — always available, even pre-verification -->
           <button class="btn-cheer post-action-btn ${post.user_cheered ? 'cheered' : ''}"
             data-post-id="${post.id}"
             ${post.user_cheered ? 'disabled' : ''}>
@@ -367,24 +684,41 @@ window.LedgerPage = {
             <span class="cheer-count post-action-value mono">${cheers}</span>
           </button>
 
-          <!-- Comments (disabled — placeholder, not yet built) -->
-          <button class="post-action-btn" disabled>
+          <!-- Comments — now live -->
+          <button class="post-action-btn btn-comment-toggle" data-post-id="${post.id}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
             </svg>
-            <span class="post-action-value mono">${post.comments || 0}</span>
+            <span class="post-action-value mono" data-comment-count="${post.id}">${commentCount}</span>
           </button>
 
           <!-- Stake status -->
           <div class="post-stake-status" style="margin-left:auto;">
             <span style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;
               color:${stakeColor};">
-              ${stakeStatus}
+              ${stakeStatusLabel}
             </span>
           </div>
 
         </div>
+
+        <!-- Comment section — hidden until toggled -->
+        <div class="comments-section" id="comments-${post.id}" style="display:none;">
+          <div class="comments-list" id="comments-list-${post.id}"></div>
+
+          <div class="comment-composer" id="comment-composer-${post.id}">
+            <textarea class="comment-input" maxlength="${COMMENT_MAX_LENGTH}"
+              placeholder="Add a comment..." rows="1"></textarea>
+            <div class="comment-input-footer">
+              <span class="comment-char-count" data-max="${COMMENT_MAX_LENGTH}">0/${COMMENT_MAX_LENGTH}</span>
+              <button class="btn btn-primary btn-sm btn-comment-submit" data-post-id="${post.id}">
+                Post
+              </button>
+            </div>
+          </div>
+        </div>
+
       </div>
     `;
   },
@@ -590,12 +924,137 @@ window.LedgerPage = {
       }
 
       .post-action-btn:hover { color: var(--color-gold); }
+      .post-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .post-action-btn:disabled:hover { color: var(--color-text-muted); }
 
       .post-action-value { font-size: var(--text-xs); }
 
       /* Cheer active state */
       .btn-cheer.cheered { color: var(--color-gold); }
       .btn-cheer:not(:disabled):hover { color: var(--color-gold); }
+
+      /* ---- Comments ---- */
+      .comments-section {
+        margin-top: var(--space-2);
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--color-border);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+      }
+
+      .comments-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+      }
+
+      .comment-item {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .comment-row {
+        display: flex;
+        gap: var(--space-2);
+        align-items: flex-start;
+      }
+
+      .comment-body {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .comment-meta {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      .comment-username {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--color-text);
+      }
+
+      .comment-time {
+        font-size: 10px;
+        color: var(--color-text-muted);
+      }
+
+      .comment-text {
+        font-size: var(--text-sm);
+        color: var(--color-text);
+        line-height: 1.5;
+        word-break: break-word;
+      }
+
+      .comment-actions {
+        display: flex;
+        gap: var(--space-3);
+        margin-top: 2px;
+      }
+
+      .comment-action-link {
+        font-size: 10px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--color-text-muted);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        transition: color var(--transition-base);
+      }
+
+      .comment-action-link:hover { color: var(--color-gold); }
+      .comment-action-danger:hover { color: var(--color-danger); }
+
+      .reply-input-wrap {
+        margin-top: var(--space-2);
+      }
+
+      .comment-composer,
+      .reply-input-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+      }
+
+      .comment-input {
+        width: 100%;
+        background: var(--color-surface-2);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        color: var(--color-text);
+        font-size: var(--text-sm);
+        padding: var(--space-2) var(--space-3);
+        resize: none;
+        outline: none;
+        font-family: var(--font-body);
+        line-height: 1.5;
+      }
+
+      .comment-input:focus {
+        border-color: var(--color-gold-dim);
+      }
+
+      .comment-input::placeholder { color: var(--color-text-dim); }
+
+      .comment-input-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .comment-char-count {
+        font-size: 10px;
+        color: var(--color-text-muted);
+        font-family: var(--font-mono);
+      }
     `;
     document.head.appendChild(style);
   },
@@ -611,10 +1070,10 @@ function getMockPosts() {
       verified: true,
       content: 'Just closed a $84K SaaS contract. Three months of cold outreach paid off.',
       stake_amount: 100,
-      stake_status: 'verified',
+      stake_status: 'returned',
       tips_received: 1240,
       cheers: 47,
-      comments: 18,
+      comment_count: 18,
       created_at: new Date(Date.now() - 3600000).toISOString(),
     },
     {
@@ -624,10 +1083,10 @@ function getMockPosts() {
       verified: true,
       content: 'Hit $10K MRR on my B2B tool. 8 months from zero. No investors. No co-founder.',
       stake_amount: 50,
-      stake_status: 'verified',
+      stake_status: 'returned',
       tips_received: 870,
       cheers: 31,
-      comments: 31,
+      comment_count: 31,
       created_at: new Date(Date.now() - 7200000).toISOString(),
     },
     {
@@ -637,10 +1096,10 @@ function getMockPosts() {
       verified: false,
       content: 'First enterprise client signed. $2K/month recurring.',
       stake_amount: 25,
-      stake_status: 'pending',
+      stake_status: 'locked',
       tips_received: 340,
       cheers: 12,
-      comments: 9,
+      comment_count: 9,
       created_at: new Date(Date.now() - 14400000).toISOString(),
     },
     {
@@ -650,10 +1109,10 @@ function getMockPosts() {
       verified: false,
       content: 'Crossed $1K saved for the first time. Small win. But it\'s on the board.',
       stake_amount: 5,
-      stake_status: 'verified',
+      stake_status: 'locked',
       tips_received: 95,
       cheers: 8,
-      comments: 22,
+      comment_count: 22,
       created_at: new Date(Date.now() - 86400000).toISOString(),
     },
   ];
