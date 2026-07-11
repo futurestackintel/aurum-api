@@ -110,20 +110,22 @@ export class PaymentService {
     };
   }
 
-  // ── Challenges ───────────────────────────────────────────────
-
-  async initializeChallengePayment({ email, amount, challengeId, userId, callbackUrl }) {
+  // ── Challenges ────────────────────────────────────────────
+	
+	async initializeChallengePayment({ email, amount, challengeId, userId, callbackUrl }) {
     const reference = `challenge_${userId}_${challengeId}_${Date.now()}`;
 
     const result = await this.provider.initializeTransaction({
       email,
-      amount,
+      amount: this.toChargeAmount(amount),
+      currency: this.currency,
       callback_url: callbackUrl,
       metadata: {
         type: "challenge_entry",
         challenge_id: challengeId,
         user_id: userId,
         reference,
+        usd_amount: amount,
       },
     });
 
