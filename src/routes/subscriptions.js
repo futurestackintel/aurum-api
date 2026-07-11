@@ -47,7 +47,7 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
         amount,
         userId: user.id,
         tier,
-        callbackUrl: `https://tryaurum.store/subscription/callback?tier=${tier}`,
+        callbackUrl: `https://tryaurum.store/app.html?tier=${tier}`,
       });
 
       const now = new Date().toISOString();
