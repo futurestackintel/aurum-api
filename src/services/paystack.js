@@ -70,10 +70,11 @@
     });
   }
 
-  async initializeTransaction({ email, amount, metadata, callback_url }) {
+  async initializeTransaction({ email, amount, currency, metadata, callback_url }) {
     return this.request("POST", "/transaction/initialize", {
       email,
       amount: Math.round(amount * 100),
+      currency,
       metadata,
       callback_url,
     });
