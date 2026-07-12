@@ -608,6 +608,7 @@ export async function getLedgerPosts(limit, offset, db) {
         u.username,
         u.league,
         p.comment_count,
+        (SELECT COUNT(*) FROM post_cheers pc2 WHERE pc2.post_id = p.id) AS cheers,
         EXISTS (
           SELECT 1 FROM badges b WHERE b.user_id = p.user_id LIMIT 1
         ) AS verified
