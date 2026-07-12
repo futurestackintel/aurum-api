@@ -72,7 +72,7 @@ export async function createComment(postId, clerkId, body, db) {
       INSERT INTO post_comments
         (id, post_id, user_id, parent_comment_id, content,
          moderation_status, created_at)
-      VALUES (?, ?, ?, ?, ?, 'approved', ?)
+      VALUES (?, ?, ?, ?, ?, 'active', ?)
     `)
     .bind(
       commentId,
@@ -169,7 +169,7 @@ export async function getCommentsForPost(postId, db) {
       JOIN users u ON u.id = pc.user_id
       WHERE pc.post_id = ?
         AND pc.deleted_at IS NULL
-        AND pc.moderation_status = 'approved'
+        AND pc.moderation_status = 'active'
       ORDER BY pc.created_at ASC
     `)
     .bind(postId)
