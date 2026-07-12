@@ -10,10 +10,14 @@
    backend writes and returns media_urls (plural) — images never
    rendered. Fixed to read the real field name.
 
-   NEW: comment threads. Each post can be expanded to show/post
-   threaded comments (replies to replies), matching the new
-   POST/GET /api/posts/:id/comments and DELETE /api/comments/:id
-   endpoints. 180 character limit per comment, author-only delete.
+   NEW (comments — full-screen detail view): tapping the comment
+   icon on a post no longer expands an inline dropdown under the
+   card. Instead it swaps the whole Ledger container into a
+   full-screen "post detail" view — the original post pinned at
+   the top, the full threaded comment list below it, and a
+   composer at the bottom — with a back arrow to return to the
+   feed. Matches the Instagram/Threads pattern the user asked for,
+   and keeps the main feed clean regardless of comment volume.
 ============================================ */
 
 /* ---- Aurum-branded amount formatter (₳ not $) ---- */
@@ -34,11 +38,13 @@ window.LedgerPage = {
   initialized: false,
   hasMore:     true,
 
-  /* Tracks which posts currently have their comment section open,
-     and caches loaded comment trees so re-opening doesn't refetch
-     unless explicitly refreshed. */
-  openComments: new Set(),
-  commentCache: new Map(),
+  /* Full post objects keyed by id, populated as the feed loads,
+     so the detail view can pin the correct post at the top
+     without a dedicated "get single post" endpoint. */
+  postsCache: new Map(),
+
+  /* Which post's detail view is currently open, if any. */
+  currentDetailPostId: null,
 
   init(containerId) {
     this.container = document.getElementById(containerId);
@@ -54,43 +60,77 @@ window.LedgerPage = {
     this.container.innerHTML = `
       <div class="ledger-wrap">
 
-        <!-- Composer -->
-        <div class="composer card">
-          <div class="composer-top">
-            <div class="avatar avatar-sm avatar-gold" id="composer-avatar">—</div>
-            <div class="composer-input-wrap">
-              <textarea
-                class="composer-input"
-                id="post-content"
-                placeholder="Post a verified win..."
-                rows="1"
-              ></textarea>
+        <!-- Main feed view -->
+        <div id="ledger-main">
+
+          <!-- Composer -->
+          <div class="composer card">
+            <div class="composer-top">
+              <div class="avatar avatar-sm avatar-gold" id="composer-avatar">—</div>
+              <div class="composer-input-wrap">
+                <textarea
+                  class="composer-input"
+                  id="post-content"
+                  placeholder="Post a verified win..."
+                  rows="1"
+                ></textarea>
+              </div>
+            </div>
+            <div class="composer-bottom">
+              <div class="stake-selector">
+                <span class="stake-label">Stake</span>
+                <select class="stake-select" id="post-stake">
+                  <option value="5">$5</option>
+                  <option value="10">$10</option>
+                  <option value="25">$25</option>
+                  <option value="50">$50</option>
+                  <option value="100">$100</option>
+                  <option value="250">$250</option>
+                  <option value="500">$500</option>
+                  <option value="1000">$1,000</option>
+                </select>
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-post">Post Win</button>
             </div>
           </div>
-          <div class="composer-bottom">
-            <div class="stake-selector">
-              <span class="stake-label">Stake</span>
-              <select class="stake-select" id="post-stake">
-                <option value="5">$5</option>
-                <option value="10">$10</option>
-                <option value="25">$25</option>
-                <option value="50">$50</option>
-                <option value="100">$100</option>
-                <option value="250">$250</option>
-                <option value="500">$500</option>
-                <option value="1000">$1,000</option>
-              </select>
-            </div>
-            <button class="btn btn-primary btn-sm" id="btn-post">Post Win</button>
+
+          <!-- Feed -->
+          <div class="feed" id="ledger-feed"></div>
+
+          <!-- Load more -->
+          <div style="padding:var(--space-6);text-align:center;" id="load-more-wrap">
+            <button class="btn btn-ghost btn-sm" id="btn-load-more">Load More</button>
           </div>
+
         </div>
 
-        <!-- Feed -->
-        <div class="feed" id="ledger-feed"></div>
+        <!-- Full-screen post detail view — hidden until opened -->
+        <div id="post-detail-view" style="display:none;">
+          <div class="detail-header">
+            <button class="detail-back-btn" id="btn-detail-back">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+              <span>Back</span>
+            </button>
+            <span class="detail-header-title">Post</span>
+          </div>
 
-        <!-- Load more -->
-        <div style="padding:var(--space-6);text-align:center;" id="load-more-wrap">
-          <button class="btn btn-ghost btn-sm" id="btn-load-more">Load More</button>
+          <div class="detail-scroll">
+            <div id="detail-pinned-post"></div>
+            <div class="detail-comments-divider">Comments</div>
+            <div class="detail-comments-list" id="detail-comments-list"></div>
+          </div>
+
+          <div class="detail-composer" id="detail-composer">
+            <textarea class="comment-input" id="detail-comment-input"
+              maxlength="${COMMENT_MAX_LENGTH}" placeholder="Add a comment..." rows="1"></textarea>
+            <div class="comment-input-footer">
+              <span class="comment-char-count" data-max="${COMMENT_MAX_LENGTH}">0/${COMMENT_MAX_LENGTH}</span>
+              <button class="btn btn-primary btn-sm" id="btn-detail-comment-submit">Post</button>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -129,6 +169,17 @@ window.LedgerPage = {
           this.loadPosts(true);
         }
       });
+
+    /* Detail view — back button */
+    document.getElementById('btn-detail-back')
+      ?.addEventListener('click', () => this.closePostDetail());
+
+    /* Detail view — comment composer */
+    document.getElementById('detail-comment-input')
+      ?.addEventListener('input', (e) => this.updateCharCount(e.target));
+
+    document.getElementById('btn-detail-comment-submit')
+      ?.addEventListener('click', (e) => this.submitComment(null, e.target));
   },
 
   async loadPosts(append = false) {
@@ -144,7 +195,6 @@ window.LedgerPage = {
       this.hasMore = true;
       feed.innerHTML = this.skeletons(3);
     } else {
-      /* Append a skeleton at bottom while loading */
       feed.insertAdjacentHTML('beforeend',
         `<div id="append-skeleton">${this.skeletons(2)}</div>`);
     }
@@ -153,7 +203,6 @@ window.LedgerPage = {
       const data  = await AURUM.LedgerAPI.getFeed(this.offset);
       const posts = data.posts || [];
 
-      /* Remove append skeleton if present */
       document.getElementById('append-skeleton')?.remove();
 
       if (!append) feed.innerHTML = '';
@@ -171,10 +220,10 @@ window.LedgerPage = {
       }
 
       posts.forEach(post => {
+        this.postsCache.set(String(post.id), post);
         feed.insertAdjacentHTML('beforeend', this.postHTML(post));
       });
 
-      /* Pagination state */
       this.offset  += posts.length;
       this.hasMore  = posts.length >= this.pageSize;
 
@@ -186,9 +235,9 @@ window.LedgerPage = {
       document.getElementById('append-skeleton')?.remove();
 
       if (!append) {
-        /* Show mock posts so feed is never blank */
         feed.innerHTML = '';
         getMockPosts().forEach(post => {
+          this.postsCache.set(String(post.id), post);
           feed.insertAdjacentHTML('beforeend', this.postHTML(post));
         });
         if (loadMoreWrap) loadMoreWrap.style.display = 'none';
@@ -220,7 +269,6 @@ window.LedgerPage = {
       document.getElementById('post-content').value = '';
       document.getElementById('post-content').style.height = 'auto';
       AURUM.showToast('Win posted. Stake locked.', 'gold');
-      /* Reload from top */
       this.loadPosts(false);
     } catch (err) {
       AURUM.showToast(err.message || 'Post failed.', 'error');
@@ -231,7 +279,7 @@ window.LedgerPage = {
   },
 
   bindPostEvents() {
-    /* ---- Tip buttons — optimistic UI ---- */
+    /* ---- Tip buttons ---- */
     document.querySelectorAll('.btn-tip').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
@@ -247,7 +295,6 @@ window.LedgerPage = {
           return;
         }
 
-        /* Optimistic update */
         if (counterEl) {
           const optimistic = prev + 1;
           counterEl.textContent     = formatAurum(optimistic);
@@ -263,7 +310,6 @@ window.LedgerPage = {
           });
           AURUM.showToast('Tip sent!', 'gold');
         } catch (err) {
-          /* Roll back on failure */
           if (counterEl) {
             counterEl.textContent   = formatAurum(prev);
             counterEl.dataset.total = prev;
@@ -284,7 +330,6 @@ window.LedgerPage = {
         const countEl   = btn.querySelector('.cheer-count');
         const prevCount = parseInt(countEl?.textContent || '0', 10);
 
-        /* Optimistic */
         btn.classList.add('cheered');
         btn.disabled = true;
         if (countEl) countEl.textContent = prevCount + 1;
@@ -292,7 +337,6 @@ window.LedgerPage = {
         try {
           await AURUM.LedgerAPI.cheer(postId);
         } catch (err) {
-          /* Roll back */
           btn.classList.remove('cheered');
           btn.disabled = false;
           if (countEl) countEl.textContent = prevCount;
@@ -301,67 +345,58 @@ window.LedgerPage = {
       });
     });
 
-    /* ---- Comment toggle buttons ---- */
+    /* ---- Comment icon — opens full-screen detail view ---- */
     document.querySelectorAll('.btn-comment-toggle').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
 
       btn.addEventListener('click', () => {
-        const postId = btn.dataset.postId;
-        this.toggleComments(postId);
-      });
-    });
-
-    /* ---- Comment submit buttons (top-level, per post) ---- */
-    document.querySelectorAll('.btn-comment-submit').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-
-      btn.addEventListener('click', () => {
-        const postId = btn.dataset.postId;
-        this.submitComment(postId, null, btn);
-      });
-    });
-
-    /* ---- Comment input character counters (top-level) ---- */
-    document.querySelectorAll('.comment-input').forEach(input => {
-      if (input.dataset.bound) return;
-      input.dataset.bound = '1';
-
-      input.addEventListener('input', () => {
-        this.updateCharCount(input);
+        this.openPostDetail(btn.dataset.postId);
       });
     });
   },
 
   /* -----------------------------------------
-     COMMENTS — toggle open/closed per post
+     POST DETAIL VIEW — full-screen swap
   ----------------------------------------- */
-  async toggleComments(postId) {
-    const section = document.getElementById(`comments-${postId}`);
-    if (!section) return;
-
-    const isOpen = this.openComments.has(postId);
-
-    if (isOpen) {
-      this.openComments.delete(postId);
-      section.style.display = 'none';
+  openPostDetail(postId) {
+    const post = this.postsCache.get(String(postId));
+    if (!post) {
+      AURUM.showToast('Could not open this post.', 'error');
       return;
     }
 
-    this.openComments.add(postId);
-    section.style.display = 'block';
+    this.currentDetailPostId = String(postId);
 
-    /* Load from cache if we have it, otherwise fetch fresh */
-    if (this.commentCache.has(postId)) {
-      this.renderCommentList(postId, this.commentCache.get(postId));
-    } else {
-      await this.loadComments(postId);
+    document.getElementById('ledger-main').style.display      = 'none';
+    document.getElementById('post-detail-view').style.display  = 'flex';
+
+    const pinnedWrap = document.getElementById('detail-pinned-post');
+    if (pinnedWrap) {
+      pinnedWrap.innerHTML = this.postHTML(post, { inDetail: true });
     }
+
+    /* Re-bind tip/cheer for the pinned copy of the post */
+    this.bindPostEvents();
+
+    /* Reset composer */
+    const input = document.getElementById('detail-comment-input');
+    if (input) { input.value = ''; this.updateCharCount(input); }
+
+    this.loadComments(postId);
+
+    /* Scroll detail view to top */
+    document.querySelector('.detail-scroll')?.scrollTo(0, 0);
+  },
+
+  closePostDetail() {
+    this.currentDetailPostId = null;
+    document.getElementById('post-detail-view').style.display = 'none';
+    document.getElementById('ledger-main').style.display       = 'block';
   },
 
   async loadComments(postId) {
-    const listEl = document.getElementById(`comments-list-${postId}`);
+    const listEl = document.getElementById('detail-comments-list');
     if (!listEl) return;
 
     listEl.innerHTML = `
@@ -372,16 +407,15 @@ window.LedgerPage = {
     try {
       const data = await AURUM.CommentsAPI.getForPost(postId);
       const comments = data.comments || [];
-      this.commentCache.set(postId, comments);
-      this.renderCommentList(postId, comments);
+      this.renderCommentList(comments);
     } catch (err) {
       listEl.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted);
         padding:var(--space-3) 0;">Could not load comments.</p>`;
     }
   },
 
-  renderCommentList(postId, comments) {
-    const listEl = document.getElementById(`comments-list-${postId}`);
+  renderCommentList(comments) {
+    const listEl = document.getElementById('detail-comments-list');
     if (!listEl) return;
 
     if (!comments.length) {
@@ -390,20 +424,19 @@ window.LedgerPage = {
       return;
     }
 
-    listEl.innerHTML = comments.map(c => this.commentHTML(postId, c, 0)).join('');
-    this.bindCommentEvents(postId);
+    listEl.innerHTML = comments.map(c => this.commentHTML(c, 0)).join('');
+    this.bindCommentEvents();
   },
 
   /* Recursive — a comment renders itself, then all of its
-     replies indented one level further. depth is capped
-     visually so deep threads don't run off-screen on mobile. */
-  commentHTML(postId, comment, depth) {
-    const initials    = comment.username?.charAt(0).toUpperCase() || '?';
-    const indent       = Math.min(depth, 4) * 20;
-    const isOwnComment = window.App?.user?.id === comment.user_id;
+     replies indented one level further. */
+  commentHTML(comment, depth) {
+    const initials     = comment.username?.charAt(0).toUpperCase() || '?';
+    const indent        = Math.min(depth, 4) * 20;
+    const isOwnComment  = window.App?.user?.id === comment.user_id;
 
     const repliesHTML = (comment.replies || [])
-      .map(reply => this.commentHTML(postId, reply, depth + 1))
+      .map(reply => this.commentHTML(reply, depth + 1))
       .join('');
 
     return `
@@ -419,13 +452,12 @@ window.LedgerPage = {
             </div>
             <p class="comment-text">${this.escapeHTML(comment.content)}</p>
             <div class="comment-actions">
-              <button class="comment-action-link btn-reply-toggle"
-                data-post-id="${postId}" data-comment-id="${comment.id}">
+              <button class="comment-action-link btn-reply-toggle" data-comment-id="${comment.id}">
                 Reply
               </button>
               ${isOwnComment ? `
                 <button class="comment-action-link comment-action-danger btn-comment-delete"
-                  data-post-id="${postId}" data-comment-id="${comment.id}">
+                  data-comment-id="${comment.id}">
                   Delete
                 </button>
               ` : ''}
@@ -436,7 +468,7 @@ window.LedgerPage = {
               <div class="comment-input-footer">
                 <span class="comment-char-count" data-max="${COMMENT_MAX_LENGTH}">0/${COMMENT_MAX_LENGTH}</span>
                 <button class="btn btn-primary btn-sm btn-reply-submit"
-                  data-post-id="${postId}" data-comment-id="${comment.id}">Reply</button>
+                  data-comment-id="${comment.id}">Reply</button>
               </div>
             </div>
           </div>
@@ -446,9 +478,8 @@ window.LedgerPage = {
     `;
   },
 
-  bindCommentEvents(postId) {
-    /* Reply toggle — shows/hides the inline reply box under a comment */
-    document.querySelectorAll(`#comments-list-${postId} .btn-reply-toggle`).forEach(btn => {
+  bindCommentEvents() {
+    document.querySelectorAll('.btn-reply-toggle').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
 
@@ -463,39 +494,34 @@ window.LedgerPage = {
       });
     });
 
-    /* Reply submit */
-    document.querySelectorAll(`#comments-list-${postId} .btn-reply-submit`).forEach(btn => {
+    document.querySelectorAll('.btn-reply-submit').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
 
       btn.addEventListener('click', () => {
-        const parentId = btn.dataset.commentId;
-        this.submitComment(postId, parentId, btn);
+        this.submitComment(btn.dataset.commentId, btn);
       });
     });
 
-    /* Reply textarea char counters */
-    document.querySelectorAll(`#comments-list-${postId} .reply-input`).forEach(input => {
+    document.querySelectorAll('.reply-input').forEach(input => {
       if (input.dataset.bound) return;
       input.dataset.bound = '1';
 
       input.addEventListener('input', () => this.updateCharCount(input));
     });
 
-    /* Delete own comment */
-    document.querySelectorAll(`#comments-list-${postId} .btn-comment-delete`).forEach(btn => {
+    document.querySelectorAll('.btn-comment-delete').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
 
       btn.addEventListener('click', () => {
-        const commentId = btn.dataset.commentId;
-        this.deleteComment(postId, commentId);
+        this.deleteComment(btn.dataset.commentId);
       });
     });
   },
 
   updateCharCount(input) {
-    const wrap    = input.closest('.reply-input-wrap') || input.closest('.comment-composer');
+    const wrap    = input.closest('.reply-input-wrap') || input.closest('.detail-composer');
     const counter = wrap?.querySelector('.comment-char-count');
     if (!counter) return;
     const max = parseInt(counter.dataset.max || COMMENT_MAX_LENGTH, 10);
@@ -504,11 +530,13 @@ window.LedgerPage = {
     counter.style.color = len >= max ? 'var(--color-danger)' : 'var(--color-text-muted)';
   },
 
-  async submitComment(postId, parentId, triggerBtn) {
-    const inputSelector = parentId
-      ? `#reply-wrap-${parentId} .reply-input`
-      : `#comment-composer-${postId} .comment-input`;
-    const input = document.querySelector(inputSelector);
+  async submitComment(parentId, triggerBtn) {
+    const postId = this.currentDetailPostId;
+    if (!postId) return;
+
+    const input = parentId
+      ? document.querySelector(`#reply-wrap-${parentId} .reply-input`)
+      : document.getElementById('detail-comment-input');
     if (!input) return;
 
     const content = input.value.trim();
@@ -531,22 +559,15 @@ window.LedgerPage = {
         parent_comment_id: parentId ?? undefined,
       });
       input.value = '';
+      this.updateCharCount(input);
 
-      /* Update the visible comment count on the post card */
-      const countEl = document.querySelector(`[data-comment-count="${postId}"]`);
-      if (countEl) {
-        countEl.textContent = (parseInt(countEl.textContent, 10) || 0) + 1;
-      }
+      this.bumpCommentCount(postId, 1);
 
-      /* Collapse the reply box if this was a reply */
       if (parentId) {
         const wrap = document.getElementById(`reply-wrap-${parentId}`);
         if (wrap) wrap.style.display = 'none';
       }
 
-      /* Refresh the thread from the server so the new comment
-         (and correct nesting) shows up immediately */
-      this.commentCache.delete(postId);
       await this.loadComments(postId);
 
       AURUM.showToast(parentId ? 'Reply posted.' : 'Comment posted.', 'gold');
@@ -558,24 +579,33 @@ window.LedgerPage = {
     }
   },
 
-  async deleteComment(postId, commentId) {
+  async deleteComment(commentId) {
+    const postId = this.currentDetailPostId;
+    if (!postId) return;
     if (!confirm('Delete this comment? This cannot be undone.')) return;
 
     try {
       await AURUM.CommentsAPI.remove(commentId);
-
-      /* Update the visible comment count on the post card */
-      const countEl = document.querySelector(`[data-comment-count="${postId}"]`);
-      if (countEl) {
-        countEl.textContent = Math.max((parseInt(countEl.textContent, 10) || 1) - 1, 0);
-      }
-
-      this.commentCache.delete(postId);
+      this.bumpCommentCount(postId, -1);
       await this.loadComments(postId);
       AURUM.showToast('Comment deleted.', 'default');
     } catch (err) {
       AURUM.showToast(err.message || 'Could not delete comment.', 'error');
     }
+  },
+
+  /* Keeps the comment count in sync in three places at once:
+     the cached post object, the (hidden) feed card, and the
+     pinned post card inside the open detail view. */
+  bumpCommentCount(postId, delta) {
+    const post = this.postsCache.get(String(postId));
+    if (post) {
+      post.comment_count = Math.max((post.comment_count || 0) + delta, 0);
+    }
+    document.querySelectorAll(`[data-comment-count="${postId}"]`).forEach(el => {
+      const current = parseInt(el.textContent, 10) || 0;
+      el.textContent = Math.max(current + delta, 0);
+    });
   },
 
   escapeHTML(str) {
@@ -584,13 +614,14 @@ window.LedgerPage = {
     return div.innerHTML;
   },
 
-  postHTML(post) {
+  /* opts.inDetail = true renders the pinned copy at the top of
+     the detail view — visually the same card, but its comment
+     icon is inert (you're already viewing the thread). */
+  postHTML(post, opts = {}) {
     const initials    = post.username?.charAt(0).toUpperCase() || '?';
     const league      = post.league || 'bronze';
     const stakeStatus = post.stake_status || 'locked';
 
-    /* FIX: real stake_status values are locked / returned /
-       appeal_pending / slashed — not verified / pending / disputed. */
     const stakeColor  = {
       locked:         'var(--color-gold)',
       returned:       'var(--color-success)',
@@ -605,17 +636,32 @@ window.LedgerPage = {
       slashed:        'Removed — Fake Claim',
     }[stakeStatus] || stakeStatus;
 
-    /* Tips are only meaningful once a post is verified.
-       Unverified posts can still be cheered — matches the
-       cheer-priority verification-queue idea. */
     const tipsEnabled = stakeStatus === 'returned';
 
-    const cheers = post.cheers || 0;
+    const cheers       = post.cheers || 0;
     const commentCount = post.comment_count ?? post.comments ?? 0;
 
-    /* FIX: backend field is media_urls (plural) — was reading
-       media_url and silently never rendering any image. */
     const mediaUrl = post.media_urls || post.media_url || null;
+
+    const commentBtnHTML = opts.inDetail
+      ? `
+        <div class="post-action-btn" style="cursor:default;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          <span class="post-action-value mono" data-comment-count="${post.id}">${commentCount}</span>
+        </div>
+      `
+      : `
+        <button class="post-action-btn btn-comment-toggle" data-post-id="${post.id}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          <span class="post-action-value mono" data-comment-count="${post.id}">${commentCount}</span>
+        </button>
+      `;
 
     return `
       <div class="post-card card fade-in">
@@ -655,7 +701,6 @@ window.LedgerPage = {
 
         <div class="post-actions">
 
-          <!-- Tip button — disabled with explanation until verified -->
           <button class="btn-tip post-action-btn" data-post-id="${post.id}"
             data-receiver-id="${post.user_id || ''}"
             ${tipsEnabled ? '' : 'disabled'}
@@ -671,7 +716,6 @@ window.LedgerPage = {
             </span>
           </button>
 
-          <!-- Cheer (Gold Button) — always available, even pre-verification -->
           <button class="btn-cheer post-action-btn ${post.user_cheered ? 'cheered' : ''}"
             data-post-id="${post.id}"
             ${post.user_cheered ? 'disabled' : ''}>
@@ -684,16 +728,8 @@ window.LedgerPage = {
             <span class="cheer-count post-action-value mono">${cheers}</span>
           </button>
 
-          <!-- Comments — now live -->
-          <button class="post-action-btn btn-comment-toggle" data-post-id="${post.id}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-            </svg>
-            <span class="post-action-value mono" data-comment-count="${post.id}">${commentCount}</span>
-          </button>
+          ${commentBtnHTML}
 
-          <!-- Stake status -->
           <div class="post-stake-status" style="margin-left:auto;">
             <span style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;
               color:${stakeColor};">
@@ -702,23 +738,6 @@ window.LedgerPage = {
           </div>
 
         </div>
-
-        <!-- Comment section — hidden until toggled -->
-        <div class="comments-section" id="comments-${post.id}" style="display:none;">
-          <div class="comments-list" id="comments-list-${post.id}"></div>
-
-          <div class="comment-composer" id="comment-composer-${post.id}">
-            <textarea class="comment-input" maxlength="${COMMENT_MAX_LENGTH}"
-              placeholder="Add a comment..." rows="1"></textarea>
-            <div class="comment-input-footer">
-              <span class="comment-char-count" data-max="${COMMENT_MAX_LENGTH}">0/${COMMENT_MAX_LENGTH}</span>
-              <button class="btn btn-primary btn-sm btn-comment-submit" data-post-id="${post.id}">
-                Post
-              </button>
-            </div>
-          </div>
-        </div>
-
       </div>
     `;
   },
@@ -752,6 +771,12 @@ window.LedgerPage = {
     style.id = 'ledger-styles';
     style.textContent = `
       .ledger-wrap {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+
+      #ledger-main {
         display: flex;
         flex-direction: column;
         gap: var(--space-4);
@@ -929,26 +954,87 @@ window.LedgerPage = {
 
       .post-action-value { font-size: var(--text-xs); }
 
-      /* Cheer active state */
       .btn-cheer.cheered { color: var(--color-gold); }
       .btn-cheer:not(:disabled):hover { color: var(--color-gold); }
 
-      /* ---- Comments ---- */
-      .comments-section {
-        margin-top: var(--space-2);
-        padding-top: var(--space-3);
+      /* ---- Full-screen post detail view ---- */
+      #post-detail-view {
+        display: none;
+        flex-direction: column;
+        height: 100%;
+        position: absolute;
+        inset: 0;
+        background: var(--color-bg);
+        z-index: 5;
+      }
+
+      .detail-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+        flex-shrink: 0;
+      }
+
+      .detail-back-btn {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        background: none;
+        border: none;
+        color: var(--color-text-muted);
+        font-size: var(--text-sm);
+        cursor: pointer;
+        padding: 0;
+        transition: color var(--transition-base);
+      }
+
+      .detail-back-btn:hover { color: var(--color-text); }
+
+      .detail-header-title {
+        font-family: var(--font-display);
+        font-size: var(--text-lg);
+        font-weight: var(--weight-light);
+        letter-spacing: 0.08em;
+        color: var(--color-text);
+      }
+
+      .detail-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--space-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+      }
+
+      .detail-comments-divider {
+        font-size: var(--text-xs);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--color-text-muted);
+        padding-top: var(--space-2);
         border-top: 1px solid var(--color-border);
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-3);
       }
 
-      .comments-list {
+      .detail-comments-list {
         display: flex;
         flex-direction: column;
-        gap: var(--space-3);
+        gap: var(--space-4);
       }
 
+      .detail-composer {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        padding: var(--space-4);
+        border-top: 1px solid var(--color-border);
+        background: var(--color-surface);
+        flex-shrink: 0;
+      }
+
+      /* ---- Comments (shared between detail view + replies) ---- */
       .comment-item {
         display: flex;
         flex-direction: column;
@@ -1015,10 +1101,6 @@ window.LedgerPage = {
 
       .reply-input-wrap {
         margin-top: var(--space-2);
-      }
-
-      .comment-composer,
-      .reply-input-wrap {
         display: flex;
         flex-direction: column;
         gap: var(--space-2);
@@ -1038,10 +1120,7 @@ window.LedgerPage = {
         line-height: 1.5;
       }
 
-      .comment-input:focus {
-        border-color: var(--color-gold-dim);
-      }
-
+      .comment-input:focus { border-color: var(--color-gold-dim); }
       .comment-input::placeholder { color: var(--color-text-dim); }
 
       .comment-input-footer {
