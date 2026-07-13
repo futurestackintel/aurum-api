@@ -961,9 +961,12 @@ window.LedgerPage = {
       #post-detail-view {
         display: none;
         flex-direction: column;
-        height: 100%;
+        height: auto;
         position: absolute;
-        inset: 0;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: var(--bottom-nav-h);
         background: var(--color-bg);
         z-index: 5;
       }
