@@ -115,8 +115,8 @@ export async function createComment(postId, clerkId, body, db) {
     await db
       .prepare(`
         INSERT INTO notifications
-          (id, user_id, type, title, body, reference_id, created_at)
-        VALUES (?, ?, 'post_comment', 'New comment', ?, ?, ?)
+          (id, user_id, type, title, body, action_url, created_at)
+        VALUES (?, ?, 'post_commented', 'New comment', ?, ?, ?)
       `)
       .bind(
         crypto.randomUUID(),
@@ -124,7 +124,7 @@ export async function createComment(postId, clerkId, body, db) {
         parent_comment_id
           ? 'Someone replied to your comment'
           : 'Someone commented on your post',
-        postId,
+        `/posts/${postId}`,
         now,
       )
       .run();
