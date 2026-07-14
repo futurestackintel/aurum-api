@@ -534,10 +534,10 @@ async function handlePostCheer(postId, request, env) {
     await db
       .prepare(`
         INSERT INTO notifications
-          (id, user_id, type, title, body, reference_id, created_at)
-        VALUES (?, ?, 'post_cheer', 'Someone cheered your post', 'Your Wealth Journey post received a cheer!', ?, ?)
+          (id, user_id, type, title, body, action_url, created_at)
+        VALUES (?, ?, 'post_reacted', 'Someone cheered your post', 'Your Wealth Journey post received a cheer!', ?, ?)
       `)
-      .bind(crypto.randomUUID(), post.user_id, postId, now)
+      .bind(crypto.randomUUID(), post.user_id, `/posts/${postId}`, now)
       .run();
   }
 
