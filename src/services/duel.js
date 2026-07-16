@@ -357,14 +357,14 @@ export async function announceDuel(duelId, clerkId, db) {
     await db
       .prepare(`
         INSERT INTO notifications
-          (id, user_id, type, title, body, reference_id, created_at)
+          (id, user_id, type, title, body, action_url, created_at)
         VALUES (?, ?, 'duel_announced', 'Duel Announced', ?, ?, ?)
       `)
       .bind(
         crypto.randomUUID(),
         watcher.user_id,
         `The duel "${duel.title}" has been publicly announced.`,
-        duelId,
+        `/duels/${duelId}`,
         now,
       )
       .run();
