@@ -66,13 +66,12 @@ export async function assignLeague(userId, db) {
       await db
         .prepare(`
           INSERT INTO notifications
-            (id, user_id, type, message, read, created_at)
-          VALUES (?, ?, ?, ?, 0, ?)
+            (id, user_id, type, title, body, action_url, created_at)
+          VALUES (?, ?, 'league_promoted', 'League Promotion 🏆', ?, '/leaderboard', ?)
         `)
         .bind(
           crypto.randomUUID(),
           userId,
-          'league_promotion',
           `You've been promoted to ${newLeague} League. 🏆`,
           new Date().toISOString(),
         )
