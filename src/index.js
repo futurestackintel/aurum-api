@@ -21,6 +21,7 @@ import { handleWalletRoutes }           from './routes/wallet.js';
 import { handleFoundingRoutes }         from './routes/founding.js';
 import { handleCrewRoutes }             from './routes/crew.js';
 import { handleCommentRoutes }          from './routes/comments.js';
+import { handleNotificationRoutes }     from './routes/notifications.js';
 import { runLeaderboardSnapshot }       from './services/leaderboardCron.js';
 import { updateExchangeRates }          from './services/currency.js';
 import { finaliseExpiredAppeals }       from './services/proofOfStake.js';
@@ -700,6 +701,7 @@ export default {
         (await handleDuelRoutes(pathname, request.method, request, env))      ||
         (await handleCrewRoutes(pathname, request.method, request, env))      ||
 		(await handleCommentRoutes(pathname, request.method, request, env))  ||
+		(await handleNotificationRoutes(pathname, request.method, request, env)) ||
         (await handleAdminRoutes(pathname, request.method, request, env));
 
       if (!response) {
