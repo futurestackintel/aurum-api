@@ -187,6 +187,21 @@ const CommentsAPI = {
     apiRequest('DELETE', `/api/comments/${commentId}`),
 };
 
+/* --- Notifications --- */
+const NotificationsAPI = {
+  getAll: (limit = 30, offset = 0) =>
+    apiRequest('GET', `/api/notifications?limit=${limit}&offset=${offset}`),
+
+  getUnreadCount: () =>
+    apiRequest('GET', '/api/notifications/unread-count'),
+
+  markRead: (id) =>
+    apiRequest('PATCH', `/api/notifications/${id}/read`),
+
+  markAllRead: () =>
+    apiRequest('PATCH', '/api/notifications/read-all'),
+};
+
 /* --- Subscriptions --- */
 const SubAPI = {
   upgrade: (data) => apiRequest('POST', '/api/subscriptions/upgrade', data),
@@ -450,6 +465,7 @@ window.AURUM = {
   DuelAPI,
   TipsAPI,
   CommentsAPI,
+  NotificationsAPI,
   SubAPI,
   ProfileAPI,
   SettingsAPI,
