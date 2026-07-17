@@ -1,54 +1,63 @@
 // notifications.js (routes)
-// GET  /api/notifications           - list current user's notifications
-// GET  /api/notifications/unread-count - unread badge count
-// PATCH /api/notifications/:id/read - mark one as read
-// PATCH /api/notifications/read-all - mark all as read
-// All routes require auth.
+// GET   /api/notifications              - list current user's notifications
+// GET   /api/notifications/unread-count - unread badge count
+// PATCH /api/notifications/:id/read     - mark one as read
+// PATCH /api/notifications/read-all     - mark all as read
+// All routes require auth, resolved internally (Clerk id -> internal DB id).
 
 import { getNotifications, getUnreadCount, markAsRead, markAllAsRead } from '../services/notifications.js';
+import { requireAuth } from '../middleware/auth.js';
 
-export async function handleNotificationRoutes(request, env, pathname, userId) {
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function handleNotificationRoutes(pathname, method, request, env) {
+  if (!pathname.startsWith('/api/notifications')) return null;
+
+  const user = await requireAuth(request, env);
+  if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  const dbUser = await env.DB
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(user.id)
+    .first();
+
+  if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
+
   const url = new URL(request.url);
 
-  if (pathname === '/api/notifications' && request.method === 'GET') {
-    const limit = parseInt(url.searchParams.get('limit') || '30', 10);
+  if (pathname === '/api/notifications' && method === 'GET') {
+    const limit  = parseInt(url.searchParams.get('limit')  || '30', 10);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
-    const notifications = await getNotifications(userId, env, limit, offset);
-    return new Response(JSON.stringify({ notifications }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const notifications = await getNotifications(dbUser.id, env, limit, offset);
+    return jsonResponse({ notifications });
   }
 
-  if (pathname === '/api/notifications/unread-count' && request.method === 'GET') {
-    const count = await getUnreadCount(userId, env);
-    return new Response(JSON.stringify({ count }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (pathname === '/api/notifications/unread-count' && method === 'GET') {
+    const count = await getUnreadCount(dbUser.id, env);
+    return jsonResponse({ count });
   }
 
   const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
-  if (readMatch && request.method === 'PATCH') {
+  if (readMatch && method === 'PATCH') {
     const notificationId = readMatch[1];
     try {
-      const result = await markAsRead(notificationId, userId, env);
-      return new Response(JSON.stringify(result), {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const result = await markAsRead(notificationId, dbUser.id, env);
+      return jsonResponse(result);
     } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: err.message }, 404);
     }
   }
 
-  if (pathname === '/api/notifications/read-all' && request.method === 'PATCH') {
-    const result = await markAllAsRead(userId, env);
-    return new Response(JSON.stringify(result), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (pathname === '/api/notifications/read-all' && method === 'PATCH') {
+    const result = await markAllAsRead(dbUser.id, env);
+    return jsonResponse(result);
   }
 
-  return null; // not a notifications route
+  return null;
 }
