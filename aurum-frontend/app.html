@@ -103,6 +103,158 @@
       background: var(--color-border);
     }
 
+		/* ---- Notification bell ---- */
+    .notif-bell-wrap {
+      position: relative;
+    }
+
+    .notif-bell-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: var(--space-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-text-muted);
+      transition: color var(--transition-base);
+    }
+
+    .notif-bell-btn:hover { color: var(--color-gold); }
+
+    .notif-bell-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+    }
+
+    .notif-bell-badge {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 999px;
+      background: var(--color-danger);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 16px;
+      text-align: center;
+      display: none;
+    }
+
+    .notif-bell-badge.visible { display: block; }
+
+    /* ---- Notification dropdown ---- */
+    .notif-dropdown {
+      position: absolute;
+      top: calc(var(--nav-height) + 8px);
+      right: var(--space-4);
+      width: 340px;
+      max-width: calc(100vw - 32px);
+      max-height: 420px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      z-index: var(--z-sticky);
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .notif-dropdown.open { display: flex; }
+
+    .notif-dropdown-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .notif-dropdown-title {
+      font-size: var(--text-sm);
+      font-weight: 500;
+      color: var(--color-text);
+    }
+
+    .notif-dropdown-markall {
+      background: none;
+      border: none;
+      color: var(--color-gold);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .notif-dropdown-list {
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .notif-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      border-bottom: 1px solid var(--color-border);
+      padding: var(--space-3) var(--space-4);
+      cursor: pointer;
+      transition: background var(--transition-base);
+    }
+
+    .notif-item:hover { background: var(--color-surface-2); }
+
+    .notif-item.unread {
+      background: rgba(201,168,76,0.06);
+      position: relative;
+    }
+
+    .notif-item.unread::before {
+      content: '';
+      position: absolute;
+      left: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-gold);
+    }
+
+    .notif-item.unread { padding-left: calc(var(--space-4) + 10px); }
+
+    .notif-item-title {
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      margin-bottom: 2px;
+    }
+
+    .notif-item-body {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      line-height: 1.4;
+      margin-bottom: 4px;
+    }
+
+    .notif-item-time {
+      font-size: 10px;
+      color: var(--color-text-dim);
+    }
+
+    .notif-dropdown-empty {
+      padding: var(--space-8) var(--space-4);
+      text-align: center;
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
     /* ---- Page content ---- */
     .page-content {
       flex: 1;
@@ -373,6 +525,21 @@
             <span class="app-bar-metric-label">Balance</span>
           </div>
           <div class="app-bar-divider" id="appbar-divider" style="display:none;"></div>
+        <div class="notif-bell-wrap">
+          <button class="notif-bell-btn" id="notif-bell-btn" aria-label="Notifications">
+            <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+            <span class="notif-bell-badge" id="notif-bell-badge">0</span>
+          </button>
+          <div class="notif-dropdown" id="notif-dropdown">
+            <div class="notif-dropdown-header">
+              <span class="notif-dropdown-title">Notifications</span>
+              <button class="notif-dropdown-markall" id="notif-markall-btn">Mark all read</button>
+            </div>
+            <div class="notif-dropdown-list" id="notif-dropdown-list">
+              <div class="notif-dropdown-empty">Loading...</div>
+            </div>
+          </div>
+        </div>
           <!-- Aurum Score -->
           <div class="app-bar-metric">
             <span class="app-bar-metric-value" id="user-score">—</span>
@@ -1155,7 +1322,466 @@
   /* =====================================================
      BOOT
   ===================================================== */
-  window.addEventListener('load', () => App.init());
+  /* =====================================================
+     NOTIFICATIONS
+  ===================================================== */
+  const Notifications = {
+    isOpen: false,
+
+    init() {
+      document.getElementById('notif-bell-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggle();
+      });
+      document.getElementById('notif-markall-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.markAllRead();
+      });
+      document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('notif-dropdown');
+        if (this.isOpen && !dropdown.contains(e.target)) this.close();
+      });
+      this.refreshUnreadCount();
+      /* Poll every 60s for new notifications */
+      setInterval(() => this.refreshUnreadCount(), 60000);
+    },
+
+    toggle() {
+      this.isOpen ? this.close() : this.open();
+    },
+
+    open() {
+      this.isOpen = true;
+      document.getElementById('notif-dropdown').classList.add('open');
+      this.loadNotifications();
+    },
+
+    close() {
+      this.isOpen = false;
+      document.getElementById('notif-dropdown').classList.remove('open');
+    },
+
+    async refreshUnreadCount() {
+      try {
+        const data  = await AURUM.NotificationsAPI.getUnreadCount();
+        const badge = document.getElementById('notif-bell-badge');
+        if (!badge) return;
+        if (data.count > 0) {
+          badge.textContent = data.count > 99 ? '99+' : data.count;
+          badge.classList.add('visible');
+        } else {
+          badge.classList.remove('visible');
+        }
+      } catch (err) { /* silent — badge just won't update */ }
+    },
+
+    async loadNotifications() {
+      const list = document.getElementById('notif-dropdown-list');
+      try {
+        const data = await AURUM.NotificationsAPI.getAll(30, 0);
+        const notifs = data.notifications || [];
+
+        if (!notifs.length) {
+          list.innerHTML = `<div class="notif-dropdown-empty">No notifications yet.</div>`;
+          return;
+        }
+
+        list.innerHTML = notifs.map(n => `
+          <button class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}" data-url="${n.action_url || ''}">
+            <div class="notif-item-title">${n.title}</div>
+            <div class="notif-item-body">${n.body}</div>
+            <div class="notif-item-time">${AURUM.timeAgo(n.created_at)}</div>
+          </button>
+        `).join('');
+
+        list.querySelectorAll('.notif-item').forEach(item => {
+          item.addEventListener('click', () => this.handleClick(item));
+        });
+      } catch (err) {
+        list.innerHTML = `<div class="notif-dropdown-empty">Could not load notifications.</div>`;
+      }
+    },
+
+    async handleClick(item) {
+      const id  = item.dataset.id;
+      const url = item.dataset.url;
+
+      if (item.classList.contains('unread')) {
+        item.classList.remove('unread');
+        try {
+          await AURUM.NotificationsAPI.markRead(id);
+          this.refreshUnreadCount();
+        } catch (err) { /* non-fatal */ }
+      }
+
+      this.close();
+      if (url) {
+        /* Internal app link — for now just log; wire to router
+           once notification action_urls map to real in-app routes */
+        console.log('Notification action_url:', url);
+      }
+    },
+
+    async markAllRead() {
+      try {
+        await AURUM.NotificationsAPI.markAllRead();
+        document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
+        this.refreshUnreadCount();
+      } catch (err) {
+        AURUM.showToast('Could not mark all as read.', 'error');
+      }
+    },
+  };
+
+  /* =====================================================
+     BOOT
+  ===================================================== */
+ /* =====================================================
+     NOTIFICATIONS
+  ===================================================== */
+  const Notifications = {
+    isOpen: false,
+
+    init() {
+      document.getElementById('notif-bell-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggle();
+      });
+      document.getElementById('notif-markall-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.markAllRead();
+      });
+      document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('notif-dropdown');
+        if (this.isOpen && !dropdown.contains(e.target)) this.close();
+      });
+      this.refreshUnreadCount();
+      /* Poll every 60s for new notifications */
+      setInterval(() => this.refreshUnreadCount(), 60000);
+    },
+
+    toggle() {
+      this.isOpen ? this.close() : this.open();
+    },
+
+    open() {
+      this.isOpen = true;
+      document.getElementById('notif-dropdown').classList.add('open');
+      this.loadNotifications();
+    },
+
+    close() {
+      this.isOpen = false;
+      document.getElementById('notif-dropdown').classList.remove('open');
+    },
+
+    async refreshUnreadCount() {
+      try {
+        const data  = await AURUM.NotificationsAPI.getUnreadCount();
+        const badge = document.getElementById('notif-bell-badge');
+        if (!badge) return;
+        if (data.count > 0) {
+          badge.textContent = data.count > 99 ? '99+' : data.count;
+          badge.classList.add('visible');
+        } else {
+          badge.classList.remove('visible');
+        }
+      } catch (err) { /* silent — badge just won't update */ }
+    },
+
+    async loadNotifications() {
+      const list = document.getElementById('notif-dropdown-list');
+      try {
+        const data = await AURUM.NotificationsAPI.getAll(30, 0);
+        const notifs = data.notifications || [];
+
+        if (!notifs.length) {
+          list.innerHTML = `<div class="notif-dropdown-empty">No notifications yet.</div>`;
+          return;
+        }
+
+        list.innerHTML = notifs.map(n => `
+          <button class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}" data-url="${n.action_url || ''}">
+            <div class="notif-item-title">${n.title}</div>
+            <div class="notif-item-body">${n.body}</div>
+            <div class="notif-item-time">${AURUM.timeAgo(n.created_at)}</div>
+          </button>
+        `).join('');
+
+        list.querySelectorAll('.notif-item').forEach(item => {
+          item.addEventListener('click', () => this.handleClick(item));
+        });
+      } catch (err) {
+        list.innerHTML = `<div class="notif-dropdown-empty">Could not load notifications.</div>`;
+      }
+    },
+
+    async handleClick(item) {
+      const id  = item.dataset.id;
+      const url = item.dataset.url;
+
+      if (item.classList.contains('unread')) {
+        item.classList.remove('unread');
+        try {
+          await AURUM.NotificationsAPI.markRead(id);
+          this.refreshUnreadCount();
+        } catch (err) { /* non-fatal */ }
+      }
+
+      this.close();
+      if (url) {
+        /* Internal app link — for now just log; wire to router
+           once notification action_urls map to real in-app routes */
+        console.log('Notification action_url:', url);
+      }
+    },
+
+    async markAllRead() {
+      try {
+        await AURUM.NotificationsAPI.markAllRead();
+        document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
+        this.refreshUnreadCount();
+      } catch (err) {
+        AURUM.showToast('Could not mark all as read.', 'error');
+      }
+    },
+  };
+
+  /* =====================================================
+     BOOT
+  ===================================================== */
+  /* =====================================================
+     NOTIFICATIONS
+  ===================================================== */
+  const Notifications = {
+    isOpen: false,
+
+    init() {
+      document.getElementById('notif-bell-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggle();
+      });
+      document.getElementById('notif-markall-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.markAllRead();
+      });
+      document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('notif-dropdown');
+        if (this.isOpen && !dropdown.contains(e.target)) this.close();
+      });
+      this.refreshUnreadCount();
+      /* Poll every 60s for new notifications */
+      setInterval(() => this.refreshUnreadCount(), 60000);
+    },
+
+    toggle() {
+      this.isOpen ? this.close() : this.open();
+    },
+
+    open() {
+      this.isOpen = true;
+      document.getElementById('notif-dropdown').classList.add('open');
+      this.loadNotifications();
+    },
+
+    close() {
+      this.isOpen = false;
+      document.getElementById('notif-dropdown').classList.remove('open');
+    },
+
+    async refreshUnreadCount() {
+      try {
+        const data  = await AURUM.NotificationsAPI.getUnreadCount();
+        const badge = document.getElementById('notif-bell-badge');
+        if (!badge) return;
+        if (data.count > 0) {
+          badge.textContent = data.count > 99 ? '99+' : data.count;
+          badge.classList.add('visible');
+        } else {
+          badge.classList.remove('visible');
+        }
+      } catch (err) { /* silent — badge just won't update */ }
+    },
+
+    async loadNotifications() {
+      const list = document.getElementById('notif-dropdown-list');
+      try {
+        const data = await AURUM.NotificationsAPI.getAll(30, 0);
+        const notifs = data.notifications || [];
+
+        if (!notifs.length) {
+          list.innerHTML = `<div class="notif-dropdown-empty">No notifications yet.</div>`;
+          return;
+        }
+
+        list.innerHTML = notifs.map(n => `
+          <button class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}" data-url="${n.action_url || ''}">
+            <div class="notif-item-title">${n.title}</div>
+            <div class="notif-item-body">${n.body}</div>
+            <div class="notif-item-time">${AURUM.timeAgo(n.created_at)}</div>
+          </button>
+        `).join('');
+
+        list.querySelectorAll('.notif-item').forEach(item => {
+          item.addEventListener('click', () => this.handleClick(item));
+        });
+      } catch (err) {
+        list.innerHTML = `<div class="notif-dropdown-empty">Could not load notifications.</div>`;
+      }
+    },
+
+    async handleClick(item) {
+      const id  = item.dataset.id;
+      const url = item.dataset.url;
+
+      if (item.classList.contains('unread')) {
+        item.classList.remove('unread');
+        try {
+          await AURUM.NotificationsAPI.markRead(id);
+          this.refreshUnreadCount();
+        } catch (err) { /* non-fatal */ }
+      }
+
+      this.close();
+      if (url) {
+        /* Internal app link — for now just log; wire to router
+           once notification action_urls map to real in-app routes */
+        console.log('Notification action_url:', url);
+      }
+    },
+
+    async markAllRead() {
+      try {
+        await AURUM.NotificationsAPI.markAllRead();
+        document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
+        this.refreshUnreadCount();
+      } catch (err) {
+        AURUM.showToast('Could not mark all as read.', 'error');
+      }
+    },
+  };
+
+  /* =====================================================
+     BOOT
+  ===================================================== */
+  /* =====================================================
+     NOTIFICATIONS
+  ===================================================== */
+  const Notifications = {
+    isOpen: false,
+
+    init() {
+      document.getElementById('notif-bell-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggle();
+      });
+      document.getElementById('notif-markall-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.markAllRead();
+      });
+      document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('notif-dropdown');
+        if (this.isOpen && !dropdown.contains(e.target)) this.close();
+      });
+      this.refreshUnreadCount();
+      /* Poll every 60s for new notifications */
+      setInterval(() => this.refreshUnreadCount(), 60000);
+    },
+
+    toggle() {
+      this.isOpen ? this.close() : this.open();
+    },
+
+    open() {
+      this.isOpen = true;
+      document.getElementById('notif-dropdown').classList.add('open');
+      this.loadNotifications();
+    },
+
+    close() {
+      this.isOpen = false;
+      document.getElementById('notif-dropdown').classList.remove('open');
+    },
+
+    async refreshUnreadCount() {
+      try {
+        const data  = await AURUM.NotificationsAPI.getUnreadCount();
+        const badge = document.getElementById('notif-bell-badge');
+        if (!badge) return;
+        if (data.count > 0) {
+          badge.textContent = data.count > 99 ? '99+' : data.count;
+          badge.classList.add('visible');
+        } else {
+          badge.classList.remove('visible');
+        }
+      } catch (err) { /* silent — badge just won't update */ }
+    },
+
+    async loadNotifications() {
+      const list = document.getElementById('notif-dropdown-list');
+      try {
+        const data = await AURUM.NotificationsAPI.getAll(30, 0);
+        const notifs = data.notifications || [];
+
+        if (!notifs.length) {
+          list.innerHTML = `<div class="notif-dropdown-empty">No notifications yet.</div>`;
+          return;
+        }
+
+        list.innerHTML = notifs.map(n => `
+          <button class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}" data-url="${n.action_url || ''}">
+            <div class="notif-item-title">${n.title}</div>
+            <div class="notif-item-body">${n.body}</div>
+            <div class="notif-item-time">${AURUM.timeAgo(n.created_at)}</div>
+          </button>
+        `).join('');
+
+        list.querySelectorAll('.notif-item').forEach(item => {
+          item.addEventListener('click', () => this.handleClick(item));
+        });
+      } catch (err) {
+        list.innerHTML = `<div class="notif-dropdown-empty">Could not load notifications.</div>`;
+      }
+    },
+
+    async handleClick(item) {
+      const id  = item.dataset.id;
+      const url = item.dataset.url;
+
+      if (item.classList.contains('unread')) {
+        item.classList.remove('unread');
+        try {
+          await AURUM.NotificationsAPI.markRead(id);
+          this.refreshUnreadCount();
+        } catch (err) { /* non-fatal */ }
+      }
+
+      this.close();
+      if (url) {
+        /* Internal app link — for now just log; wire to router
+           once notification action_urls map to real in-app routes */
+        console.log('Notification action_url:', url);
+      }
+    },
+
+    async markAllRead() {
+      try {
+        await AURUM.NotificationsAPI.markAllRead();
+        document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
+        this.refreshUnreadCount();
+      } catch (err) {
+        AURUM.showToast('Could not mark all as read.', 'error');
+      }
+    },
+  };
+
+  /* =====================================================
+     BOOT
+  ===================================================== */
+  window.addEventListener('load', () => {
+    App.init();
+    Notifications.init();
+  });
   </script>
 </body>
 </html>
