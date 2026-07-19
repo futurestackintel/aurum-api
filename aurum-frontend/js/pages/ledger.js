@@ -53,6 +53,16 @@ window.LedgerPage = {
       this.render();
       this.loadPosts(false);
       this.initialized = true;
+
+      /* FIX: browser back button used to exit the app entirely
+         while viewing post detail, since opening it never pushed a
+         history entry. Now popping our own history entry (pushed in
+         openPostDetail) just closes the detail view instead. */
+      window.addEventListener('popstate', (e) => {
+        if (this.currentDetailPostId) {
+          this.closePostDetail(true);
+        }
+      });
     }
   },
 
@@ -170,9 +180,12 @@ window.LedgerPage = {
         }
       });
 
-    /* Detail view — back button */
+    /* Detail view — back button — triggers browser history.back()
+       instead of calling closePostDetail() directly, so the browser's
+       native back button and this button stay in sync (both go
+       through the same popstate handler below). */
     document.getElementById('btn-detail-back')
-      ?.addEventListener('click', () => this.closePostDetail());
+      ?.addEventListener('click', () => history.back());
 
     /* Detail view — comment composer */
     document.getElementById('detail-comment-input')
@@ -367,6 +380,7 @@ window.LedgerPage = {
     }
 
     this.currentDetailPostId = String(postId);
+    history.pushState({ aurumPostDetail: true, postId }, '', location.pathname);
 
     document.getElementById('ledger-main').style.display      = 'none';
     document.getElementById('post-detail-view').style.display  = 'flex';
@@ -389,10 +403,19 @@ window.LedgerPage = {
     document.querySelector('.detail-scroll')?.scrollTo(0, 0);
   },
 
-  closePostDetail() {
+  closePostDetail(fromPopstate = false) {
     this.currentDetailPostId = null;
     document.getElementById('post-detail-view').style.display = 'none';
     document.getElementById('ledger-main').style.display       = 'block';
+
+    /* Only call history.back() if we're closing via some other
+       trigger (there isn't one right now, but this keeps the
+       function safe to call from anywhere later). If we got here
+       BECAUSE of a popstate event, the history entry is already
+       gone — calling back() again would skip an extra page. */
+    if (!fromPopstate && history.state?.aurumPostDetail) {
+      history.back();
+    }
   },
 
   async loadComments(postId) {
