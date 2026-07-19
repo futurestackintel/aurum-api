@@ -1413,10 +1413,44 @@
 
       this.close();
       if (url) {
-        /* Internal app link — for now just log; wire to router
-           once notification action_urls map to real in-app routes */
-        console.log('Notification action_url:', url);
+        this.navigateToActionUrl(url);
       }
+    },
+
+    /* Maps notification action_url patterns to real in-app views.
+       Known limitations:
+       - Posts: openPostDetail() only works if the post is already
+         in LedgerPage's local cache (built from whatever's loaded
+         in the feed). Older posts not yet loaded will show a
+         "could not open" toast instead of navigating — there's no
+         single-post-fetch endpoint yet to cover that gap.
+       - Duels: there's no per-duel detail view yet, so this just
+         opens the Arena and switches to the Duels tab, not the
+         specific duel. */
+    navigateToActionUrl(url) {
+      const postMatch = url.match(/^\/posts\/([^/]+)/);
+      if (postMatch) {
+        App.navigate('ledger');
+        setTimeout(() => window.LedgerPage?.openPostDetail(postMatch[1]), 50);
+        return;
+      }
+
+      if (url === '/leaderboard') {
+        App.navigate('leaderboard');
+        return;
+      }
+
+      const duelMatch = url.match(/^\/duels\/([^/]+)/);
+      if (duelMatch) {
+        App.navigate('arena');
+        setTimeout(() => {
+          document.querySelector('.arena-section-tab[data-section="duels"]')?.click();
+        }, 50);
+        return;
+      }
+
+      /* Unrecognized pattern — no known route, do nothing */
+      console.log('Notification action_url (no route mapped):', url);
     },
 
     async markAllRead() {
