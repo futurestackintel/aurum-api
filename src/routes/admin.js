@@ -53,6 +53,7 @@ import {
   getDisputeDetail,
   verifyDisputedPost,
   slashDisputedPost,
+  decideAppeal,
 }                                          from '../services/disputeResolution.js';
 import {
   submitUserFlag,
@@ -219,6 +220,21 @@ export async function handleAdminRoutes(path, method, request, env) {
     }
   }
 
+	// ── POST /api/admin/disputes/:postId/appeal-decision ─────
+  const appealDecisionMatch = path.match(/^\/api\/admin\/disputes\/([^/]+)\/appeal-decision$/);
+  if (appealDecisionMatch && method === 'POST') {
+    const { decision } = await request.json();
+    if (!['upheld', 'rejected'].includes(decision)) {
+      return json({ error: 'decision must be upheld or rejected' }, 400);
+    }
+    try {
+      const result = await decideAppeal(appealDecisionMatch[1], decision, admin.id, env);
+      return json(result);
+    } catch (err) {
+      return json({ error: err.message }, 400);
+    }
+  }
+	
   // ── GET /api/admin/flags ─────────────────────────────────
   if (path === '/api/admin/flags' && method === 'GET') {
     const url    = new URL(request.url);
