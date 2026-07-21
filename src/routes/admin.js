@@ -124,6 +124,11 @@ export async function handleAdminRoutes(path, method, request, env) {
   const admin = await requireAdmin(request, env);
   if (admin.error) return json({ error: admin.error }, 403);
 
+  // ── GET /api/admin/check — frontend admin-status probe ───
+  if (path === '/api/admin/check' && method === 'GET') {
+    return json({ is_admin: true });
+  }
+	
   // ── GET /api/admin/badge-requests ────────────────────────
   if (path === '/api/admin/badge-requests' && method === 'GET') {
     const url    = new URL(request.url);
