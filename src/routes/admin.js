@@ -60,6 +60,10 @@ import {
   resolveFlag,
 }                                          from '../services/fraudDetection.js';
 import {
+  getUnscoredEntries,
+  getResolvableChallenges,
+}                                          from '../services/adminQueue.js';
+import {
   getPlatformSummary,
   getDailyActiveUsers,
   getDauTrend,
@@ -241,6 +245,32 @@ export async function handleAdminRoutes(path, method, request, env) {
     }
   }
 
+// ── GET /api/admin/challenge-entries/unscored ───────────
+  if (path === '/api/admin/challenge-entries/unscored' && method === 'GET') {
+    const url    = new URL(request.url);
+    const limit  = parseInt(url.searchParams.get('limit')  ?? '50');
+    const offset = parseInt(url.searchParams.get('offset') ?? '0');
+    try {
+      const entries = await getUnscoredEntries(env, limit, offset);
+      return json({ entries });
+    } catch (err) {
+      console.error(err); return json({ error: "Something went wrong" }, 500);
+    }
+  }
+
+  // ── GET /api/admin/challenges/resolvable ─────────────────
+  if (path === '/api/admin/challenges/resolvable' && method === 'GET') {
+    const url    = new URL(request.url);
+    const limit  = parseInt(url.searchParams.get('limit')  ?? '50');
+    const offset = parseInt(url.searchParams.get('offset') ?? '0');
+    try {
+      const challenges = await getResolvableChallenges(env, limit, offset);
+      return json({ challenges });
+    } catch (err) {
+      console.error(err); return json({ error: "Something went wrong" }, 500);
+    }
+  }
+	
   // ── GET /api/admin/analytics/summary ────────────────────
   if (path === '/api/admin/analytics/summary' && method === 'GET') {
     try {
