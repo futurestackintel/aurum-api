@@ -540,6 +540,17 @@
             </div>
           </div>
         </div>
+          <!-- Admin icon — hidden by default, shown only if
+               /api/admin/check succeeds for this user -->
+          <button class="admin-icon-btn" id="admin-icon-btn"
+            style="display:none;" title="Admin Review Queue"
+            onclick="AdminPage.open()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.8">
+              <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/>
+            </svg>
+          </button>
+          <!-- Aurum Score -->
           <!-- Aurum Score -->
           <div class="app-bar-metric">
             <span class="app-bar-metric-value" id="user-score">—</span>
@@ -687,12 +698,14 @@
   </div>
 
   <!-- Scripts -->
+  <!-- Scripts -->
   <script src="js/api.js"></script>
   <script src="js/pages/ledger.js"></script>
   <script src="js/pages/arena.js"></script>
   <script src="js/pages/leaderboard.js"></script>
   <script src="js/pages/profile.js"></script>
   <script src="js/pages/elite-rooms.js"></script>
+  <script src="js/pages/admin.js"></script>
 
   <script>
   /* ============================================
@@ -744,6 +757,18 @@
          to show. Neither auth-screen nor app-shell is visible yet,
          so there is nothing to flash regardless of the outcome. */
       await this.checkAuth();
+
+      /* Admin icon check — silent, non-blocking. Only shows the
+         icon if this user passes the server-side admin check;
+         any failure (403, network) just leaves it hidden. */
+      if (this.user) {
+        AURUM.AdminAPI.checkStatus()
+          .then(() => {
+            const btn = document.getElementById('admin-icon-btn');
+            if (btn) btn.style.display = 'flex';
+          })
+          .catch(() => { /* not admin — icon stays hidden */ });
+      }
 
       /* The correct screen (showApp or showAuth) has already been
          made visible inside checkAuth. Now it's safe to remove the
