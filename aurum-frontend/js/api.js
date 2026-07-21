@@ -175,6 +175,55 @@ const TipsAPI = {
   send: (data) => apiRequest('POST', '/api/tips', data),
 };
 
+/* --- Admin --- */
+const AdminAPI = {
+  checkStatus: () =>
+    apiRequest('GET', '/api/admin/check'),
+
+  /* Disputed posts + appeals */
+  getDisputes: () =>
+    apiRequest('GET', '/api/admin/disputes'),
+
+  verifyPost: (postId) =>
+    apiRequest('POST', `/api/admin/disputes/${postId}/verify`),
+
+  slashPost: (postId, reason) =>
+    apiRequest('POST', `/api/admin/disputes/${postId}/slash`, { reason }),
+
+  decideAppeal: (postId, decision) =>
+    apiRequest('POST', `/api/admin/disputes/${postId}/appeal-decision`, { decision }),
+
+  /* Moderation flags */
+  getFlags: () =>
+    apiRequest('GET', '/api/admin/flags'),
+
+  resolveFlag: (flagId, decision, actionTaken) =>
+    apiRequest('POST', `/api/admin/flags/${flagId}/resolve`, { decision, action_taken: actionTaken }),
+
+  /* Badge requests */
+  getBadgeRequests: () =>
+    apiRequest('GET', '/api/admin/badge-requests'),
+
+  approveBadgeRequest: (id) =>
+    apiRequest('POST', `/api/admin/badge-requests/${id}/approve`),
+
+  rejectBadgeRequest: (id, reason) =>
+    apiRequest('POST', `/api/admin/badge-requests/${id}/reject`, { reason }),
+
+  /* Challenge entries + resolution */
+  getUnscoredEntries: () =>
+    apiRequest('GET', '/api/admin/challenge-entries/unscored'),
+
+  scoreEntry: (challengeId, userId, score) =>
+    apiRequest('POST', `/api/challenges/${challengeId}/score/${userId}`, { score }),
+
+  getResolvableChallenges: () =>
+    apiRequest('GET', '/api/admin/challenges/resolvable'),
+
+  resolveChallenge: (challengeId) =>
+    apiRequest('POST', `/api/challenges/${challengeId}/resolve`),
+};
+
 /* --- Comments --- */
 const CommentsAPI = {
   getForPost: (postId) =>
@@ -458,6 +507,7 @@ const ProfileCache = {
 window.AURUM = {
   Auth,
   AuthAPI,
+  AdminAPI,
   LeaderboardAPI,
   StatsAPI,
   LedgerAPI,
