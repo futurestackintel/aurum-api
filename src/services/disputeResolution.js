@@ -48,7 +48,47 @@ export async function getSubmittedAppeals(env, limit = 50, offset = 0) {
   `).bind(limit, offset).all();
   return results || [];
 }
+/**
+ * Get a single disputed/appealed post with full flag history and
+ * current stake state. Reads post_flags + post_stakes — the real,
+ * current tables — not the dead moderation_flags/stake_status.
+ * Called from GET /admin/disputes/:postId
+ */
+export async function getDisputeDetail(postId, env) {
+  const post = await env.DB.prepare(`
+    SELECT
+      p.*,
+      u.username,
+      u.email,
+      u.league,
+      u.aurum_score,
+      ps.amount_usd    AS stake_amount,
+      ps.status        AS stake_status,
+      ps.appeal_reason,
+      ps.appeal_status,
+      ps.appeal_deadline
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN post_stakes ps ON ps.post_id = p.id
+    WHERE p.id = ?
+  `).bind(postId).first();
 
+  if (!post) throw new Error('Post not found');
+
+  const flags = await env.DB.prepare(`
+    SELECT
+      f.id,
+      f.reason,
+      f.created_at,
+      u.username AS reporter_username
+    FROM post_flags f
+    JOIN users u ON u.id = f.flagged_by
+    WHERE f.post_id = ?
+    ORDER BY f.created_at ASC
+  `).bind(postId).all();
+
+  return { post, flags: flags.results };
+}
 /** Combined queue — both categories in one payload. */
 export async function getDisputeQueue(env, limit = 50, offset = 0) {
   const [suspended, appeals] = await Promise.all([
