@@ -30,6 +30,8 @@ import {
   setStreamReady,
   audienceTip,
   castDuelVote,
+  reportDuelCheating,
+  decideDuelDispute,
 } from '../services/duel.js';
 
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -214,13 +216,42 @@ export async function handleDuelRoutes(path, method, request, env) {
     }
   }
 
-// NOTE: the old admin-manual /resolve route was removed here —
-  // winner determination is now automatic via closeDuelWindow()
-  // (Stage 3/4 will add the cron trigger + the real admin dispute
-  // decision route to replace this).
+// ── POST /api/duels/:id/report ──────────────────────────
+  const reportMatch = path.match(/^\/api\/duels\/([^/]+)\/report$/);
+  if (reportMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body   = await request.json();
+      const result = await reportDuelCheating(reportMatch[1], user.id, body.reason, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Report duel error:', err);
+      return jsonResponse({ error: 'Unable to submit report. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/duels/:id/dispute-decision — admin ────────
+  const disputeDecisionMatch = path.match(/^\/api\/duels\/([^/]+)\/dispute-decision$/);
+  if (disputeDecisionMatch && method === 'POST') {
+    const admin = await requireAdmin(request, env);
+    if (admin.error) return jsonResponse({ error: admin.error }, 403);
+
+    try {
+      const body = await request.json();
+      if (!body.decision) return jsonResponse({ error: 'decision is required' }, 400);
+      const result = await decideDuelDispute(disputeDecisionMatch[1], body.decision, admin.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Decide duel dispute error:', err);
+      return jsonResponse({ error: 'Unable to decide dispute. Please try again.' }, 500);
+    }
+  }
 
   return null;
-}
 
 // ── Helper ──────────────────────────────────────────────────
 function jsonResponse(data, status = 200) {
