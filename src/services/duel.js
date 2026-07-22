@@ -700,7 +700,55 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
   return { winner_id: winnerId, loser_id: loserId, total_payout: totalEscrow };
 }
 
-// ── GET ACTIVE DUELS ─────────────────────────────────────────
+// ── CRON: PROCESS DUEL WINDOWS + PAYOUTS ─────────────────────
+// Runs every 15 minutes (see wrangler.jsonc + index.js scheduled()).
+// Two jobs: (1) close any active duel whose window has ended,
+// tallying votes; (2) release escrow for any duel whose dispute
+// window has closed uncontested.
+
+export async function processDuelCron(db) {
+  const now = nowISO();
+
+  // Job 1 — close windows that have ended
+  const { results: toClose } = await db
+    .prepare(`SELECT id FROM duels WHERE status = 'active' AND ends_at <= ?`)
+    .bind(now)
+    .all();
+
+  for (const row of toClose) {
+    try {
+      await closeDuelWindow(row.id, db);
+    } catch (err) {
+      console.error(`processDuelCron: closeDuelWindow failed for ${row.id}:`, err);
+    }
+  }
+
+  // Job 2 — release escrow for uncontested duels past their dispute deadline
+  const { results: toRelease } = await db
+    .prepare(`
+      SELECT * FROM duels
+      WHERE dispute_status = 'window_open'
+        AND dispute_deadline <= ?
+        AND payout_released = 0
+    `)
+    .bind(now)
+    .all();
+
+  for (const duel of toRelease) {
+    try {
+      const payout = await releaseDuelEscrow(duel.id, duel.winner_id, duel, db);
+      if (!payout.error) {
+        await db.prepare(`
+          UPDATE duels SET dispute_status = 'resolved', status = 'resolved', resolved_at = ? WHERE id = ?
+        `).bind(nowISO(), duel.id).run();
+      }
+    } catch (err) {
+      console.error(`processDuelCron: releaseDuelEscrow failed for ${duel.id}:`, err);
+    }
+  }
+
+  return { closed: toClose.length, released: toRelease.length };
+}
 
 // ── GET ACTIVE DUELS ─────────────────────────────────────────
 
