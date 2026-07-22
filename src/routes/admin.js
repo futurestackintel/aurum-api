@@ -364,9 +364,9 @@ export async function handleAdminRoutes(path, method, request, env) {
     const { reason } = await request.json();
     try {
       await env.DB.prepare(`
-        UPDATE users SET is_banned = 1, banned_reason = ?, banned_at = ?
+        UPDATE users SET is_suspended = 1, suspension_reason = ?
         WHERE id = ?
-      `).bind(reason ?? null, new Date().toISOString(), banMatch[1]).run();
+      `).bind(reason ?? null, banMatch[1]).run();
       return json({ success: true, userId: banMatch[1], action: 'banned' });
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
@@ -378,7 +378,7 @@ export async function handleAdminRoutes(path, method, request, env) {
   if (unbanMatch && method === 'POST') {
     try {
       await env.DB.prepare(`
-        UPDATE users SET is_banned = 0, banned_reason = NULL, banned_at = NULL
+        UPDATE users SET is_suspended = 0, suspension_reason = NULL
         WHERE id = ?
       `).bind(unbanMatch[1]).run();
       return json({ success: true, userId: unbanMatch[1], action: 'unbanned' });
