@@ -252,43 +252,6 @@ export async function submitDuelProof(duelId, clerkId, body, db) {
   };
 }
 
-// ── RESOLVE DUEL ─────────────────────────────────────────────
-// ── CLOSE DUEL WINDOW — tally reactions, open dispute window ──
-// Triggered by cron when duel.ends_at has passed and status is
-// still 'active'. Determines winner by counting post_reactions on
-// the duel's linked post, excluding reactions from the two
-// participants themselves. Does NOT release any payout — that
-// only happens after the dispute window closes uncontested
-// (see finaliseDuelPayouts) or an admin resolves a report.
-
-export async function closeDuelWindow(duelId, db) {
-  const duel = await db
-    .prepare(`SELECT * FROM duels WHERE id = ?`)
-    .bind(duelId)
-    .first();
-
-  if (!duel)                     return { error: 'Duel not found' };
-  if (duel.status !== 'active')  return { error: `Duel is not active (status: ${duel.status})` };
-  if (!duel.post_id)             return { error: 'Duel has no linked post' };
-
-  const { results: reactions } = await db
-    .prepare(`SELECT user_id FROM post_reactions WHERE post_id = ?`)
-    .bind(duel.post_id)
-    .all();
-
-  let challengerVotes = 0;
-  let targetVotes      = 0;
-  // Note: this counts reactions FOR each participant's post authorship,
-  // not reactions split between two posts. Since only one post exists
-  // (authored by the challenger), reaction tallying by "who supports
-  // whom" requires a lightweight convention: reactions are simply
-  // counted as support for the post overall, split via reply/vote
-  // intent is not distinguishable from reaction type alone.
-  // See note below — this needs your input before finalizing.
-
-  return { needs_design_input: true };
-}
-
 // ── FEATURE 3: ANNOUNCE DUEL ─────────────────────────────────
 
 export async function announceDuel(duelId, clerkId, db) {
@@ -493,13 +456,70 @@ export async function audienceTip(duelId, participantId, clerkId, body, db) {
 }
 
 // ── FEATURE 5: COMMUNITY VOTE ────────────────────────────────
-// ── CLOSE DUEL WINDOW — tally reactions, open dispute window ──
+// Same as audienceTip — participantId is already an internal id
+// from the frontend; only voterId (Clerk id) needs resolving.
+// Auto-resolve removed — voting just records the vote now; the
+// winner is only tallied once, at window close (see closeDuelWindow).
+
+export async function castDuelVote(duelId, participantId, clerkId, db) {
+  const voterId = await resolveUserId(clerkId, db);
+  if (!voterId) return { error: 'User not found' };
+
+  const duel = await db
+    .prepare(`SELECT * FROM duels WHERE id = ?`)
+    .bind(duelId)
+    .first();
+
+  if (!duel)                    return { error: 'Duel not found' };
+  if (duel.status !== 'active') return { error: 'Duel is not active' };
+
+  if (participantId !== duel.challenger_id && participantId !== duel.target_id) {
+    return { error: 'You must vote for one of the duel participants' };
+  }
+
+  // Participants cannot vote
+  if (voterId === duel.challenger_id || voterId === duel.target_id) {
+    return { error: 'Duel participants cannot vote on their own duel' };
+  }
+
+  // One vote per member
+  const existing = await db
+    .prepare(`SELECT id FROM duel_votes WHERE duel_id = ? AND voter_id = ?`)
+    .bind(duelId, voterId)
+    .first();
+
+  if (existing) return { error: 'You have already voted on this duel' };
+
+  const now            = nowISO();
+  const isChallenger   = participantId === duel.challenger_id;
+  const voteColumn     = isChallenger
+    ? 'community_vote_challenger'
+    : 'community_vote_target';
+
+  await db.batch([
+    db.prepare(`
+      INSERT INTO duel_votes (id, duel_id, voter_id, voted_for_id, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(crypto.randomUUID(), duelId, voterId, participantId, now),
+
+    db.prepare(`
+      UPDATE duels SET ${voteColumn} = ${voteColumn} + 1 WHERE id = ?
+    `).bind(duelId),
+  ]);
+
+  return {
+    voted:     true,
+    duel_id:   duelId,
+    voted_for: participantId,
+  };
+}
+
+// ── CLOSE DUEL WINDOW ────────────────────────────────────────
 // Triggered by cron when duel.ends_at has passed and status is
-// still 'active'. Determines winner by counting post_reactions on
-// the duel's linked post, excluding reactions from the two
-// participants themselves. Does NOT release any payout — that
-// only happens after the dispute window closes uncontested
-// (see finaliseDuelPayouts) or an admin resolves a report.
+// still 'active'. Winner = simple majority of duel_votes. Does
+// NOT release any payout — that only happens after the dispute
+// window closes uncontested (see finaliseDuelPayouts) or an admin
+// resolves a report via decideDuelDispute.
 
 export async function closeDuelWindow(duelId, db) {
   const duel = await db
@@ -509,24 +529,37 @@ export async function closeDuelWindow(duelId, db) {
 
   if (!duel)                     return { error: 'Duel not found' };
   if (duel.status !== 'active')  return { error: `Duel is not active (status: ${duel.status})` };
-  if (!duel.post_id)             return { error: 'Duel has no linked post' };
 
-  const { results: reactions } = await db
-    .prepare(`SELECT user_id FROM post_reactions WHERE post_id = ?`)
-    .bind(duel.post_id)
-    .all();
+  const challengerVotes = duel.community_vote_challenger ?? 0;
+  const targetVotes     = duel.community_vote_target ?? 0;
 
-  let challengerVotes = 0;
-  let targetVotes      = 0;
-  // Note: this counts reactions FOR each participant's post authorship,
-  // not reactions split between two posts. Since only one post exists
-  // (authored by the challenger), reaction tallying by "who supports
-  // whom" requires a lightweight convention: reactions are simply
-  // counted as support for the post overall, split via reply/vote
-  // intent is not distinguishable from reaction type alone.
-  // See note below — this needs your input before finalizing.
+  let winnerId = null;
+  if (challengerVotes > targetVotes)      winnerId = duel.challenger_id;
+  else if (targetVotes > challengerVotes) winnerId = duel.target_id;
+  // Tie → winnerId stays null, goes to admin review instead of a dispute window
 
-  return { needs_design_input: true };
+  const now             = nowISO();
+  const disputeDeadline = new Date(Date.now() + 4.5 * 60 * 60 * 1000).toISOString();
+
+  if (!winnerId) {
+    await db.prepare(`
+      UPDATE duels SET status = 'tied', dispute_status = 'reported', resolved_at = ? WHERE id = ?
+    `).bind(now, duelId).run();
+
+    return { duel_id: duelId, tied: true, needs_admin_review: true };
+  }
+
+  await db.prepare(`
+    UPDATE duels
+    SET winner_id = ?, dispute_status = 'window_open', dispute_deadline = ?
+    WHERE id = ?
+  `).bind(winnerId, disputeDeadline, duelId).run();
+
+  return {
+    duel_id:          duelId,
+    winner_id:        winnerId,
+    dispute_deadline: disputeDeadline,
+  };
 }
 
 // ── GET ACTIVE DUELS ─────────────────────────────────────────
