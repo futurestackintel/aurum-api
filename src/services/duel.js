@@ -509,23 +509,22 @@ export async function audienceTip(duelId, participantId, clerkId, body, db) {
     ? 'audience_tips_challenger'
     : 'audience_tips_target';
 
+  // Escrowed — tip is recorded and the tipper is debited now, but the
+  // participant's wallet is NOT credited yet. The full escrowed total
+  // (both audience_tips_* columns + both stakes) is released to the
+  // winner in one payout when the duel resolves (see finaliseDuelPayouts).
   await db.batch([
     db.prepare(`
       INSERT INTO tips
         (id, sender_id, receiver_id, duel_id, amount_cents, platform_fee_cents,
          receiver_net_cents, is_wallet_tip, status, created_at)
-      VALUES (?, ?, ?, ?, ?, 0, ?, 1, 'completed', ?)
+      VALUES (?, ?, ?, ?, ?, 0, ?, 1, 'escrowed', ?)
     `).bind(tipId, tipperId, participantId, duelId, amountCents, amountCents, now),
 
     db.prepare(`
       UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
       WHERE user_id = ?
     `).bind(amount_usd, now, tipperId),
-
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(amount_usd, now, participantId),
 
     db.prepare(`
       UPDATE duels SET ${tipColumn} = ${tipColumn} + ? WHERE id = ?
