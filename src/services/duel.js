@@ -562,6 +562,146 @@ export async function closeDuelWindow(duelId, db) {
   };
 }
 
+// ── REPORT DUEL CHEATING ─────────────────────────────────────
+// Only the losing participant can report, only while the dispute
+// window is open. Holds the payout by moving dispute_status to
+// 'reported' — finaliseDuelPayouts will skip any duel in this
+// state, and it becomes visible in the admin dispute queue instead.
+
+export async function reportDuelCheating(duelId, clerkId, reason, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
+  const duel = await db
+    .prepare(`SELECT * FROM duels WHERE id = ?`)
+    .bind(duelId)
+    .first();
+
+  if (!duel)                                return { error: 'Duel not found' };
+  if (duel.dispute_status !== 'window_open') return { error: 'This duel is not open for reporting' };
+  if (!duel.winner_id)                      return { error: 'Duel has no winner yet' };
+  if (duel.winner_id === userId)            return { error: 'Only the losing participant can report' };
+  if (userId !== duel.challenger_id && userId !== duel.target_id) {
+    return { error: 'You are not a participant in this duel' };
+  }
+  if (new Date(duel.dispute_deadline) <= new Date()) {
+    return { error: 'The dispute window has closed' };
+  }
+  if (!reason || reason.trim().length === 0) {
+    return { error: 'A reason is required to report' };
+  }
+
+  await db.prepare(`
+    UPDATE duels
+    SET dispute_status = 'reported', dispute_reported_by = ?, dispute_reason = ?
+    WHERE id = ?
+  `).bind(userId, reason.trim(), duelId).run();
+
+  return { reported: true, duel_id: duelId };
+}
+
+// ── ADMIN: DECIDE DUEL DISPUTE ────────────────────────────────
+// decision: 'upheld' (report was valid — flip the winner to the
+// original loser and release escrow to them) or 'rejected' (report
+// was invalid — release escrow to the original winner as normal).
+// Mirrors the shape of decideAppeal() in disputeResolution.js.
+
+export async function decideDuelDispute(duelId, decision, adminId, db) {
+  if (!['upheld', 'rejected'].includes(decision)) {
+    return { error: 'decision must be upheld or rejected' };
+  }
+
+  const duel = await db
+    .prepare(`SELECT * FROM duels WHERE id = ?`)
+    .bind(duelId)
+    .first();
+
+  if (!duel)                                return { error: 'Duel not found' };
+  if (duel.dispute_status !== 'reported' && duel.status !== 'tied') {
+    return { error: 'This duel has no pending dispute' };
+  }
+
+  let finalWinnerId = duel.winner_id;
+
+  if (decision === 'upheld') {
+    // Report was valid — flip winner to whoever was NOT the original winner
+    finalWinnerId = duel.winner_id === duel.challenger_id
+      ? duel.target_id
+      : duel.challenger_id;
+  }
+
+  if (duel.status === 'tied' && !finalWinnerId) {
+    // Admin resolving a tie — decision param doubles as which side wins
+    // isn't expressible via upheld/rejected alone, so this path requires
+    // the admin route to pass an explicit winner_id instead (see routes).
+    return { error: 'Tied duels must be resolved with an explicit winner_id, not upheld/rejected' };
+  }
+
+  const payout = await releaseDuelEscrow(duelId, finalWinnerId, duel, db);
+  if (payout.error) return payout;
+
+  await db.prepare(`
+    UPDATE duels
+    SET winner_id = ?, dispute_status = 'resolved', status = 'resolved', resolved_at = ?
+    WHERE id = ?
+  `).bind(finalWinnerId, nowISO(), duelId).run();
+
+  return { resolved: true, duel_id: duelId, winner_id: finalWinnerId, decision };
+}
+
+// ── SHARED PAYOUT LOGIC ───────────────────────────────────────
+// Called by both decideDuelDispute (admin path) and
+// finaliseDuelPayouts (auto-release cron, Stage 4). Credits the
+// winner with both stakes + both escrowed audience tip totals in
+// one wallet update, and marks all related tips as completed.
+
+export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
+  if (duel.payout_released) return { error: 'Payout already released for this duel' };
+
+  const loserId = winnerId === duel.challenger_id ? duel.target_id : duel.challenger_id;
+  const now     = nowISO();
+
+  const totalEscrow =
+    duel.duel_tip_amount +
+    (duel.audience_tips_challenger ?? 0) +
+    (duel.audience_tips_target ?? 0);
+
+  await db.batch([
+    // Loser's own stake moves to winner (challenger/target each staked
+    // duel_tip_amount at creation — only the loser's stake actually
+    // needs debiting from their wallet here; the winner's own stake
+    // was never debited from them, it's already "theirs" conceptually,
+    // so only the loser's stake + all escrowed audience tips move).
+    db.prepare(`
+      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
+      WHERE user_id = ?
+    `).bind(duel.duel_tip_amount, now, loserId),
+
+    db.prepare(`
+      UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
+      WHERE user_id = ?
+    `).bind(totalEscrow, now, winnerId),
+
+    db.prepare(`
+      UPDATE tips SET status = 'completed', completed_at = ? WHERE duel_id = ?
+    `).bind(now, duelId),
+
+    db.prepare(`
+      UPDATE duels SET payout_released = 1 WHERE id = ?
+    `).bind(duelId),
+  ]);
+
+  await addScoreEvent(
+    winnerId, 'challenge_win', null,
+    { challenge_id: duelId, note: `Won duel: ${duel.title}` },
+    db,
+  );
+
+  return { winner_id: winnerId, loser_id: loserId, total_payout: totalEscrow };
+}
+
+// ── GET ACTIVE DUELS ─────────────────────────────────────────
+
 // ── GET ACTIVE DUELS ─────────────────────────────────────────
 
 export async function getActiveDuels(limit, offset, db) {
