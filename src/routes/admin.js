@@ -63,6 +63,7 @@ import {
 import {
   getUnscoredEntries,
   getResolvableChallenges,
+  getDisputedDuels,
 }                                          from '../services/adminQueue.js';
 import {
   getPlatformSummary,
@@ -287,6 +288,19 @@ export async function handleAdminRoutes(path, method, request, env) {
     try {
       const challenges = await getResolvableChallenges(env, limit, offset);
       return json({ challenges });
+    } catch (err) {
+      console.error(err); return json({ error: "Something went wrong" }, 500);
+    }
+  }
+
+  // ── GET /api/admin/duels/disputes ────────────────────────
+  if (path === '/api/admin/duels/disputes' && method === 'GET') {
+    const url    = new URL(request.url);
+    const limit  = parseInt(url.searchParams.get('limit')  ?? '50');
+    const offset = parseInt(url.searchParams.get('offset') ?? '0');
+    try {
+      const duels = await getDisputedDuels(env, limit, offset);
+      return json({ duels });
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
     }
