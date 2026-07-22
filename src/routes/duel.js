@@ -23,7 +23,6 @@ import {
   acceptDuel,
   declineDuel,
   submitDuelProof,
-  resolveDuel,
   getActiveDuels,
   getDuelById,
   announceDuel,
@@ -32,6 +31,7 @@ import {
   audienceTip,
   castDuelVote,
 } from '../services/duel.js';
+
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { streakMiddleware }          from '../services/streak.js';
 
@@ -214,23 +214,10 @@ export async function handleDuelRoutes(path, method, request, env) {
     }
   }
 
-  // ── POST /api/duels/:id/resolve — admin ─────────────────
-  const resolveMatch = path.match(/^\/api\/duels\/([^/]+)\/resolve$/);
-  if (resolveMatch && method === 'POST') {
-    const admin = await requireAdmin(request, env);
-    if (admin.error) return jsonResponse({ error: admin.error }, 403);
-
-    try {
-      const body = await request.json();
-      if (!body.winner_id) return jsonResponse({ error: 'winner_id is required' }, 400);
-      const result = await resolveDuel(resolveMatch[1], body.winner_id, admin.id, db);
-      if (result.error) return jsonResponse({ error: result.error }, 400);
-      return jsonResponse(result);
-    } catch (err) {
-      console.error('Resolve duel error:', err);
-      return jsonResponse({ error: 'Unable to resolve duel. Please try again.' }, 500);
-    }
-  }
+// NOTE: the old admin-manual /resolve route was removed here —
+  // winner determination is now automatic via closeDuelWindow()
+  // (Stage 3/4 will add the cron trigger + the real admin dispute
+  // decision route to replace this).
 
   return null;
 }
