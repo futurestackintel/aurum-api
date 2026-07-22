@@ -96,8 +96,8 @@ export async function getRevenueBreakdown(env, period = 'month') {
   const challengeFees = await env.DB.prepare(`
     SELECT
       COUNT(*)                          as count,
-      SUM(pool_amount * 0.05)           as total_cents
-    FROM drop_circles
+      SUM(pool_total_cents * 0.05)      as total_cents
+    FROM challenges
     WHERE status     = 'completed'
       AND created_at >= ?
   `).bind(since).first();
@@ -235,7 +235,7 @@ export async function getPlatformSummary(env) {
     env.DB.prepare(`SELECT COUNT(*) as count FROM moderation_flags WHERE status = 'pending'`).first(),
     env.DB.prepare(`SELECT COUNT(*) as count FROM badge_requests WHERE status = 'pending'`).first(),
     env.DB.prepare(`SELECT COUNT(*) as count, SUM(amount_cents) as volume FROM tips`).first(),
-    env.DB.prepare(`SELECT COUNT(*) as count FROM drop_circles`).first(),
+    env.DB.prepare(`SELECT COUNT(*) as count FROM challenges`).first(),
   ]);
 
   return {
