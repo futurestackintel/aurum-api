@@ -50,7 +50,7 @@ export async function getTreasuryStats(env) {
     SELECT
       status,
       COUNT(*)          as count,
-      SUM(total_held)   as total_cents
+      SUM(total_held_cents)   as total_cents
     FROM treasury_ledger
     GROUP BY status
   `).all();
@@ -87,7 +87,7 @@ export async function getRevenueBreakdown(env, period = 'month') {
   const tipFees = await env.DB.prepare(`
     SELECT
       COUNT(*)        as count,
-      SUM(fee_taken)  as total_cents
+      SUM(platform_fee_cents)  as total_cents
     FROM tips
     WHERE created_at >= ?
   `).bind(since).first();
@@ -234,7 +234,7 @@ export async function getPlatformSummary(env) {
     env.DB.prepare(`SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'`).first(),
     env.DB.prepare(`SELECT COUNT(*) as count FROM moderation_flags WHERE status = 'pending'`).first(),
     env.DB.prepare(`SELECT COUNT(*) as count FROM badge_requests WHERE status = 'pending'`).first(),
-    env.DB.prepare(`SELECT COUNT(*) as count, SUM(amount) as volume FROM tips`).first(),
+    env.DB.prepare(`SELECT COUNT(*) as count, SUM(amount_cents) as volume FROM tips`).first(),
     env.DB.prepare(`SELECT COUNT(*) as count FROM drop_circles`).first(),
   ]);
 
