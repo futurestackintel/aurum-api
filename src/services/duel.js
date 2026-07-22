@@ -136,21 +136,46 @@ export async function acceptDuel(duelId, clerkId, db) {
     return { error: 'Duel invitation has expired' };
   }
 
-  const now    = new Date();
-  const endsAt = new Date(now.getTime() + DEFAULT_DUEL_DAYS * 24 * 60 * 60 * 1000);
+  const now       = new Date();
+  const windowHrs = duel.window_hours ?? DEFAULT_DUEL_DAYS * 24;
+  const endsAt    = new Date(now.getTime() + windowHrs * 60 * 60 * 1000);
 
-  await db
-    .prepare(`
+  const [challenger, target] = await Promise.all([
+    db.prepare(`SELECT username FROM users WHERE id = ?`).bind(duel.challenger_id).first(),
+    db.prepare(`SELECT username FROM users WHERE id = ?`).bind(duel.target_id).first(),
+  ]);
+
+  const postId = crypto.randomUUID();
+  const postContent =
+    `⚔️ Duel: ${duel.title}\n@${challenger?.username ?? 'challenger'} vs @${target?.username ?? 'opponent'}\n` +
+    (duel.description ? duel.description : '');
+
+  await db.batch([
+    db.prepare(`
+      INSERT INTO posts
+        (id, user_id, content, achievement_category, stake_amount_cents, duel_id, created_at, updated_at)
+      VALUES (?, ?, ?, 'challenge_win', ?, ?, ?, ?)
+    `).bind(
+      postId,
+      duel.challenger_id,
+      postContent,
+      Math.round(duel.duel_tip_amount * 100),
+      duelId,
+      now.toISOString(),
+      now.toISOString(),
+    ),
+
+    db.prepare(`
       UPDATE duels
-      SET status = 'active', accepted_at = ?, ends_at = ?
+      SET status = 'active', accepted_at = ?, ends_at = ?, post_id = ?, dispute_status = 'none'
       WHERE id = ?
-    `)
-    .bind(now.toISOString(), endsAt.toISOString(), duelId)
-    .run();
+    `).bind(now.toISOString(), endsAt.toISOString(), postId, duelId),
+  ]);
 
   return {
     accepted: true,
     duel_id:  duelId,
+    post_id:  postId,
     ends_at:  endsAt.toISOString(),
   };
 }
