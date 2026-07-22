@@ -26,6 +26,7 @@ import { runLeaderboardSnapshot }       from './services/leaderboardCron.js';
 import { updateExchangeRates }          from './services/currency.js';
 import { finaliseExpiredAppeals }       from './services/proofOfStake.js';
 import { expireChallenges }             from './services/dropCircle.js';
+import { processDuelCron }              from './services/duel.js';
 import { requireAuth }                  from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
 
@@ -723,6 +724,11 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    if (event.cron === '*/15 * * * *') {
+      ctx.waitUntil(processDuelCron(env.DB));
+      return;
+    }
+
     ctx.waitUntil(
       Promise.all([
         runLeaderboardSnapshot(env),
@@ -733,7 +739,6 @@ export default {
       ]),
     );
   },
-};
 
 // ── CORS helper ───────────────────────────────────────────────
 function withCors(response, cors) {
