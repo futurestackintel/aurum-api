@@ -728,7 +728,6 @@ export default {
       ctx.waitUntil(processDuelCron(env.DB));
       return;
     }
-
     ctx.waitUntil(
       Promise.all([
         runLeaderboardSnapshot(env),
@@ -739,6 +738,7 @@ export default {
       ]),
     );
   },
+};
 
 // ── CORS helper ───────────────────────────────────────────────
 function withCors(response, cors) {
