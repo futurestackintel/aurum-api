@@ -741,9 +741,14 @@ window.ArenaPage = {
   },
 
   duelHTML(duel, index) {
-    const isActive  = duel.status === 'active';
-    const isEnded   = duel.status === 'completed' || duel.status === 'ended';
-    const isPending = duel.status === 'pending';
+    const isActive     = duel.status === 'active';
+    const isPending     = duel.status === 'pending';
+    const isResolved    = duel.status === 'resolved' || duel.status === 'tied';
+    const disputeOpen   = duel.dispute_status === 'window_open';
+    const currentUserId = AURUM.currentUserId; // resolved internal id, set on app init
+    const isLoser       = disputeOpen && duel.winner_id &&
+      ((currentUserId === duel.challenger_id || currentUserId === duel.target_id) &&
+       currentUserId !== duel.winner_id);
 
     const secondsLeft = duel.ends_at
       ? Math.max(0, Math.floor((new Date(duel.ends_at) - new Date()) / 1000))
@@ -751,6 +756,8 @@ window.ArenaPage = {
 
     const challenger = duel.challenger_username || 'Challenger';
     const opponent   = duel.target_username     || 'Opponent';
+
+    const statusLabel = duel.status === 'tied' ? 'tied — under review' : (duel.status || 'pending');
 
     return `
       <div class="challenge-card card fade-in" style="animation-delay:${index * 80}ms;">
@@ -761,9 +768,9 @@ window.ArenaPage = {
             duel
           </span>
           <span style="font-size:10px;letter-spacing:0.06em;text-transform:uppercase;
-            color:${isActive ? 'var(--color-success)' : isEnded
+            color:${isActive ? 'var(--color-success)' : isResolved
               ? 'var(--color-text-muted)' : 'var(--color-gold)'};">
-            ${duel.status || 'pending'}
+            ${statusLabel}
           </span>
         </div>
 
@@ -788,6 +795,13 @@ window.ArenaPage = {
             <p style="font-size:var(--text-xs);color:var(--color-text);">${opponent}</p>
           </div>
         </div>
+
+        ${isResolved && duel.winner_username ? `
+          <div style="text-align:center;padding:var(--space-2);color:var(--color-gold);
+            font-size:var(--text-sm);">
+            🏆 Winner: @${duel.winner_username}
+          </div>
+        ` : ''}
 
         <!-- Stake + countdown -->
         <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -815,7 +829,7 @@ window.ArenaPage = {
           ` : ''}
 
           ${isActive ? `
-            <!-- Audience tip buttons -->
+            <!-- Audience tip buttons — held in escrow, not paid out instantly -->
             <button class="btn btn-ghost btn-sm btn-tip-challenger"
               data-duel-id="${duel.id}"
               data-participant-id="${duel.challenger_id}"
@@ -828,10 +842,8 @@ window.ArenaPage = {
               style="flex:1;">
               Tip ${opponent.split(' ')[0]} ₳1
             </button>
-          ` : ''}
 
-          ${isEnded ? `
-            <!-- Vote buttons -->
+            <!-- Vote buttons — available for the full active window -->
             <button class="btn btn-outline btn-sm btn-vote-duel"
               data-duel-id="${duel.id}"
               data-participant-id="${duel.challenger_id}"
@@ -846,6 +858,12 @@ window.ArenaPage = {
             </button>
           ` : ''}
 
+          ${isLoser ? `
+            <button class="btn btn-danger btn-full btn-sm btn-report-duel"
+              data-duel-id="${duel.id}"
+              style="flex:1;">🚩 Report Cheating</button>
+          ` : ''}
+
           ${isActive && duel.is_challenger ? `
             <button class="btn btn-primary btn-sm btn-announce-duel"
               data-duel-id="${duel.id}"
@@ -856,7 +874,7 @@ window.ArenaPage = {
       </div>
     `;
   },
-
+	
   bindDuelEvents() {
     /* Accept duel */
     document.querySelectorAll('.btn-accept-duel').forEach(btn => {
