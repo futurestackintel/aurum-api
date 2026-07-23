@@ -764,7 +764,12 @@ export async function getActiveDuels(limit, offset, db) {
         d.audience_tips_challenger, d.audience_tips_target,
         d.community_vote_challenger, d.community_vote_target,
         d.winner_id, d.dispute_status, d.dispute_deadline,
-        d.challenger_id, d.target_id,
+        d.challenger_id, d.target_id, d.resolved_at,
+        CASE
+          WHEN d.winner_id = d.challenger_id THEN uc.username
+          WHEN d.winner_id = d.target_id     THEN ut.username
+          ELSE NULL
+        END AS winner_username,
         CASE
           WHEN d.ends_at IS NOT NULL
             THEN MAX(0, CAST((julianday(d.ends_at) - julianday(?)) * 86400 AS INTEGER))
@@ -775,7 +780,7 @@ export async function getActiveDuels(limit, offset, db) {
       FROM duels d
       JOIN users uc ON uc.id = d.challenger_id
       JOIN users ut ON ut.id = d.target_id
-      WHERE d.status IN ('pending', 'active')
+      WHERE d.status IN ('pending', 'active', 'resolved', 'tied')
       ORDER BY d.created_at DESC
       LIMIT ? OFFSET ?
     `)
