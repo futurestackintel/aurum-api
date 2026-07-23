@@ -763,6 +763,8 @@ export async function getActiveDuels(limit, offset, db) {
         d.is_public_announced, d.stream_ready, d.stream_url,
         d.audience_tips_challenger, d.audience_tips_target,
         d.community_vote_challenger, d.community_vote_target,
+        d.winner_id, d.dispute_status, d.dispute_deadline,
+        d.challenger_id, d.target_id,
         CASE
           WHEN d.ends_at IS NOT NULL
             THEN MAX(0, CAST((julianday(d.ends_at) - julianday(?)) * 86400 AS INTEGER))
