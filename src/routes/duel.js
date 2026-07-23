@@ -252,7 +252,8 @@ export async function handleDuelRoutes(path, method, request, env) {
   }
 
   return null;
-
+}
+	
 // ── Helper ──────────────────────────────────────────────────
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
