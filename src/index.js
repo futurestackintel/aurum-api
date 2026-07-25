@@ -287,6 +287,22 @@ async function handlePassport(username, env) {
   });
 }
 
+// ── GET /api/users/me — resolve current viewer's internal id ──
+async function handleGetProfile(request, env) {
+  const db   = env.DB;
+  const user = await requireAuth(request, env);
+  if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  const dbUser = await db
+    .prepare(`SELECT id, username, tier, league FROM users WHERE clerk_id = ?`)
+    .bind(user.id)
+    .first();
+
+  if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
+
+  return jsonResponse({ user: dbUser });
+}
+
 // ── Settings: PATCH /api/users/me ────────────────────────────
 async function handleUpdateProfile(request, env) {
   const db   = env.DB;
@@ -664,6 +680,11 @@ export default {
       }
 
       // ── Settings routes ─────────────────────────────────
+      if (pathname === '/api/users/me' && request.method === 'GET') {
+        const res = await handleGetProfile(request, env);
+        return withCors(res, cors);
+      }
+
       if (pathname === '/api/users/me' && request.method === 'PATCH') {
         const res = await handleUpdateProfile(request, env);
         return withCors(res, cors);
