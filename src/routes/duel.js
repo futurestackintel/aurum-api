@@ -41,12 +41,23 @@ export async function handleDuelRoutes(path, method, request, env) {
   const db = env.DB;
 
   // ── GET /api/duels ──────────────────────────────────────
+  // Auth is optional — duels stay publicly viewable. If a valid
+  // token is present, resolve the viewer's internal id so
+  // is_challenger/is_opponent/is_loser can be computed per row.
   if (path === '/api/duels' && method === 'GET') {
     try {
       const url    = new URL(request.url);
       const limit  = parseInt(url.searchParams.get('limit')  ?? '20');
       const offset = parseInt(url.searchParams.get('offset') ?? '0');
-      const duels  = await getActiveDuels(limit, offset, db);
+
+      let viewerId = null;
+      const authedUser = await requireAuth(request, env);
+      if (!authedUser.error) {
+        const dbUser = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(authedUser.id).first();
+        viewerId = dbUser?.id ?? null;
+      }
+
+      const duels = await getActiveDuels(limit, offset, viewerId, db);
       return jsonResponse({ duels });
     } catch (err) {
       console.error('Get duels error:', err);
