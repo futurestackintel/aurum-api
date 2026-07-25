@@ -752,9 +752,8 @@ export async function processDuelCron(db) {
 
 // ── GET ACTIVE DUELS ─────────────────────────────────────────
 
-export async function getActiveDuels(limit, offset, db) {
+export async function getActiveDuels(limit, offset, viewerId, db) {
   const now = nowISO();
-
   const { results } = await db
     .prepare(`
       SELECT
@@ -770,6 +769,15 @@ export async function getActiveDuels(limit, offset, db) {
           WHEN d.winner_id = d.target_id     THEN ut.username
           ELSE NULL
         END AS winner_username,
+        CASE WHEN d.challenger_id = ? THEN 1 ELSE 0 END AS is_challenger,
+        CASE WHEN d.target_id     = ? THEN 1 ELSE 0 END AS is_opponent,
+        CASE
+          WHEN d.dispute_status = 'window_open'
+           AND d.winner_id IS NOT NULL
+           AND ? IN (d.challenger_id, d.target_id)
+           AND ? != d.winner_id
+          THEN 1 ELSE 0
+        END AS is_loser,
         CASE
           WHEN d.ends_at IS NOT NULL
             THEN MAX(0, CAST((julianday(d.ends_at) - julianday(?)) * 86400 AS INTEGER))
@@ -784,9 +792,8 @@ export async function getActiveDuels(limit, offset, db) {
       ORDER BY d.created_at DESC
       LIMIT ? OFFSET ?
     `)
-    .bind(now, limit ?? 20, offset ?? 0)
+    .bind(viewerId, viewerId, viewerId, viewerId, now, limit ?? 20, offset ?? 0)
     .all();
-
   return results;
 }
 
