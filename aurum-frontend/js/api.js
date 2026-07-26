@@ -40,11 +40,17 @@ async function getFreshToken() {
 /* --- Core fetch wrapper --- */
 async function apiRequest(method, path, body = null, requiresAuth = true) {
   const headers = { 'Content-Type': 'application/json' };
-
-  if (requiresAuth) {
+  if (requiresAuth === true) {
     const token = await getFreshToken();
     if (!token) throw new Error('NOT_AUTHENTICATED');
     headers['Authorization'] = `Bearer ${token}`;
+  } else if (requiresAuth === 'optional') {
+    /* Attach a token if the user happens to be logged in, but
+       never throw or block the request if they're not — used by
+       endpoints that are publicly viewable but personalize their
+       response when a valid session exists (e.g. duels). */
+    const token = await getFreshToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
   }
 
   const options = { method, headers };
@@ -139,9 +145,9 @@ const ArenaAPI = {
 
 /* --- Duels --- */
 const DuelAPI = {
-  getDuels:    (limit = 20, offset = 0) =>
-    apiRequest('GET', `/api/duels?limit=${limit}&offset=${offset}`, null, false),
-
+getDuels:    (limit = 20, offset = 0) =>
+    apiRequest('GET', `/api/duels?limit=${limit}&offset=${offset}`, null, 'optional'),
+	
   getDuel:     (id) =>
     apiRequest('GET', `/api/duels/${id}`, null, false),
 
