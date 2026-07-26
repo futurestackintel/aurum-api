@@ -745,10 +745,7 @@ window.ArenaPage = {
     const isPending     = duel.status === 'pending';
     const isResolved    = duel.status === 'resolved' || duel.status === 'tied';
     const disputeOpen   = duel.dispute_status === 'window_open';
-    const currentUserId = AURUM.currentUserId; // resolved internal id, set on app init
-    const isLoser       = disputeOpen && duel.winner_id &&
-      ((currentUserId === duel.challenger_id || currentUserId === duel.target_id) &&
-       currentUserId !== duel.winner_id);
+    const isLoser = !!duel.is_loser;
 
     const secondsLeft = duel.ends_at
       ? Math.max(0, Math.floor((new Date(duel.ends_at) - new Date()) / 1000))
