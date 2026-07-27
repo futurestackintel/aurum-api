@@ -816,7 +816,7 @@ window.ArenaPage = {
         </div>
 
         <!-- Action buttons -->
-        <div style="display:flex;gap:var(--space-2);">
+        <div style="display:flex;flex-wrap:wrap;gap:var(--space-2);">
 
           ${isPending && duel.is_opponent ? `
             <button class="btn btn-primary btn-full btn-sm btn-accept-duel"
