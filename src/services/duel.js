@@ -21,6 +21,7 @@ import { addScoreEvent } from './aurumScore.js';
 const DUEL_EXPIRY_HOURS   = 48;
 const DEFAULT_DUEL_DAYS   = 7;
 const MIN_DUEL_TIP_AMOUNT = 5;
+const DUEL_PLATFORM_FEE_RATE = 0.05; // 5%, matches regular tips/challenges
 
 // ── HELPERS ──────────────────────────────────────────────────
 
@@ -666,6 +667,9 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
     (duel.audience_tips_challenger ?? 0) +
     (duel.audience_tips_target ?? 0);
 
+  const platformFee = Math.round(totalEscrow * DUEL_PLATFORM_FEE_RATE * 100) / 100;
+  const netPayout    = totalEscrow - platformFee;
+
   await db.batch([
     // Loser's own stake moves to winner (challenger/target each staked
     // duel_tip_amount at creation — only the loser's stake actually
@@ -680,7 +684,14 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
     db.prepare(`
       UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
       WHERE user_id = ?
-    `).bind(totalEscrow, now, winnerId),
+    `).bind(netPayout, now, winnerId),
+
+    db.prepare(`
+      UPDATE tips
+      SET platform_fee_cents = ROUND(amount_cents * ?),
+          receiver_net_cents = amount_cents - ROUND(amount_cents * ?)
+      WHERE duel_id = ? AND status = 'escrowed'
+    `).bind(DUEL_PLATFORM_FEE_RATE, DUEL_PLATFORM_FEE_RATE, duelId),
 
     db.prepare(`
       UPDATE tips SET status = 'completed', completed_at = ? WHERE duel_id = ?
@@ -697,7 +708,7 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
     db,
   );
 
-  return { winner_id: winnerId, loser_id: loserId, total_payout: totalEscrow };
+  return { winner_id: winnerId, loser_id: loserId, total_payout: netPayout, platform_fee: platformFee };
 }
 
 // ── CRON: PROCESS DUEL WINDOWS + PAYOUTS ─────────────────────
