@@ -224,6 +224,59 @@ export async function flagPost(postId, flaggedByUserId, reason, db) {
   };
 }
 
+// ── DELETE POST ───────────────────────────────────────────────
+
+/**
+ * Soft-delete a post. Only the post's owner can delete their own post.
+ * If the stake is still 'locked' (never resolved), it's returned to
+ * the owner's wallet first — a deleted post shouldn't leave money stuck.
+ * Posts already in appeal_pending or slashed are blocked from self-delete
+ * since they have an active/resolved moderation case tied to other users
+ * (flaggers already paid out, etc.) — those need admin handling instead.
+ */
+export async function deletePost(postId, userId, db) {
+  const post = await db
+    .prepare(`SELECT id, user_id, deleted_at FROM posts WHERE id = ?`)
+    .bind(postId)
+    .first();
+
+  if (!post) return { error: 'Post not found' };
+  if (post.user_id !== userId) return { error: 'You can only delete your own posts' };
+  if (post.deleted_at) return { error: 'Post has already been deleted' };
+
+  const stake = await db
+    .prepare(`SELECT status, amount_usd FROM post_stakes WHERE post_id = ?`)
+    .bind(postId)
+    .first();
+
+  if (stake && ['appeal_pending', 'slashed'].includes(stake.status)) {
+    return { error: 'This post has an active or resolved moderation case and cannot be deleted directly. Contact support.' };
+  }
+
+  const now = new Date().toISOString();
+  let stakeReturned = 0;
+
+  if (stake && stake.status === 'locked') {
+    await _returnStakeToWallet(userId, stake.amount_usd, postId, db, now);
+    await db
+      .prepare(`UPDATE post_stakes SET status = 'returned', updated_at = ? WHERE post_id = ?`)
+      .bind(now, postId)
+      .run();
+    stakeReturned = stake.amount_usd;
+  }
+
+  await db
+    .prepare(`
+      UPDATE posts
+      SET deleted_at = ?, moderation_status = 'removed', updated_at = ?
+      WHERE id = ?
+    `)
+    .bind(now, now, postId)
+    .run();
+
+  return { deleted: true, post_id: postId, stake_returned: stakeReturned };
+}
+
 // ── MODERATION RESOLUTION ────────────────────────────────────
 
 /**
@@ -615,7 +668,8 @@ export async function getLedgerPosts(limit, offset, db) {
       FROM posts p
       JOIN users u       ON u.id  = p.user_id
       LEFT JOIN post_stakes ps ON ps.post_id = p.id
-      WHERE ps.status != 'slashed' OR ps.status IS NULL
+      WHERE (ps.status != 'slashed' OR ps.status IS NULL)
+        AND p.deleted_at IS NULL
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `)
