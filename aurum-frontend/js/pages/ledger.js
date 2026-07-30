@@ -358,6 +358,26 @@ window.LedgerPage = {
       });
     });
 
+	  /* ---- Delete post ---- */
+    document.querySelectorAll('.btn-delete-post').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', async () => {
+        const postId = btn.dataset.postId;
+        if (!confirm('Delete this post? This cannot be undone.')) return;
+        btn.disabled = true;
+        try {
+          await AURUM.LedgerAPI.deletePost(postId);
+          const card = btn.closest('.post-card');
+          if (card) card.remove();
+          AURUM.showToast('Post deleted.', 'gold');
+        } catch (err) {
+          btn.disabled = false;
+          AURUM.showToast(err.message || 'Could not delete post.', 'error');
+        }
+      });
+    });
+
     /* ---- Comment icon — opens full-screen detail view ---- */
     document.querySelectorAll('.btn-comment-toggle').forEach(btn => {
       if (btn.dataset.bound) return;
@@ -752,6 +772,16 @@ window.LedgerPage = {
           </button>
 
           ${commentBtnHTML}
+
+          ${window.App?.user?.id && post.user_id === window.App.user.id ? `
+            <button class="btn-delete-post post-action-btn" data-post-id="${post.id}"
+              title="Delete post">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
+              </svg>
+            </button>
+          ` : ''}
 
           <div class="post-stake-status" style="margin-left:auto;">
             <span style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;
