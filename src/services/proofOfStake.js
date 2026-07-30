@@ -653,6 +653,7 @@ export async function getLedgerPosts(limit, offset, db) {
     .prepare(`
       SELECT
         p.id,
+        p.user_id,
         p.content,
         p.tips_received_cents,
         p.created_at,
