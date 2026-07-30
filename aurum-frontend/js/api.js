@@ -107,6 +107,7 @@ const LedgerAPI = {
   flagPost:   (postId, data) => apiRequest('POST', `/api/posts/${postId}/flag`, data),
   appeal:     (postId, data) => apiRequest('POST', `/api/posts/${postId}/appeal`, data),
   cheer:      (postId)       => apiRequest('POST', `/api/posts/${postId}/cheer`),
+  deletePost: (postId)       => apiRequest('DELETE', `/api/posts/${postId}`),
 };
 
 /* --- Challenges / Arena ---
