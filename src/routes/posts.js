@@ -16,6 +16,7 @@ import {
   getLedgerPosts,
   appealPost,
   resolveAppeal,
+  deletePost,
 } from '../services/proofOfStake.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { streakMiddleware }          from '../services/streak.js';
@@ -53,6 +54,23 @@ export async function handlePostRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Get posts error:', err);
       return jsonResponse({ error: 'Unable to load posts. Please try again.' }, 500);
+    }
+  }
+
+	// ── DELETE /api/posts/:id ────────────────────────────────
+  const deleteMatch = path.match(/^\/api\/posts\/([^/]+)$/);
+  if (deleteMatch && method === 'DELETE') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const postId = deleteMatch[1];
+      const result = await deletePost(postId, user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Delete post error:', err);
+      return jsonResponse({ error: 'Unable to delete post. Please try again.' }, 500);
     }
   }
 
