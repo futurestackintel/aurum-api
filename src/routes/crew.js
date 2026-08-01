@@ -512,10 +512,10 @@ export async function handleCrewRoutes(path, method, request, env) {
     }
   }
 
-  // ── GET /api/crews/:id/ws — live chat WebSocket connection ──
+// ── GET /api/crews/:id/ws — live chat WebSocket connection ──
   const wsMatch = path.match(/^\/api\/crews\/([^/]+)\/ws$/);
   if (wsMatch && method === 'GET') {
-    const user = await requireAuth(request, env);
+    const user = await requireAuthFromQuery(request, env);
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     const member = await db
