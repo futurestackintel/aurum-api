@@ -26,6 +26,8 @@ import {
   setCrewLocked,
   setModeratorRole,
   disbandCrew,
+  setCrewRules,
+  muteMember,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -311,6 +313,43 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Disband crew error:', err);
       return jsonResponse({ error: 'Unable to disband crew. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/rules — captain edits crew rules ────
+  const rulesMatch = path.match(/^\/api\/crews\/([^/]+)\/rules$/);
+  if (rulesMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body   = await request.json();
+      const result = await setCrewRules(rulesMatch[1], user.id, body.rules ?? '', db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Set crew rules error:', err);
+      return jsonResponse({ error: 'Unable to update rules. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/mute — captain/moderator mutes a member ──
+  const muteMatch = path.match(/^\/api\/crews\/([^/]+)\/mute$/);
+  if (muteMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.target_user_id) return jsonResponse({ error: 'target_user_id is required' }, 400);
+      if (!body.duration_hours) return jsonResponse({ error: 'duration_hours is required' }, 400);
+      if (!body.reason) return jsonResponse({ error: 'reason is required' }, 400);
+      const result = await muteMember(muteMatch[1], user.id, body.target_user_id, body.duration_hours, body.reason, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error('Mute member error:', err);
+      return jsonResponse({ error: 'Unable to mute member. Please try again.' }, 500);
     }
   }
 
