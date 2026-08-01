@@ -18,6 +18,13 @@ import {
   initiateCrewSpend,
   cosignCrewSpend,
   vetoCrewSpend,
+  inviteToCrew,
+  requestToJoinCrew,
+  respondToJoinRequest,
+  leaveCrew,
+  kickMember,
+  setCrewLocked,
+  setModeratorRole,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -165,6 +172,128 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Veto crew spend error:', err);
       return jsonResponse({ error: 'Unable to veto spend. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/invite — captain invites a user ────
+  const inviteMatch = path.match(/^\/api\/crews\/([^/]+)\/invite$/);
+  if (inviteMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.target_user_id) return jsonResponse({ error: 'target_user_id is required' }, 400);
+      const result = await inviteToCrew(inviteMatch[1], user.id, body.target_user_id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error('Invite to crew error:', err);
+      return jsonResponse({ error: 'Unable to send invite. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/request-join — user requests to join ──
+  const requestJoinMatch = path.match(/^\/api\/crews\/([^/]+)\/request-join$/);
+  if (requestJoinMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await requestToJoinCrew(requestJoinMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error('Request to join crew error:', err);
+      return jsonResponse({ error: 'Unable to submit join request. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crew-join-requests/:id/respond — accept/decline ──
+  const respondMatch = path.match(/^\/api\/crew-join-requests\/([^/]+)\/respond$/);
+  if (respondMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (typeof body.accept !== 'boolean') return jsonResponse({ error: 'accept (boolean) is required' }, 400);
+      const result = await respondToJoinRequest(respondMatch[1], user.id, body.accept, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Respond to join request error:', err);
+      return jsonResponse({ error: 'Unable to respond to request. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/leave — leave current crew ──────────────
+  if (path === '/api/crews/leave' && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await leaveCrew(user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Leave crew error:', err);
+      return jsonResponse({ error: 'Unable to leave crew. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/kick — captain removes a member ─────
+  const kickMatch = path.match(/^\/api\/crews\/([^/]+)\/kick$/);
+  if (kickMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.target_user_id) return jsonResponse({ error: 'target_user_id is required' }, 400);
+      const result = await kickMember(kickMatch[1], user.id, body.target_user_id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Kick member error:', err);
+      return jsonResponse({ error: 'Unable to remove member. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/lock — captain locks/unlocks crew ───
+  const lockMatch = path.match(/^\/api\/crews\/([^/]+)\/lock$/);
+  if (lockMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (typeof body.locked !== 'boolean') return jsonResponse({ error: 'locked (boolean) is required' }, 400);
+      const result = await setCrewLocked(lockMatch[1], user.id, body.locked, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Lock crew error:', err);
+      return jsonResponse({ error: 'Unable to update lock status. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/moderator — captain promotes/demotes ──
+  const modMatch = path.match(/^\/api\/crews\/([^/]+)\/moderator$/);
+  if (modMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.target_user_id) return jsonResponse({ error: 'target_user_id is required' }, 400);
+      if (typeof body.make_moderator !== 'boolean') return jsonResponse({ error: 'make_moderator (boolean) is required' }, 400);
+      const result = await setModeratorRole(modMatch[1], user.id, body.target_user_id, body.make_moderator, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Set moderator role error:', err);
+      return jsonResponse({ error: 'Unable to update role. Please try again.' }, 500);
     }
   }
 
