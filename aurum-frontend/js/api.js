@@ -334,8 +334,19 @@ const CrewAPI = {
 
   startBattle: (id, data) =>
     apiRequest('POST', `/api/crews/${id}/battle`, data),
-};
 
+  getMessages: (id, before) => {
+    let path = `/api/crews/${id}/messages?limit=50`;
+    if (before) path += `&before=${encodeURIComponent(before)}`;
+    return apiRequest('GET', path);
+  },
+
+  sendMessage: (id, content) =>
+    apiRequest('POST', `/api/crews/${id}/messages`, { content }),
+
+  deleteMessage: (messageId) =>
+    apiRequest('DELETE', `/api/crew-messages/${messageId}`),
+};
 /* ============================================================
    UI HELPERS
 ============================================================ */
