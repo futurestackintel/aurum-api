@@ -245,6 +245,247 @@ export async function vetoCrewSpend(transactionId, clerkId, reasonBody, db) {
   return { spend: { id: transactionId, status: 'vetoed' } };
 }
 
+// ── INVITE TO CREW (captain only) ────────────────────────────
+
+export async function inviteToCrew(crewId, clerkId, targetUserId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can send invites' };
+
+  const targetMembership = await db
+    .prepare(`SELECT id FROM crew_members WHERE user_id = ?`)
+    .bind(targetUserId)
+    .first();
+  if (targetMembership) return { error: 'That user is already in a crew' };
+
+  const existing = await db
+    .prepare(`SELECT id FROM crew_join_requests WHERE crew_id = ? AND user_id = ? AND status = 'pending'`)
+    .bind(crewId, targetUserId)
+    .first();
+  if (existing) return { error: 'There is already a pending invite or request for this user' };
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare(`
+      INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
+      VALUES (?, ?, ?, 'invite', 'pending', ?)
+    `)
+    .bind(id, crewId, targetUserId, nowISO())
+    .run();
+
+  return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
+}
+
+// ── REQUEST TO JOIN CREW (any user) ──────────────────────────
+
+export async function requestToJoinCrew(crewId, clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const crew = await db.prepare(`SELECT * FROM crews WHERE id = ?`).bind(crewId).first();
+  if (!crew) return { error: 'Crew not found' };
+  if (crew.is_locked) return { error: 'This crew is locked and not accepting join requests' };
+
+  const membership = await db.prepare(`SELECT id FROM crew_members WHERE user_id = ?`).bind(userId).first();
+  if (membership) return { error: 'You are already a member of a crew' };
+
+  const existing = await db
+    .prepare(`SELECT id FROM crew_join_requests WHERE crew_id = ? AND user_id = ? AND status = 'pending'`)
+    .bind(crewId, userId)
+    .first();
+  if (existing) return { error: 'You already have a pending invite or request for this crew' };
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare(`
+      INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
+      VALUES (?, ?, ?, 'request', 'pending', ?)
+    `)
+    .bind(id, crewId, userId, nowISO())
+    .run();
+
+  return { request: { id, crew_id: crewId, status: 'pending' } };
+}
+
+// ── RESPOND TO JOIN REQUEST/INVITE ───────────────────────────
+
+export async function respondToJoinRequest(requestId, clerkId, accept, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const jr = await db.prepare(`SELECT * FROM crew_join_requests WHERE id = ?`).bind(requestId).first();
+  if (!jr) return { error: 'Join request not found' };
+  if (jr.status !== 'pending') return { error: `This ${jr.type} is already ${jr.status}` };
+
+  if (jr.type === 'invite') {
+    if (jr.user_id !== userId) return { error: 'Only the invited user can respond to this invite' };
+  } else {
+    const membership = await db
+      .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+      .bind(jr.crew_id, userId)
+      .first();
+    if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can approve join requests' };
+  }
+
+  const now = nowISO();
+
+  if (!accept) {
+    await db
+      .prepare(`UPDATE crew_join_requests SET status = 'declined', responded_at = ? WHERE id = ?`)
+      .bind(now, requestId)
+      .run();
+    return { request: { id: requestId, status: 'declined' } };
+  }
+
+  const alreadyInCrew = await db.prepare(`SELECT id FROM crew_members WHERE user_id = ?`).bind(jr.user_id).first();
+  if (alreadyInCrew) return { error: 'That user is already in a crew' };
+
+  await db.batch([
+    db.prepare(`UPDATE crew_join_requests SET status = 'accepted', responded_at = ? WHERE id = ?`).bind(now, requestId),
+    db.prepare(`
+      INSERT INTO crew_members (id, crew_id, user_id, role, joined_at)
+      VALUES (?, ?, ?, 'member', ?)
+    `).bind(crypto.randomUUID(), jr.crew_id, jr.user_id, now),
+    db.prepare(`UPDATE crews SET member_count = member_count + 1 WHERE id = ?`).bind(jr.crew_id),
+  ]);
+
+  return { request: { id: requestId, status: 'accepted', crew_id: jr.crew_id } };
+}
+
+// ── LEAVE CREW (with captaincy succession) ───────────────────
+
+export async function leaveCrew(clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const membership = await db.prepare(`SELECT * FROM crew_members WHERE user_id = ?`).bind(userId).first();
+  if (!membership) return { error: 'You are not in a crew' };
+
+  const crewId = membership.crew_id;
+  const now = nowISO();
+
+  if (membership.role !== 'captain') {
+    await db.batch([
+      db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(membership.id),
+      db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`).bind(crewId),
+    ]);
+    return { left: true, crew_id: crewId };
+  }
+
+  // Captain is leaving — find successor
+  let successor = await db
+    .prepare(`SELECT * FROM crew_members WHERE crew_id = ? AND role = 'moderator' AND user_id != ? ORDER BY joined_at ASC LIMIT 1`)
+    .bind(crewId, userId)
+    .first();
+
+  if (!successor) {
+    successor = await db
+      .prepare(`SELECT * FROM crew_members WHERE crew_id = ? AND role = 'member' AND user_id != ? ORDER BY joined_at ASC LIMIT 1`)
+      .bind(crewId, userId)
+      .first();
+  }
+
+  if (!successor) {
+    // Captain was the only member
+    await db.batch([
+      db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(membership.id),
+      db.prepare(`UPDATE crews SET member_count = 0 WHERE id = ?`).bind(crewId),
+    ]);
+    return { left: true, crew_id: crewId, note: 'Crew now has no members' };
+  }
+
+  await db.batch([
+    db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(membership.id),
+    db.prepare(`UPDATE crew_members SET role = 'captain' WHERE id = ?`).bind(successor.id),
+    db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`).bind(crewId),
+  ]);
+
+  return { left: true, crew_id: crewId, new_captain_id: successor.user_id };
+}
+
+// ── KICK MEMBER (captain only) ────────────────────────────────
+
+export async function kickMember(crewId, clerkId, targetUserId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can remove a member' };
+  if (targetUserId === userId) return { error: 'Use leave-crew to remove yourself' };
+
+  const target = await db
+    .prepare(`SELECT * FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, targetUserId)
+    .first();
+  if (!target) return { error: 'That user is not a member of this crew' };
+
+  await db.batch([
+    db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(target.id),
+    db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`).bind(crewId),
+  ]);
+
+  return { kicked: true, crew_id: crewId, target_user_id: targetUserId };
+}
+
+// ── LOCK / UNLOCK CREW (captain only) ─────────────────────────
+
+export async function setCrewLocked(crewId, clerkId, locked, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can lock or unlock the crew' };
+
+  await db.prepare(`UPDATE crews SET is_locked = ? WHERE id = ?`).bind(locked ? 1 : 0, crewId).run();
+
+  return { crew_id: crewId, is_locked: !!locked };
+}
+
+// ── PROMOTE / DEMOTE MODERATOR (captain only) ─────────────────
+
+export async function setModeratorRole(crewId, clerkId, targetUserId, makeModerator, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can promote or demote moderators' };
+
+  const target = await db
+    .prepare(`SELECT * FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, targetUserId)
+    .first();
+  if (!target) return { error: 'That user is not a member of this crew' };
+  if (target.role === 'captain') return { error: 'Cannot change the captain\'s role this way' };
+
+  const newRole = makeModerator ? 'moderator' : 'member';
+  if (target.role === newRole) return { error: `That member is already a ${newRole}` };
+
+  await db.prepare(`UPDATE crew_members SET role = ? WHERE id = ?`).bind(newRole, target.id).run();
+
+  return { crew_id: crewId, target_user_id: targetUserId, role: newRole };
+}
+
 // ── CREATE CREW ──────────────────────────────────────────────
 
 export async function createCrew(clerkId, body, db) {
