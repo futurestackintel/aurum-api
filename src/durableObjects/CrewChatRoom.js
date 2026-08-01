@@ -6,6 +6,21 @@ export class CrewChatRoom {
   }
 
   async fetch(request) {
+    const url = new URL(request.url);
+
+    // Internal call from the message route — broadcast to connected clients
+    if (url.pathname === '/broadcast') {
+      const message = await request.text();
+      for (const session of this.sessions) {
+        try {
+          session.send(message);
+        } catch (err) {
+          // Connection dead, cleaned up on its own 'close' event
+        }
+      }
+      return new Response('ok', { status: 200 });
+    }
+
     const upgradeHeader = request.headers.get('Upgrade');
     if (!upgradeHeader || upgradeHeader !== 'websocket') {
       return new Response('Expected websocket', { status: 400 });
