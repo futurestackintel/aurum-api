@@ -854,6 +854,68 @@ export async function unfreezeCrew(crewId, adminId, db) {
   return { crew_id: crewId, is_frozen: false };
 }
 
+// ── FLAG CREW SPEND (regular members only, 48hr window) ────────
+
+export async function flagCrewSpend(transactionId, clerkId, reason, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const txn = await db.prepare(`SELECT * FROM crew_wallet_transactions WHERE id = ?`).bind(transactionId).first();
+  if (!txn) return { error: 'Spend not found' };
+  if (txn.status !== 'executed') return { error: 'Only an executed spend can be flagged' };
+
+  const hoursSinceExecution = (Date.now() - new Date(txn.created_at).getTime()) / (1000 * 60 * 60);
+  if (hoursSinceExecution > 48) return { error: 'The 48-hour flagging window for this spend has passed' };
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(txn.crew_id, userId)
+    .first();
+  if (!membership) return { error: 'You are not a member of this crew' };
+  if (membership.role !== 'member') return { error: 'Only regular members can flag a spend — captains and moderators already had direct input on it' };
+
+  if (!reason || reason.trim().length === 0) return { error: 'A reason is required to flag a spend' };
+
+  const existing = await db
+    .prepare(`SELECT id FROM crew_spend_flags WHERE transaction_id = ? AND flagged_by = ?`)
+    .bind(transactionId, userId)
+    .first();
+  if (existing) return { error: 'You have already flagged this spend' };
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare(`
+      INSERT INTO crew_spend_flags (id, transaction_id, flagged_by, reason, status, created_at)
+      VALUES (?, ?, ?, ?, 'pending', ?)
+    `)
+    .bind(id, transactionId, userId, reason.trim(), nowISO())
+    .run();
+
+  return { flag: { id, transaction_id: transactionId, status: 'pending' } };
+}
+
+// ── RESOLVE CREW SPEND FLAG (admin only) ────────────────────────
+
+export async function resolveCrewSpendFlag(flagId, adminId, decision, adminNotes, db) {
+  if (!['dismissed', 'actioned'].includes(decision)) return { error: 'decision must be dismissed or actioned' };
+
+  const flag = await db.prepare(`SELECT * FROM crew_spend_flags WHERE id = ?`).bind(flagId).first();
+  if (!flag) return { error: 'Flag not found' };
+  if (flag.status !== 'pending') return { error: `This flag is already ${flag.status}` };
+
+  await db
+    .prepare(`
+      UPDATE crew_spend_flags
+      SET status = ?, admin_notes = ?, resolved_by = ?, resolved_at = ?
+      WHERE id = ?
+    `)
+    .bind(decision, adminNotes ?? null, adminId, nowISO(), flagId)
+    .run();
+
+  return { flag_id: flagId, status: decision };
+}
+
 // ── CREATE CREW ──────────────────────────────────────────────
 export async function createCrew(clerkId, body, db) {
   const userRow = await db
