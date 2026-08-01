@@ -12,6 +12,28 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+async function getOrCreateCrewWallet(crewId, db) {
+  let wallet = await db
+    .prepare(`SELECT * FROM crew_wallets WHERE crew_id = ?`)
+    .bind(crewId)
+    .first();
+
+  if (!wallet) {
+    const now = nowISO();
+    const walletId = crypto.randomUUID();
+    await db
+      .prepare(`
+        INSERT INTO crew_wallets (id, crew_id, balance_usd, total_funded_usd, total_spent_usd, created_at, updated_at)
+        VALUES (?, ?, 0, 0, 0, ?, ?)
+      `)
+      .bind(walletId, crewId, now, now)
+      .run();
+    wallet = { id: walletId, crew_id: crewId, balance_usd: 0, total_funded_usd: 0, total_spent_usd: 0, created_at: now, updated_at: now };
+  }
+
+  return wallet;
+}
+
 // ── CREATE CREW ──────────────────────────────────────────────
 
 export async function createCrew(clerkId, body, db) {
@@ -247,6 +269,38 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
       WHERE id = ?
     `)
     .bind(winnerCrewId, battleId)
+    .run();
+
+  // Credit prize pool into the winning crew's shared wallet
+  const crewWallet = await getOrCreateCrewWallet(winnerCrewId, db);
+  const newBalance = crewWallet.balance_usd + prizePool;
+
+  await db
+    .prepare(`
+      UPDATE crew_wallets
+      SET balance_usd = ?, total_funded_usd = total_funded_usd + ?, updated_at = ?
+      WHERE id = ?
+    `)
+    .bind(newBalance, prizePool, now, crewWallet.id)
+    .run();
+
+  await db
+    .prepare(`
+      INSERT INTO crew_wallet_transactions
+        (id, crew_id, crew_wallet_id, type, amount_usd, balance_after_usd, initiated_by, reason, status, reference, created_at)
+      VALUES (?, ?, ?, 'battle_payout', ?, ?, ?, ?, 'executed', ?, ?)
+    `)
+    .bind(
+      crypto.randomUUID(),
+      winnerCrewId,
+      crewWallet.id,
+      prizePool,
+      newBalance,
+      moderatorId ?? null,
+      `Prize payout for battle: ${battle.title}`,
+      battleId,
+      now,
+    )
     .run();
 
   // Award crew_battle_win score to all members of winning crew
