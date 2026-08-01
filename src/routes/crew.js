@@ -25,6 +25,7 @@ import {
   kickMember,
   setCrewLocked,
   setModeratorRole,
+  disbandCrew,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -294,6 +295,22 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Set moderator role error:', err);
       return jsonResponse({ error: 'Unable to update role. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/disband — captain disbands crew ─────
+  const disbandMatch = path.match(/^\/api\/crews\/([^/]+)\/disband$/);
+  if (disbandMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await disbandCrew(disbandMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Disband crew error:', err);
+      return jsonResponse({ error: 'Unable to disband crew. Please try again.' }, 500);
     }
   }
 
