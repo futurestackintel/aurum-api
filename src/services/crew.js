@@ -486,6 +486,91 @@ export async function setModeratorRole(crewId, clerkId, targetUserId, makeModera
   return { crew_id: crewId, target_user_id: targetUserId, role: newRole };
 }
 
+// ── DISBAND CREW (captain only) ───────────────────────────────
+
+export async function disbandCrew(crewId, clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can disband the crew' };
+
+  const crew = await db.prepare(`SELECT * FROM crews WHERE id = ?`).bind(crewId).first();
+  if (!crew) return { error: 'Crew not found' };
+
+  const wallet = await db.prepare(`SELECT * FROM crew_wallets WHERE crew_id = ?`).bind(crewId).first();
+
+  const { results: members } = await db
+    .prepare(`SELECT user_id FROM crew_members WHERE crew_id = ?`)
+    .bind(crewId)
+    .all();
+
+  const now = nowISO();
+  const statements = [];
+  let splitAmount = 0;
+  let perMember = 0;
+
+  if (wallet && wallet.balance_usd > 0 && members.length > 0) {
+    splitAmount = wallet.balance_usd;
+    perMember = Math.floor((splitAmount / members.length) * 100) / 100; // round down to cents
+    const distributed = perMember * members.length;
+    const remainder = Math.round((splitAmount - distributed) * 100) / 100; // goes to captain
+
+    for (const member of members) {
+      const amount = member.user_id === userId ? perMember + remainder : perMember;
+      if (amount <= 0) continue;
+
+      statements.push(
+        db.prepare(`
+          UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ? WHERE user_id = ?
+        `).bind(amount, now, member.user_id)
+      );
+      statements.push(
+        db.prepare(`
+          INSERT INTO wallet_transactions
+            (id, wallet_id, user_id, type, amount_usd, balance_after_usd, reference, description, created_at)
+          SELECT ?, id, ?, 'challenge_payout', ?,
+                 (SELECT balance_usd FROM wallets WHERE user_id = ?), ?, ?, ?
+          FROM wallets WHERE user_id = ?
+        `).bind(
+          crypto.randomUUID(), member.user_id, amount, member.user_id,
+          crewId, `Crew disband payout from "${crew.name}"`, now, member.user_id
+        )
+      );
+    }
+
+    statements.push(
+      db.prepare(`
+        UPDATE crew_wallets SET balance_usd = 0, total_spent_usd = total_spent_usd + ?, updated_at = ?
+        WHERE crew_id = ?
+      `).bind(splitAmount, now, crewId)
+    );
+    statements.push(
+      db.prepare(`
+        INSERT INTO crew_wallet_transactions
+          (id, crew_id, crew_wallet_id, type, amount_usd, balance_after_usd, initiated_by, reason, status, required_cosigns, created_at)
+        VALUES (?, ?, ?, 'disband_split', ?, 0, ?, ?, 'executed', 0, ?)
+      `).bind(crypto.randomUUID(), crewId, wallet.id, splitAmount, userId, `Crew disbanded — balance split among ${members.length} member(s)`, now)
+    );
+  }
+
+  statements.push(db.prepare(`DELETE FROM crew_members WHERE crew_id = ?`).bind(crewId));
+  statements.push(db.prepare(`DELETE FROM crews WHERE id = ?`).bind(crewId));
+
+  await db.batch(statements);
+
+  return {
+    disbanded: true,
+    crew_id: crewId,
+    members_paid: members.length,
+    total_split_usd: splitAmount,
+  };
+}
+
 // ── CREATE CREW ──────────────────────────────────────────────
 
 export async function createCrew(clerkId, body, db) {
