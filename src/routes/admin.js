@@ -65,6 +65,7 @@ import {
   getResolvableChallenges,
   getDisputedDuels,
   getDisputedCrewBattles,
+  getFlaggedCrewSpends,
 }                                          from '../services/adminQueue.js';
 import {
   getPlatformSummary,
@@ -74,6 +75,7 @@ import {
   getRevenueBreakdown,
   getTopPerformers,
 }                                          from '../services/analytics.js';
+import { resolveCrewSpendFlag }           from '../services/crew.js';
 
 export async function handleAdminRoutes(path, method, request, env) {
 
@@ -315,6 +317,32 @@ export async function handleAdminRoutes(path, method, request, env) {
     try {
       const battles = await getDisputedCrewBattles(env, limit, offset);
       return json({ battles });
+    } catch (err) {
+      console.error(err); return json({ error: "Something went wrong" }, 500);
+    }
+  }
+
+  // ── GET /api/admin/crew-spends/flags ─────────────────────
+  if (path === '/api/admin/crew-spends/flags' && method === 'GET') {
+    const url    = new URL(request.url);
+    const limit  = parseInt(url.searchParams.get('limit')  ?? '50');
+    const offset = parseInt(url.searchParams.get('offset') ?? '0');
+    try {
+      const flags = await getFlaggedCrewSpends(env, limit, offset);
+      return json({ flags });
+    } catch (err) {
+      console.error(err); return json({ error: "Something went wrong" }, 500);
+    }
+  }
+
+  // ── POST /api/admin/crew-spends/flags/:id/resolve ────────
+  const spendFlagResolveMatch = path.match(/^\/api\/admin\/crew-spends\/flags\/([^/]+)\/resolve$/);
+  if (spendFlagResolveMatch && method === 'POST') {
+    const { decision, admin_notes } = await request.json();
+    try {
+      const result = await resolveCrewSpendFlag(spendFlagResolveMatch[1], admin.id, decision, admin_notes, env.DB);
+      if (result.error) return json({ error: result.error }, 400);
+      return json(result);
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
     }
