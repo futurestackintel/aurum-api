@@ -643,11 +643,171 @@ export async function isMemberMuted(crewId, userId, db) {
     .bind(crewId, userId, nowISO())
     .first();
 
-  return activeMute ? { muted: true, muted_until: activeMute.muted_until, reason: activeMute.reason } : { muted: false };
+return activeMute ? { muted: true, muted_until: activeMute.muted_until, reason: activeMute.reason } : { muted: false };
+}
+
+// ── CAST CREW BATTLE VOTE (anyone except battle participants) ──
+
+export async function castCrewBattleVote(battleId, clerkId, votedCrewId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
+  if (!battle) return { error: 'Crew battle not found' };
+  if (battle.status !== 'pending' && battle.status !== 'active') return { error: 'This battle is no longer open for voting' };
+  if (new Date(battle.ends_at) <= new Date()) return { error: 'Voting has closed for this battle' };
+
+  if (votedCrewId !== battle.challenger_crew_id && votedCrewId !== battle.target_crew_id) {
+    return { error: 'voted_crew_id must be one of the battling crews' };
+  }
+
+  const isParticipant = await db
+    .prepare(`
+      SELECT id FROM crew_members
+      WHERE user_id = ? AND (crew_id = ? OR crew_id = ?)
+    `)
+    .bind(userId, battle.challenger_crew_id, battle.target_crew_id)
+    .first();
+  if (isParticipant) return { error: 'Members of either battling crew cannot vote on this battle' };
+
+  const existing = await db
+    .prepare(`SELECT id FROM crew_battle_votes WHERE battle_id = ? AND voter_id = ?`)
+    .bind(battleId, userId)
+    .first();
+  if (existing) return { error: 'You have already voted on this battle' };
+
+  await db
+    .prepare(`
+      INSERT INTO crew_battle_votes (id, battle_id, voter_id, voted_crew_id, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+    .bind(crypto.randomUUID(), battleId, userId, votedCrewId, nowISO())
+    .run();
+
+  return { voted: true, battle_id: battleId, voted_crew_id: votedCrewId };
+}
+
+// ── CLOSE CREW BATTLE WINDOW (tally votes, open dispute window) ──
+
+export async function closeCrewBattleWindow(battleId, db) {
+  const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
+  if (!battle) return { error: 'Crew battle not found' };
+  if (battle.status !== 'pending' && battle.status !== 'active') return { error: 'Battle is already closed' };
+  if (new Date(battle.ends_at) > new Date()) return { error: 'Battle voting window has not ended yet' };
+
+  const challengerVotes = await db
+    .prepare(`SELECT COUNT(*) as c FROM crew_battle_votes WHERE battle_id = ? AND voted_crew_id = ?`)
+    .bind(battleId, battle.challenger_crew_id)
+    .first();
+  const targetVotes = await db
+    .prepare(`SELECT COUNT(*) as c FROM crew_battle_votes WHERE battle_id = ? AND voted_crew_id = ?`)
+    .bind(battleId, battle.target_crew_id)
+    .first();
+
+  const now = nowISO();
+
+  if (challengerVotes.c === targetVotes.c) {
+    await db
+      .prepare(`UPDATE crew_battles SET status = 'active', dispute_status = 'admin_review' WHERE id = ?`)
+      .bind(battleId)
+      .run();
+    return { battle_id: battleId, result: 'tie', dispute_status: 'admin_review' };
+  }
+
+  const winnerCrewId = challengerVotes.c > targetVotes.c ? battle.challenger_crew_id : battle.target_crew_id;
+  const disputeDeadline = new Date(Date.now() + 4.5 * 60 * 60 * 1000).toISOString();
+
+  await db
+    .prepare(`
+      UPDATE crew_battles
+      SET status = 'active', winner_crew_id = ?, dispute_status = 'awaiting_dispute', dispute_deadline = ?
+      WHERE id = ?
+    `)
+    .bind(winnerCrewId, disputeDeadline, battleId)
+    .run();
+
+  return { battle_id: battleId, winner_crew_id: winnerCrewId, dispute_status: 'awaiting_dispute', dispute_deadline: disputeDeadline };
+}
+
+// ── REPORT CREW BATTLE DISPUTE (losing crew's captain only) ────
+
+export async function reportCrewBattleDispute(battleId, clerkId, reason, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
+  if (!battle) return { error: 'Crew battle not found' };
+  if (battle.dispute_status !== 'awaiting_dispute') return { error: 'This battle is not awaiting a dispute report' };
+  if (new Date(battle.dispute_deadline) <= new Date()) return { error: 'The dispute window has closed' };
+
+  const losingCrewId = battle.winner_crew_id === battle.challenger_crew_id
+    ? battle.target_crew_id
+    : battle.challenger_crew_id;
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(losingCrewId, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') {
+    return { error: 'Only the losing crew\'s captain can report a dispute' };
+  }
+
+  if (!reason || reason.trim().length === 0) return { error: 'A reason is required to report a dispute' };
+
+  await db
+    .prepare(`
+      UPDATE crew_battles
+      SET dispute_status = 'disputed', dispute_reported_by = ?, dispute_reason = ?
+      WHERE id = ?
+    `)
+    .bind(userId, reason.trim(), battleId)
+    .run();
+
+  return { battle_id: battleId, dispute_status: 'disputed' };
+}
+
+// ── PROCESS CREW BATTLE CRON (close windows, auto-release uncontested) ──
+
+export async function processCrewBattleCron(db) {
+  const now = nowISO();
+
+  // Close any battles whose voting window has ended
+  const { results: toClose } = await db
+    .prepare(`
+      SELECT id FROM crew_battles
+      WHERE status IN ('pending','active') AND dispute_status = 'none' AND ends_at <= ?
+    `)
+    .bind(now)
+    .all();
+
+  for (const b of toClose) {
+    await closeCrewBattleWindow(b.id, db);
+  }
+
+  // Auto-release payouts for battles past their dispute deadline with no report
+  const { results: toRelease } = await db
+    .prepare(`
+      SELECT * FROM crew_battles
+      WHERE dispute_status = 'awaiting_dispute' AND dispute_deadline <= ?
+    `)
+    .bind(now)
+    .all();
+
+  const released = [];
+  for (const battle of toRelease) {
+    const result = await resolveCrewBattle(battle.id, battle.winner_crew_id, null, db);
+    if (!result.error) {
+      await db.prepare(`UPDATE crew_battles SET dispute_status = 'none' WHERE id = ?`).bind(battle.id).run();
+      released.push(battle.id);
+    }
+  }
+
+  return { closed: toClose.length, released: released.length };
 }
 
 // ── CREATE CREW ──────────────────────────────────────────────
-
 export async function createCrew(clerkId, body, db) {
   const userRow = await db
     .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
