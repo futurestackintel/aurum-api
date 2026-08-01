@@ -73,8 +73,32 @@ export async function requireAuth(request, env) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return { error: "Missing or invalid Authorization header" };
   }
-
   const token = authHeader.slice(7);
+  try {
+    const payload = await verifyJWT(token);
+    return {
+      id:    payload.sub,
+      email: payload.email ?? null,
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Auth check for requests that can't set custom headers — currently
+ * only the crew chat WebSocket upgrade, since browsers' native
+ * WebSocket constructor cannot attach an Authorization header.
+ * Reads the token from a `?token=` query param instead. Uses the
+ * exact same verifyJWT() as requireAuth — only the token's source
+ * differs, not how it's validated.
+ */
+export async function requireAuthFromQuery(request, env) {
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token");
+  if (!token) {
+    return { error: "Missing token query parameter" };
+  }
   try {
     const payload = await verifyJWT(token);
     return {
