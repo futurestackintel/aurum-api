@@ -571,6 +571,81 @@ export async function disbandCrew(crewId, clerkId, db) {
   };
 }
 
+// ── EDIT CREW RULES (captain only) ────────────────────────────
+
+export async function setCrewRules(crewId, clerkId, rules, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can edit crew rules' };
+
+  if (rules && rules.length > 2000) return { error: 'Rules must be 2000 characters or less' };
+
+  await db.prepare(`UPDATE crews SET rules = ? WHERE id = ?`).bind(rules?.trim() ?? null, crewId).run();
+
+  return { crew_id: crewId, rules: rules?.trim() ?? null };
+}
+
+// ── MUTE MEMBER (captain or moderator) ─────────────────────────
+
+export async function muteMember(crewId, clerkId, targetUserId, durationHours, reason, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+  if (!membership || (membership.role !== 'captain' && membership.role !== 'moderator')) {
+    return { error: 'Only a crew captain or moderator can mute a member' };
+  }
+
+  if (!durationHours || durationHours <= 0) return { error: 'durationHours must be a positive number' };
+  if (!reason || reason.trim().length === 0) return { error: 'A reason is required to mute a member' };
+
+  const target = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, targetUserId)
+    .first();
+  if (!target) return { error: 'That user is not a member of this crew' };
+  if (target.role === 'captain') return { error: 'Cannot mute the crew captain' };
+
+  const now = nowISO();
+  const mutedUntil = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString();
+  const id = crypto.randomUUID();
+
+  await db
+    .prepare(`
+      INSERT INTO crew_mutes (id, crew_id, user_id, reason, muted_until, muted_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+    .bind(id, crewId, targetUserId, reason.trim(), mutedUntil, userId, now)
+    .run();
+
+  return { mute: { id, crew_id: crewId, target_user_id: targetUserId, muted_until: mutedUntil, reason: reason.trim() } };
+}
+
+// ── CHECK IF MUTED (helper — used elsewhere to gate posting/battles) ──
+
+export async function isMemberMuted(crewId, userId, db) {
+  const activeMute = await db
+    .prepare(`
+      SELECT id, muted_until, reason FROM crew_mutes
+      WHERE crew_id = ? AND user_id = ? AND muted_until > ?
+      ORDER BY muted_until DESC LIMIT 1
+    `)
+    .bind(crewId, userId, nowISO())
+    .first();
+
+  return activeMute ? { muted: true, muted_until: activeMute.muted_until, reason: activeMute.reason } : { muted: false };
+}
+
 // ── CREATE CREW ──────────────────────────────────────────────
 
 export async function createCrew(clerkId, body, db) {
