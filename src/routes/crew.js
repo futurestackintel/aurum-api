@@ -30,6 +30,8 @@ import {
   muteMember,
   castCrewBattleVote,
   reportCrewBattleDispute,
+  freezeCrew,
+  unfreezeCrew,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
