@@ -33,6 +33,7 @@ import {
   freezeCrew,
   unfreezeCrew,
   flagCrewSpend,
+  isMemberMuted,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -442,6 +443,52 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Report crew battle dispute error:', err);
       return jsonResponse({ error: 'Unable to report dispute. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/messages — send a crew chat message ──
+  const messageMatch = path.match(/^\/api\/crews\/([^/]+)\/messages$/);
+  if (messageMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.content || body.content.trim().length === 0) {
+        return jsonResponse({ error: 'Message cannot be empty' }, 400);
+      }
+
+      const muteStatus = await isMemberMuted(messageMatch[1], user.id, db);
+      if (muteStatus.muted) {
+        return jsonResponse({
+          error: `You are muted until ${muteStatus.muted_until}`,
+          reason: muteStatus.reason,
+        }, 403);
+      }
+
+      const messageId = crypto.randomUUID();
+      await db
+        .prepare(`INSERT INTO crew_messages (id, crew_id, sender_id, content) VALUES (?, ?, ?, ?)`)
+        .bind(messageId, messageMatch[1], user.id, body.content)
+        .run();
+
+      const doId = env.CREW_CHAT.idFromName(messageMatch[1]);
+      const doStub = env.CREW_CHAT.get(doId);
+      await doStub.fetch('https://internal/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: messageId,
+          crewId: messageMatch[1],
+          senderId: user.id,
+          content: body.content,
+          createdAt: new Date().toISOString(),
+        }),
+      });
+
+      return jsonResponse({ id: messageId, success: true }, 200);
+    } catch (err) {
+      console.error('Send crew message error:', err);
+      return jsonResponse({ error: 'Unable to send message. Please try again.' }, 500);
     }
   }
 
