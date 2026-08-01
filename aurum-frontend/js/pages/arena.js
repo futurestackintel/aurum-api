@@ -1155,8 +1155,127 @@ window.ArenaPage = {
         AURUM.showToast('Battle flow coming soon.', 'default');
       });
     });
+
+    document.querySelectorAll('.btn-chat-crew').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        this.openCrewChat(btn.dataset.crewId, btn.dataset.crewName);
+      });
+    });
   },
 
+/* --------------------------------------------------
+     CREW CHAT
+  -------------------------------------------------- */
+  activeChatCrewId: null,
+  chatSocket:       null,
+
+  async openCrewChat(crewId, crewName) {
+    this.activeChatCrewId = crewId;
+    document.getElementById('crew-chat-title').textContent = crewName || 'Crew Chat';
+    document.getElementById('crew-chat-modal').style.display = 'flex';
+
+    const list = document.getElementById('crew-chat-messages');
+    list.innerHTML = '<p style="text-align:center;color:var(--color-text-muted);font-size:var(--text-sm);">Loading...</p>';
+
+    try {
+      const data = await AURUM.CrewAPI.getMessages(crewId);
+      const messages = (data.messages || []).slice().reverse();
+      this.renderCrewMessages(messages);
+    } catch (err) {
+      list.innerHTML = '<p style="text-align:center;color:var(--color-text-muted);font-size:var(--text-sm);">Could not load messages.</p>';
+    }
+
+    this.connectCrewChatSocket(crewId);
+  },
+
+  connectCrewChatSocket(crewId) {
+    if (this.chatSocket) {
+      this.chatSocket.close();
+      this.chatSocket = null;
+    }
+
+    const token = AURUM.Auth.getToken();
+    if (!token) return;
+
+    const wsBase = API_BASE.replace('https://', 'wss://').replace('http://', 'ws://');
+    this.chatSocket = new WebSocket(`${wsBase}/api/crews/${crewId}/ws?token=${encodeURIComponent(token)}`);
+
+    this.chatSocket.addEventListener('message', (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        this.appendCrewMessage(msg);
+      } catch (err) {
+        /* ignore malformed message */
+      }
+    });
+
+    this.chatSocket.addEventListener('close', () => {
+      this.chatSocket = null;
+    });
+  },
+
+  closeCrewChat() {
+    if (this.chatSocket) {
+      this.chatSocket.close();
+      this.chatSocket = null;
+    }
+    this.activeChatCrewId = null;
+  },
+
+  renderCrewMessages(messages) {
+    const list = document.getElementById('crew-chat-messages');
+    if (!list) return;
+    if (!messages.length) {
+      list.innerHTML = '<p style="text-align:center;color:var(--color-text-muted);font-size:var(--text-sm);">No messages yet. Say something.</p>';
+      return;
+    }
+    list.innerHTML = messages.map(m => this.crewMessageHTML(m)).join('');
+    list.scrollTop = list.scrollHeight;
+  },
+
+  crewMessageHTML(m) {
+    const text = m.deleted ? '<em>Message removed</em>' : this.escapeHTML(m.content);
+    return `
+      <div class="chat-message" data-message-id="${m.id}">
+        <span class="chat-message-sender mono">${m.sender_id === AURUM.ProfileCache.get()?.id ? 'You' : m.sender_id}</span>
+        <span class="chat-message-text">${text}</span>
+      </div>
+    `;
+  },
+
+  appendCrewMessage(msg) {
+    const list = document.getElementById('crew-chat-messages');
+    if (!list) return;
+    list.insertAdjacentHTML('beforeend', this.crewMessageHTML({
+      id: msg.id,
+      sender_id: msg.senderId,
+      content: msg.content,
+      deleted: false,
+    }));
+    list.scrollTop = list.scrollHeight;
+  },
+
+  escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  },
+
+  async sendCrewMessage() {
+    const input = document.getElementById('crew-chat-input');
+    const content = input?.value.trim();
+    if (!content || !this.activeChatCrewId) return;
+
+    input.value = '';
+    try {
+      await AURUM.CrewAPI.sendMessage(this.activeChatCrewId, content);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Message failed to send.', 'error');
+    }
+  },
+	
   async submitCrew() {
     const name = document.getElementById('crew-name')?.value.trim();
     const desc = document.getElementById('crew-desc')?.value.trim();
