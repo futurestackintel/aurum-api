@@ -473,6 +473,24 @@ export async function handleCrewRoutes(path, method, request, env) {
         .bind(messageId, messageMatch[1], user.id, body.content)
         .run();
 
+      // Parse @mentions and insert one row per mentioned user
+      const mentionedUsernames = [...body.content.matchAll(/@(\w+)/g)].map(m => m[1]);
+      if (mentionedUsernames.length > 0) {
+        const uniqueUsernames = [...new Set(mentionedUsernames)];
+        for (const username of uniqueUsernames) {
+          const mentionedUser = await db
+            .prepare(`SELECT id FROM users WHERE username = ?`)
+            .bind(username)
+            .first();
+          if (mentionedUser) {
+            await db
+              .prepare(`INSERT INTO crew_message_mentions (id, message_id, mentioned_user_id) VALUES (?, ?, ?)`)
+              .bind(crypto.randomUUID(), messageId, mentionedUser.id)
+              .run();
+          }
+        }
+      }
+
       const doId = env.CREW_CHAT.idFromName(messageMatch[1]);
       const doStub = env.CREW_CHAT.get(doId);
       await doStub.fetch('https://internal/broadcast', {
