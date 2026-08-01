@@ -1037,7 +1037,7 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
   await db
     .prepare(`
       UPDATE crew_battles
-      SET status = 'resolved', winner_crew_id = ?
+      SET status = 'resolved', winner_crew_id = ?, dispute_status = 'none'
       WHERE id = ?
     `)
     .bind(winnerCrewId, battleId)
