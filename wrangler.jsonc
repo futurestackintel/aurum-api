@@ -43,7 +43,6 @@
         "migrations": [
                 {
                         "tag": "v1",
-                        "new_classes": ["CrewChatRoom"]
+                        "new_sqlite_classes": ["CrewChatRoom"]
                 }
         ]
-}
