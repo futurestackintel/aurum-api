@@ -132,6 +132,39 @@ export async function handleCrewRoutes(path, method, request, env) {
     }
   }
 
+  // ── POST /api/crews/:id/freeze — admin only ─────────────
+  const freezeMatch = path.match(/^\/api\/crews\/([^/]+)\/freeze$/);
+  if (freezeMatch && method === 'POST') {
+    const admin = await requireAdmin(request, env);
+    if (admin.error) return jsonResponse({ error: admin.error }, 403);
+
+    try {
+      const body = await request.json();
+      if (!body.reason) return jsonResponse({ error: 'reason is required' }, 400);
+      const result = await freezeCrew(freezeMatch[1], admin.id, body.reason, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Freeze crew error:', err);
+      return jsonResponse({ error: 'Unable to freeze crew. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/unfreeze — admin only ───────────
+  const unfreezeMatch = path.match(/^\/api\/crews\/([^/]+)\/unfreeze$/);
+  if (unfreezeMatch && method === 'POST') {
+    const admin = await requireAdmin(request, env);
+    if (admin.error) return jsonResponse({ error: admin.error }, 403);
+
+    try {
+      const result = await unfreezeCrew(unfreezeMatch[1], admin.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Unfreeze crew error:', err);
+      return jsonResponse({ error: 'Unable to unfreeze crew. Please try again.' }, 500);
+    }
+  }
   // ── POST /api/crews/:id/spend — captain initiates a spend ──
   const spendMatch = path.match(/^\/api\/crews\/([^/]+)\/spend$/);
   if (spendMatch && method === 'POST') {
