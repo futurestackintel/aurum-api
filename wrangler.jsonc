@@ -37,6 +37,10 @@
                         {
                                 "name": "CREW_CHAT",
                                 "class_name": "CrewChatRoom"
+                        },
+                        {
+                                "name": "DM_ROOM",
+                                "class_name": "DmRoom"
                         }
                 ]
         },
@@ -44,6 +48,10 @@
                 {
                         "tag": "v1",
                         "new_sqlite_classes": ["CrewChatRoom"]
+                },
+                {
+                        "tag": "v2",
+                        "new_sqlite_classes": ["DmRoom"]
                 }
         ]
 }
