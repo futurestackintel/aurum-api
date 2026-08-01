@@ -31,6 +31,7 @@ import { processCrewBattleCron }        from './services/crew.js';
 import { requireAuth }                  from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
 export { CrewChatRoom } from './durableObjects/CrewChatRoom.js';
+export { DmRoom } from './durableObjects/DmRoom.js';
 
 const ALLOWED_ORIGINS = [
   'https://tryaurum.store',
