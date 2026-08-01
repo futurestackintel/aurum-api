@@ -28,6 +28,8 @@ import {
   disbandCrew,
   setCrewRules,
   muteMember,
+  castCrewBattleVote,
+  reportCrewBattleDispute,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -350,6 +352,42 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Mute member error:', err);
       return jsonResponse({ error: 'Unable to mute member. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crew-battles/:id/vote — anyone except participants ──
+  const battleVoteMatch = path.match(/^\/api\/crew-battles\/([^/]+)\/vote$/);
+  if (battleVoteMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.voted_crew_id) return jsonResponse({ error: 'voted_crew_id is required' }, 400);
+      const result = await castCrewBattleVote(battleVoteMatch[1], user.id, body.voted_crew_id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error('Cast crew battle vote error:', err);
+      return jsonResponse({ error: 'Unable to cast vote. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crew-battles/:id/dispute — losing crew's captain ──
+  const battleDisputeMatch = path.match(/^\/api\/crew-battles\/([^/]+)\/dispute$/);
+  if (battleDisputeMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.reason) return jsonResponse({ error: 'reason is required' }, 400);
+      const result = await reportCrewBattleDispute(battleDisputeMatch[1], user.id, body.reason, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Report crew battle dispute error:', err);
+      return jsonResponse({ error: 'Unable to report dispute. Please try again.' }, 500);
     }
   }
 
