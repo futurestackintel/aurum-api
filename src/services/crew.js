@@ -57,6 +57,9 @@ export async function initiateCrewSpend(crewId, clerkId, body, db) {
   if (!membership) return { error: 'You are not a member of this crew' };
   if (membership.role !== 'captain') return { error: 'Only the crew captain can initiate a spend' };
 
+  const crewRow = await db.prepare(`SELECT is_frozen FROM crews WHERE id = ?`).bind(crewId).first();
+  if (crewRow?.is_frozen) return { error: 'This crew\'s wallet is frozen — spends are blocked until an admin lifts the freeze' };
+
   const wallet = await getOrCreateCrewWallet(crewId, db);
   if (wallet.balance_usd < amount_usd) {
     return { error: `Crew wallet balance ($${wallet.balance_usd}) is less than the requested spend ($${amount_usd})` };
@@ -172,6 +175,12 @@ export async function cosignCrewSpend(transactionId, clerkId, db) {
   }
 
   // All moderators have signed — execute the spend now
+  // All moderators have signed — execute the spend now
+  const crewRow = await db.prepare(`SELECT is_frozen FROM crews WHERE id = ?`).bind(txn.crew_id).first();
+  if (crewRow?.is_frozen) {
+    return { error: 'This crew\'s wallet is frozen — the spend has all required co-signs but cannot execute until an admin lifts the freeze', all_cosigns_received: true };
+  }
+
   const wallet = await db
     .prepare(`SELECT * FROM crew_wallets WHERE id = ?`)
     .bind(txn.crew_wallet_id)
@@ -805,6 +814,44 @@ export async function processCrewBattleCron(db) {
   }
 
   return { closed: toClose.length, released: released.length };
+}
+
+// ── FREEZE / UNFREEZE CREW (admin only) ───────────────────────
+
+export async function freezeCrew(crewId, adminId, reason, db) {
+  const crew = await db.prepare(`SELECT * FROM crews WHERE id = ?`).bind(crewId).first();
+  if (!crew) return { error: 'Crew not found' };
+  if (crew.is_frozen) return { error: 'Crew is already frozen' };
+  if (!reason || reason.trim().length === 0) return { error: 'A reason is required to freeze a crew' };
+
+  const now = nowISO();
+  await db
+    .prepare(`
+      UPDATE crews
+      SET is_frozen = 1, freeze_reason = ?, frozen_by = ?, frozen_at = ?
+      WHERE id = ?
+    `)
+    .bind(reason.trim(), adminId, now, crewId)
+    .run();
+
+  return { crew_id: crewId, is_frozen: true, freeze_reason: reason.trim() };
+}
+
+export async function unfreezeCrew(crewId, adminId, db) {
+  const crew = await db.prepare(`SELECT * FROM crews WHERE id = ?`).bind(crewId).first();
+  if (!crew) return { error: 'Crew not found' };
+  if (!crew.is_frozen) return { error: 'Crew is not currently frozen' };
+
+  await db
+    .prepare(`
+      UPDATE crews
+      SET is_frozen = 0, freeze_reason = NULL, frozen_by = NULL, frozen_at = NULL
+      WHERE id = ?
+    `)
+    .bind(crewId)
+    .run();
+
+  return { crew_id: crewId, is_frozen: false };
 }
 
 // ── CREATE CREW ──────────────────────────────────────────────
