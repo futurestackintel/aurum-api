@@ -64,6 +64,7 @@ import {
   getUnscoredEntries,
   getResolvableChallenges,
   getDisputedDuels,
+  getDisputedCrewBattles,
 }                                          from '../services/adminQueue.js';
 import {
   getPlatformSummary,
@@ -301,6 +302,19 @@ export async function handleAdminRoutes(path, method, request, env) {
     try {
       const duels = await getDisputedDuels(env, limit, offset);
       return json({ duels });
+    } catch (err) {
+      console.error(err); return json({ error: "Something went wrong" }, 500);
+    }
+  }
+
+  // ── GET /api/admin/crew-battles/disputes ─────────────────
+  if (path === '/api/admin/crew-battles/disputes' && method === 'GET') {
+    const url    = new URL(request.url);
+    const limit  = parseInt(url.searchParams.get('limit')  ?? '50');
+    const offset = parseInt(url.searchParams.get('offset') ?? '0');
+    try {
+      const battles = await getDisputedCrewBattles(env, limit, offset);
+      return json({ battles });
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
     }
