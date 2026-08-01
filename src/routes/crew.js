@@ -32,6 +32,7 @@ import {
   reportCrewBattleDispute,
   freezeCrew,
   unfreezeCrew,
+  flagCrewSpend,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -163,6 +164,24 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Unfreeze crew error:', err);
       return jsonResponse({ error: 'Unable to unfreeze crew. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crew-spends/:id/flag — member flags a spend ───
+  const spendFlagMatch = path.match(/^\/api\/crew-spends\/([^/]+)\/flag$/);
+  if (spendFlagMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.reason) return jsonResponse({ error: 'reason is required' }, 400);
+      const result = await flagCrewSpend(spendFlagMatch[1], user.id, body.reason, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error('Flag crew spend error:', err);
+      return jsonResponse({ error: 'Unable to flag spend. Please try again.' }, 500);
     }
   }
   // ── POST /api/crews/:id/spend — captain initiates a spend ──
