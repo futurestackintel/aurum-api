@@ -37,7 +37,7 @@ import {
   deleteCrewMessage,
   getCrewMessages,
 } from '../services/crew.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireAuthFromQuery } from '../middleware/auth.js';
 
 export async function handleCrewRoutes(path, method, request, env) {
   const db = env.DB;
