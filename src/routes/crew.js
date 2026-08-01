@@ -15,6 +15,9 @@ import {
   resolveCrewBattle,
   getCrewById,
   getCrews,
+  initiateCrewSpend,
+  cosignCrewSpend,
+  vetoCrewSpend,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -112,6 +115,56 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Resolve crew battle error:', err);
       return jsonResponse({ error: 'Unable to resolve crew battle. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/spend — captain initiates a spend ──
+  const spendMatch = path.match(/^\/api\/crews\/([^/]+)\/spend$/);
+  if (spendMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body   = await request.json();
+      const result = await initiateCrewSpend(spendMatch[1], user.id, body, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error('Initiate crew spend error:', err);
+      return jsonResponse({ error: 'Unable to initiate spend. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crew-spends/:id/cosign — moderator co-signs ──
+  const cosignMatch = path.match(/^\/api\/crew-spends\/([^/]+)\/cosign$/);
+  if (cosignMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await cosignCrewSpend(cosignMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Cosign crew spend error:', err);
+      return jsonResponse({ error: 'Unable to co-sign spend. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crew-spends/:id/veto — moderator vetoes ──────
+  const vetoMatch = path.match(/^\/api\/crew-spends\/([^/]+)\/veto$/);
+  if (vetoMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body   = await request.json().catch(() => ({}));
+      const result = await vetoCrewSpend(vetoMatch[1], user.id, body, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Veto crew spend error:', err);
+      return jsonResponse({ error: 'Unable to veto spend. Please try again.' }, 500);
     }
   }
 
