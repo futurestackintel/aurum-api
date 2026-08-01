@@ -655,6 +655,32 @@ export async function isMemberMuted(crewId, userId, db) {
 return activeMute ? { muted: true, muted_until: activeMute.muted_until, reason: activeMute.reason } : { muted: false };
 }
 
+export async function deleteCrewMessage(messageId, userId, db) {
+  const message = await db
+    .prepare(`SELECT crew_id, deleted_at FROM crew_messages WHERE id = ?`)
+    .bind(messageId)
+    .first();
+
+  if (!message) return { error: 'Message not found' };
+  if (message.deleted_at) return { error: 'Message already deleted' };
+
+  const member = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(message.crew_id, userId)
+    .first();
+
+  if (!member || (member.role !== 'captain' && member.role !== 'moderator')) {
+    return { error: 'Only the Captain or a Moderator can delete crew messages' };
+  }
+
+  await db
+    .prepare(`UPDATE crew_messages SET deleted_at = ?, deleted_by = ? WHERE id = ?`)
+    .bind(new Date().toISOString(), userId, messageId)
+    .run();
+
+  return { deleted: true, message_id: messageId };
+}
+
 // ── CAST CREW BATTLE VOTE (anyone except battle participants) ──
 
 export async function castCrewBattleVote(battleId, clerkId, votedCrewId, db) {
