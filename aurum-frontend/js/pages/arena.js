@@ -294,7 +294,18 @@ window.ArenaPage = {
     document.getElementById('btn-submit-duel')
       ?.addEventListener('click', () => this.submitDuel());
 
-    /* Create crew modal */
+    <!-- Crew Chat Modal -->
+      <div class="modal-overlay" id="crew-chat-modal" style="display:none;">
+        <div class="modal" style="display:flex;flex-direction:column;height:80vh;max-height:600px;">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title" id="crew-chat-title">Crew Chat</h3>
+          <div id="crew-chat-messages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2) 0;"></div>
+          <div style="display:flex;gap:var(--space-2);padding-top:var(--space-3);">
+            <input class="input" id="crew-chat-input" placeholder="Message your crew..." style="flex:1;" />
+            <button class="btn btn-primary btn-sm" id="btn-send-crew-message">Send</button>
+          </div>
+        </div>
+      </div>
     document.getElementById('btn-create-crew')
       ?.addEventListener('click', () => {
         document.getElementById('create-crew-modal').style.display = 'flex';
@@ -1087,6 +1098,10 @@ window.ArenaPage = {
             ${crew.user_member ? 'Member ✦' : 'Join Crew'}
           </button>
           ${crew.user_member ? `
+            <button class="btn btn-ghost btn-sm btn-chat-crew"
+              data-crew-id="${crew.id}"
+              data-crew-name="${crew.name}"
+              style="flex-shrink:0;">💬 Chat</button>
             <button class="btn btn-ghost btn-sm btn-battle-crew"
               data-crew-id="${crew.id}"
               style="flex-shrink:0;">⚔️ Battle</button>
