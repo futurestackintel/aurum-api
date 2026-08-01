@@ -34,6 +34,7 @@ import {
   unfreezeCrew,
   flagCrewSpend,
   isMemberMuted,
+  deleteCrewMessage,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -489,6 +490,22 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Send crew message error:', err);
       return jsonResponse({ error: 'Unable to send message. Please try again.' }, 500);
+    }
+  }
+
+  // ── DELETE /api/crew-messages/:id — captain/moderator deletes ──
+  const deleteMessageMatch = path.match(/^\/api\/crew-messages\/([^/]+)$/);
+  if (deleteMessageMatch && method === 'DELETE') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await deleteCrewMessage(deleteMessageMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Delete crew message error:', err);
+      return jsonResponse({ error: 'Unable to delete message. Please try again.' }, 500);
     }
   }
 
