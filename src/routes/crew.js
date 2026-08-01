@@ -35,6 +35,7 @@ import {
   flagCrewSpend,
   isMemberMuted,
   deleteCrewMessage,
+  getCrewMessages,
 } from '../services/crew.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -508,6 +509,31 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Send crew message error:', err);
       return jsonResponse({ error: 'Unable to send message. Please try again.' }, 500);
+    }
+  }
+
+  // ── GET /api/crews/:id/messages — fetch message history ─────
+  const historyMatch = path.match(/^\/api\/crews\/([^/]+)\/messages$/);
+  if (historyMatch && method === 'GET') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const member = await db
+        .prepare(`SELECT id FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+        .bind(historyMatch[1], user.id)
+        .first();
+      if (!member) return jsonResponse({ error: 'You are not a member of this crew' }, 403);
+
+      const url = new URL(request.url);
+      const limit = parseInt(url.searchParams.get('limit') ?? '50');
+      const before = url.searchParams.get('before');
+
+      const messages = await getCrewMessages(historyMatch[1], limit, before, db);
+      return jsonResponse({ messages });
+    } catch (err) {
+      console.error('Get crew messages error:', err);
+      return jsonResponse({ error: 'Unable to load messages. Please try again.' }, 500);
     }
   }
 
