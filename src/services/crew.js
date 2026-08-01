@@ -34,6 +34,217 @@ async function getOrCreateCrewWallet(crewId, db) {
   return wallet;
 }
 
+// ── INITIATE CREW SPEND (captain only) ───────────────────────
+
+export async function initiateCrewSpend(crewId, clerkId, body, db) {
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const { amount_usd, reason } = body;
+
+  if (!amount_usd || amount_usd <= 0) return { error: 'amount_usd must be a positive number' };
+  if (!reason || reason.trim().length === 0) return { error: 'A reason is required for every crew spend' };
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+
+  if (!membership) return { error: 'You are not a member of this crew' };
+  if (membership.role !== 'captain') return { error: 'Only the crew captain can initiate a spend' };
+
+  const wallet = await getOrCreateCrewWallet(crewId, db);
+  if (wallet.balance_usd < amount_usd) {
+    return { error: `Crew wallet balance ($${wallet.balance_usd}) is less than the requested spend ($${amount_usd})` };
+  }
+
+  const { results: moderators } = await db
+    .prepare(`SELECT user_id FROM crew_members WHERE crew_id = ? AND role = 'moderator'`)
+    .bind(crewId)
+    .all();
+
+  const now = nowISO();
+  const txnId = crypto.randomUUID();
+  const requiredCosigns = moderators.length;
+
+  if (requiredCosigns === 0) {
+    // No moderators to co-sign — execute immediately
+    const newBalance = wallet.balance_usd - amount_usd;
+
+    await db.batch([
+      db.prepare(`
+        UPDATE crew_wallets SET balance_usd = ?, total_spent_usd = total_spent_usd + ?, updated_at = ?
+        WHERE id = ?
+      `).bind(newBalance, amount_usd, now, wallet.id),
+
+      db.prepare(`
+        INSERT INTO crew_wallet_transactions
+          (id, crew_id, crew_wallet_id, type, amount_usd, balance_after_usd, initiated_by, reason, status, required_cosigns, created_at)
+        VALUES (?, ?, ?, 'spend', ?, ?, ?, ?, 'executed', 0, ?)
+      `).bind(txnId, crewId, wallet.id, amount_usd, newBalance, userId, reason.trim(), now),
+    ]);
+
+    return { spend: { id: txnId, status: 'executed', amount_usd, reason: reason.trim(), note: 'No moderators in this crew — spend executed immediately' } };
+  }
+
+  // Moderators exist — spend waits for all of them to co-sign
+  await db
+    .prepare(`
+      INSERT INTO crew_wallet_transactions
+        (id, crew_id, crew_wallet_id, type, amount_usd, balance_after_usd, initiated_by, reason, status, required_cosigns, created_at)
+      VALUES (?, ?, ?, 'spend', ?, NULL, ?, ?, 'pending_cosign', ?, ?)
+    `)
+    .bind(txnId, crewId, wallet.id, amount_usd, userId, reason.trim(), requiredCosigns, now)
+    .run();
+
+  return {
+    spend: {
+      id: txnId,
+      status: 'pending_cosign',
+      amount_usd,
+      reason: reason.trim(),
+      required_cosigns: requiredCosigns,
+      cosigns_received: 0,
+    },
+  };
+}
+
+// ── CO-SIGN CREW SPEND (moderator only) ───────────────────────
+
+export async function cosignCrewSpend(transactionId, clerkId, db) {
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const txn = await db
+    .prepare(`SELECT * FROM crew_wallet_transactions WHERE id = ?`)
+    .bind(transactionId)
+    .first();
+
+  if (!txn) return { error: 'Spend not found' };
+  if (txn.status !== 'pending_cosign') return { error: `This spend is already ${txn.status}` };
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(txn.crew_id, userId)
+    .first();
+
+  if (!membership || membership.role !== 'moderator') {
+    return { error: 'Only a crew moderator can co-sign a spend' };
+  }
+
+  const already = await db
+    .prepare(`SELECT id FROM crew_wallet_cosigns WHERE transaction_id = ? AND moderator_id = ?`)
+    .bind(transactionId, userId)
+    .first();
+
+  if (already) return { error: 'You have already co-signed this spend' };
+
+  await db
+    .prepare(`
+      INSERT INTO crew_wallet_cosigns (id, transaction_id, moderator_id, signed_at)
+      VALUES (?, ?, ?, ?)
+    `)
+    .bind(crypto.randomUUID(), transactionId, userId, nowISO())
+    .run();
+
+  const { results: signs } = await db
+    .prepare(`SELECT moderator_id FROM crew_wallet_cosigns WHERE transaction_id = ?`)
+    .bind(transactionId)
+    .all();
+
+  if (signs.length < txn.required_cosigns) {
+    return {
+      spend: {
+        id: transactionId,
+        status: 'pending_cosign',
+        required_cosigns: txn.required_cosigns,
+        cosigns_received: signs.length,
+      },
+    };
+  }
+
+  // All moderators have signed — execute the spend now
+  const wallet = await db
+    .prepare(`SELECT * FROM crew_wallets WHERE id = ?`)
+    .bind(txn.crew_wallet_id)
+    .first();
+
+  if (wallet.balance_usd < txn.amount_usd) {
+    return { error: 'Crew wallet balance has dropped below this spend amount since it was initiated — cannot execute' };
+  }
+
+  const now = nowISO();
+  const newBalance = wallet.balance_usd - txn.amount_usd;
+
+  await db.batch([
+    db.prepare(`
+      UPDATE crew_wallets SET balance_usd = ?, total_spent_usd = total_spent_usd + ?, updated_at = ?
+      WHERE id = ?
+    `).bind(newBalance, txn.amount_usd, now, wallet.id),
+
+    db.prepare(`
+      UPDATE crew_wallet_transactions SET status = 'executed', balance_after_usd = ?
+      WHERE id = ?
+    `).bind(newBalance, transactionId),
+  ]);
+
+  return {
+    spend: {
+      id: transactionId,
+      status: 'executed',
+      amount_usd: txn.amount_usd,
+      balance_after_usd: newBalance,
+    },
+  };
+}
+
+// ── VETO CREW SPEND (any single moderator) ────────────────────
+
+export async function vetoCrewSpend(transactionId, clerkId, reasonBody, db) {
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const txn = await db
+    .prepare(`SELECT * FROM crew_wallet_transactions WHERE id = ?`)
+    .bind(transactionId)
+    .first();
+
+  if (!txn) return { error: 'Spend not found' };
+  if (txn.status !== 'pending_cosign') return { error: `This spend is already ${txn.status}` };
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(txn.crew_id, userId)
+    .first();
+
+  if (!membership || membership.role !== 'moderator') {
+    return { error: 'Only a crew moderator can veto a spend' };
+  }
+
+  await db
+    .prepare(`
+      UPDATE crew_wallet_transactions
+      SET status = 'vetoed', reason = reason || ' [VETOED: ' || ? || ']'
+      WHERE id = ?
+    `)
+    .bind((reasonBody?.veto_reason ?? 'no reason given').trim(), transactionId)
+    .run();
+
+  return { spend: { id: transactionId, status: 'vetoed' } };
+}
+
 // ── CREATE CREW ──────────────────────────────────────────────
 
 export async function createCrew(clerkId, body, db) {
