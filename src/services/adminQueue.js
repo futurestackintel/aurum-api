@@ -62,3 +62,23 @@ export async function getDisputedDuels(env, limit, offset) {
 
   return results;
 }
+
+// ── DISPUTED/TIED CREW BATTLES ───────────────────────────────
+export async function getDisputedCrewBattles(env, limit, offset) {
+  const { results } = await env.DB.prepare(`
+    SELECT
+      cb.id, cb.title, cb.prize_pool_usd, cb.status, cb.dispute_status,
+      cb.dispute_reason, cb.dispute_deadline, cb.winner_crew_id,
+      cc.name AS challenger_crew_name,
+      tc.name AS target_crew_name,
+      ur.username AS reported_by_username
+    FROM crew_battles cb
+    JOIN crews cc ON cc.id = cb.challenger_crew_id
+    JOIN crews tc ON tc.id = cb.target_crew_id
+    LEFT JOIN users ur ON ur.id = cb.dispute_reported_by
+    WHERE cb.dispute_status IN ('disputed', 'admin_review')
+    ORDER BY cb.created_at DESC
+    LIMIT ? OFFSET ?
+  `).bind(limit ?? 50, offset ?? 0).all();
+  return results;
+}
