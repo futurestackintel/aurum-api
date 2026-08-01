@@ -82,3 +82,24 @@ export async function getDisputedCrewBattles(env, limit, offset) {
   `).bind(limit ?? 50, offset ?? 0).all();
   return results;
 }
+
+// ── FLAGGED CREW SPENDS ───────────────────────────────────────
+export async function getFlaggedCrewSpends(env, limit, offset) {
+  const { results } = await env.DB.prepare(`
+    SELECT
+      csf.id, csf.transaction_id, csf.reason, csf.status, csf.created_at,
+      cwt.amount_usd, cwt.reason AS spend_reason, cwt.initiated_by,
+      c.name AS crew_name,
+      uf.username AS flagged_by_username,
+      ui.username AS initiated_by_username
+    FROM crew_spend_flags csf
+    JOIN crew_wallet_transactions cwt ON cwt.id = csf.transaction_id
+    JOIN crews c ON c.id = cwt.crew_id
+    JOIN users uf ON uf.id = csf.flagged_by
+    LEFT JOIN users ui ON ui.id = cwt.initiated_by
+    WHERE csf.status = 'pending'
+    ORDER BY csf.created_at ASC
+    LIMIT ? OFFSET ?
+  `).bind(limit ?? 50, offset ?? 0).all();
+  return results;
+}
