@@ -681,6 +681,33 @@ export async function deleteCrewMessage(messageId, userId, db) {
   return { deleted: true, message_id: messageId };
 }
 
+export async function getCrewMessages(crewId, limit, before, db) {
+  const params = [crewId];
+  let query = `
+    SELECT id, sender_id, content, created_at, deleted_at
+    FROM crew_messages
+    WHERE crew_id = ?
+  `;
+
+  if (before) {
+    query += ` AND created_at < ?`;
+    params.push(before);
+  }
+
+  query += ` ORDER BY created_at DESC LIMIT ?`;
+  params.push(limit || 50);
+
+  const { results } = await db.prepare(query).bind(...params).all();
+
+  return results.map(m => ({
+    id: m.id,
+    sender_id: m.sender_id,
+    content: m.deleted_at ? null : m.content,
+    deleted: !!m.deleted_at,
+    created_at: m.created_at,
+  }));
+}
+
 // ── CAST CREW BATTLE VOTE (anyone except battle participants) ──
 
 export async function castCrewBattleVote(battleId, clerkId, votedCrewId, db) {
