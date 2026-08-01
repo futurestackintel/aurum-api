@@ -27,9 +27,23 @@
 		"ADMIN_USER_IDS": "user_3FUFv9rFInguLcGzl21admhCTHL"
 	},
 	"kv_namespaces": [
-		{
-			"binding": "KV",
-			"id": "fd68faad6a5047d59499c002a0ad2614"
-		}
-	]
+                {
+                        "binding": "KV",
+                        "id": "fd68faad6a5047d59499c002a0ad2614"
+                }
+        ],
+        "durable_objects": {
+                "bindings": [
+                        {
+                                "name": "CREW_CHAT",
+                                "class_name": "CrewChatRoom"
+                        }
+                ]
+        },
+        "migrations": [
+                {
+                        "tag": "v1",
+                        "new_classes": ["CrewChatRoom"]
+                }
+        ]
 }
