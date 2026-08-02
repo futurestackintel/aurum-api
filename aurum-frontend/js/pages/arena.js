@@ -1250,9 +1250,11 @@ window.ArenaPage = {
 
   crewMessageHTML(m) {
     const text = m.deleted ? '<em>Message removed</em>' : this.escapeHTML(m.content);
+    const isMe = m.sender_id === AURUM.ProfileCache.get()?.id;
+    const senderLabel = isMe ? 'You' : (this.crewMemberNames[m.sender_id] || m.sender_id);
     return `
       <div class="chat-message" data-message-id="${m.id}">
-        <span class="chat-message-sender mono">${m.sender_id === AURUM.ProfileCache.get()?.id ? 'You' : m.sender_id}</span>
+        <span class="chat-message-sender mono">${senderLabel}</span>
         <span class="chat-message-text">${text}</span>
       </div>
     `;
