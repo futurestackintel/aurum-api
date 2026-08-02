@@ -322,7 +322,11 @@ window.ArenaPage = {
           this.closeCrewChat();
         }
       });
-
+    document.getElementById('crew-detail-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'crew-detail-modal')
+          e.target.style.display = 'none';
+      });
     /* Crew chat send */
     document.getElementById('btn-send-crew-message')
       ?.addEventListener('click', () => this.sendCrewMessage());
