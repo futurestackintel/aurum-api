@@ -239,6 +239,14 @@ window.ArenaPage = {
           </div>
         </div>
       </div>
+
+      <div class="modal-overlay" id="crew-detail-modal" style="display:none;">
+        <div class="modal" style="display:flex;flex-direction:column;max-height:80vh;overflow-y:auto;">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title" id="crew-detail-title">Crew</h3>
+          <div id="crew-detail-body"></div>
+        </div>
+      </div>
     `;
     this.applyStyles();
     this.bindEvents();
