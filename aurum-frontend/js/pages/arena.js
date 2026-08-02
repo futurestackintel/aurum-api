@@ -1658,6 +1658,32 @@ window.ArenaPage = {
         font-size: var(--text-xs);
         color: var(--color-gold);
       }
+
+      /* Crew chat */
+      .chat-message {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: var(--space-2) var(--space-3);
+        background: var(--color-surface-2);
+        border-radius: var(--radius-md);
+        max-width: 80%;
+        align-self: flex-start;
+      }
+
+      .chat-message-sender {
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-gold);
+      }
+
+      .chat-message-text {
+        font-size: var(--text-sm);
+        color: var(--color-text);
+        line-height: 1.5;
+        word-break: break-word;
+      }
     `;
     document.head.appendChild(style);
   },
