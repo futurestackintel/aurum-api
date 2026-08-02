@@ -1184,9 +1184,9 @@ window.ArenaPage = {
     this.crewMemberNames = {};
     try {
       const crewData = await AURUM.CrewAPI.getCrew(crewId);
-      const members = crewData.crew?.members || crewData.members || [];
+      const members = crewData.crew?.members || [];
       members.forEach(m => {
-        if (m.id && m.username) this.crewMemberNames[m.id] = m.username;
+        if (m.user_id && m.username) this.crewMemberNames[m.user_id] = m.username;
       });
     } catch (err) {
       /* Non-fatal — chat still works, just shows raw IDs if this fails */
