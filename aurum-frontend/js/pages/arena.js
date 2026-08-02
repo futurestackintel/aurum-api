@@ -1101,11 +1101,11 @@ window.ArenaPage = {
   crewHTML(crew, index) {
     return `
       <div class="challenge-card card fade-in" style="animation-delay:${index * 80}ms;">
-        <div class="challenge-top">
+        <div class="challenge-top" style="cursor:pointer;" data-crew-detail-id="${crew.id}">
           <div class="challenge-icon">⚔️</div>
           <div class="challenge-info">
             <p class="challenge-title">${crew.name}</p>
-            <div class="challenge-meta">
+			<div class="challenge-meta">
               <span class="badge badge-muted" style="font-size:9px;">
                 ${crew.member_count || 0} members
               </span>
