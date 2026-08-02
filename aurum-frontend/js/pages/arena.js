@@ -1190,7 +1190,55 @@ window.ArenaPage = {
   activeChatCrewId: null,
   chatSocket:       null,
   crewMemberNames:  {},
-
+  async openCrewDetail(crewId) {
+    const modal = document.getElementById('crew-detail-modal');
+    const body  = document.getElementById('crew-detail-body');
+    document.getElementById('crew-detail-title').textContent = 'Loading...';
+    body.innerHTML = '';
+    modal.style.display = 'flex';
+    try {
+      const { crew } = await AURUM.CrewAPI.getCrew(crewId);
+      document.getElementById('crew-detail-title').textContent = crew.name;
+      const membersHTML = (crew.members || []).map(m => `
+        <div style="display:flex;justify-content:space-between;align-items:center;
+          padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
+          <span>${this.escapeHTML(m.username)}</span>
+          <span class="badge badge-muted" style="font-size:9px;">${m.role}</span>
+        </div>
+      `).join('');
+      body.innerHTML = `
+        ${crew.description ? `
+          <p style="font-size:var(--text-sm);color:var(--color-text-muted);
+            line-height:1.6;margin-bottom:var(--space-3);">${this.escapeHTML(crew.description)}</p>
+        ` : ''}
+        <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);flex-wrap:wrap;">
+          <span class="badge badge-muted" style="font-size:9px;">${crew.member_count || 0} members</span>
+          <span class="badge badge-muted" style="font-size:9px;">${crew.is_locked ? 'Locked' : 'Open'}</span>
+          ${crew.is_frozen ? `<span class="badge badge-muted" style="font-size:9px;color:var(--color-danger);">Frozen</span>` : ''}
+        </div>
+        <div style="margin-bottom:var(--space-3);">
+          <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+            text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Crew Wallet</p>
+          <p class="mono" style="font-size:var(--text-lg);">$${(crew.balance_usd || 0).toFixed(2)}</p>
+        </div>
+        ${crew.rules ? `
+          <div style="margin-bottom:var(--space-3);">
+            <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+              text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Rules</p>
+            <p style="font-size:var(--text-sm);line-height:1.6;">${this.escapeHTML(crew.rules)}</p>
+          </div>
+        ` : ''}
+        <div>
+          <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+            text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Members</p>
+          ${membersHTML}
+        </div>
+      `;
+    } catch (err) {
+      body.innerHTML = `<p style="color:var(--color-danger);">Failed to load crew.</p>`;
+      AURUM.showToast(err.message || 'Could not load crew.', 'error');
+    }
+  },
   async openCrewChat(crewId, crewName) {
     this.activeChatCrewId = crewId;
     document.getElementById('crew-chat-title').textContent = crewName || 'Crew Chat';
