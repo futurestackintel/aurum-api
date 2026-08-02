@@ -1170,6 +1170,7 @@ window.ArenaPage = {
   -------------------------------------------------- */
   activeChatCrewId: null,
   chatSocket:       null,
+  crewMemberNames:  {},
 
   async openCrewChat(crewId, crewName) {
     this.activeChatCrewId = crewId;
@@ -1178,6 +1179,18 @@ window.ArenaPage = {
 
     const list = document.getElementById('crew-chat-messages');
     list.innerHTML = '<p style="text-align:center;color:var(--color-text-muted);font-size:var(--text-sm);">Loading...</p>';
+
+    /* Build id -> username lookup so messages can show real names */
+    this.crewMemberNames = {};
+    try {
+      const crewData = await AURUM.CrewAPI.getCrew(crewId);
+      const members = crewData.crew?.members || crewData.members || [];
+      members.forEach(m => {
+        if (m.id && m.username) this.crewMemberNames[m.id] = m.username;
+      });
+    } catch (err) {
+      /* Non-fatal — chat still works, just shows raw IDs if this fails */
+    }
 
     try {
       const data = await AURUM.CrewAPI.getMessages(crewId);
@@ -1189,7 +1202,7 @@ window.ArenaPage = {
 
     this.connectCrewChatSocket(crewId);
   },
-
+	
   connectCrewChatSocket(crewId) {
     if (this.chatSocket) {
       this.chatSocket.close();
