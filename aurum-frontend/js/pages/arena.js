@@ -1171,6 +1171,13 @@ window.ArenaPage = {
         this.openCrewChat(btn.dataset.crewId, btn.dataset.crewName);
       });
     });
+    document.querySelectorAll('[data-crew-detail-id]').forEach(el => {
+      if (el.dataset.bound) return;
+      el.dataset.bound = '1';
+      el.addEventListener('click', () => {
+        this.openCrewDetail(el.dataset.crewDetailId);
+      });
+    });
   },
 
 /* --------------------------------------------------
