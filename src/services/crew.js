@@ -1273,10 +1273,14 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
 
 export async function getCrewById(crewId, db) {
   const crew = await db
-    .prepare(`SELECT * FROM crews WHERE id = ?`)
+    .prepare(`
+      SELECT crews.*, cw.balance_usd, cw.total_funded_usd, cw.total_spent_usd
+      FROM crews
+      LEFT JOIN crew_wallets cw ON cw.crew_id = crews.id
+      WHERE crews.id = ?
+    `)
     .bind(crewId)
     .first();
-
   if (!crew) return null;
 
   const { results: members } = await db
