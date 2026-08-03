@@ -504,7 +504,7 @@ export async function handleCrewRoutes(path, method, request, env) {
         body: JSON.stringify({
           id: messageId,
           crewId: messageMatch[1],
-          senderId: user.id,
+          senderId: userId,
           content: body.content,
           createdAt: new Date().toISOString(),
         }),
