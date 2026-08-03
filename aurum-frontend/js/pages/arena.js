@@ -1228,10 +1228,18 @@ window.ArenaPage = {
           <p style="font-size:var(--text-sm);color:var(--color-text-muted);
             line-height:1.6;margin-bottom:var(--space-3);">${this.escapeHTML(crew.description)}</p>
         ` : ''}
-        <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);flex-wrap:wrap;">
+        <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);flex-wrap:wrap;align-items:center;">
           <span class="badge badge-muted" style="font-size:9px;">${crew.member_count || 0} members</span>
           <span class="badge badge-muted" style="font-size:9px;">${crew.is_locked ? 'Locked' : 'Open'}</span>
           ${crew.is_frozen ? `<span class="badge badge-muted" style="font-size:9px;color:var(--color-danger);">Frozen</span>` : ''}
+          ${isCaptain ? `
+            <button class="btn btn-outline btn-sm" id="btn-detail-toggle-lock" data-locked="${crew.is_locked ? '1' : '0'}">
+              ${crew.is_locked ? 'Unlock Crew' : 'Lock Crew'}
+            </button>
+          ` : ''}
+          ${myMembership && !isCaptain ? `
+            <button class="btn btn-outline btn-sm" id="btn-detail-leave">Leave Crew</button>
+          ` : ''}
         </div>
         <div style="margin-bottom:var(--space-3);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
