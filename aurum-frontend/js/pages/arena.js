@@ -1268,6 +1268,53 @@ window.ArenaPage = {
           modal.style.display = 'none';
           this.openCrewChat(crewId, crew.name);
         });
+      document.getElementById('btn-detail-leave')
+        ?.addEventListener('click', async () => {
+          if (!confirm('Leave this crew?')) return;
+          try {
+            await AURUM.CrewAPI.leaveCrew();
+            AURUM.showToast('You left the crew.', 'default');
+            modal.style.display = 'none';
+            this.loadCrews();
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not leave crew.', 'error');
+          }
+        });
+      document.getElementById('btn-detail-toggle-lock')
+        ?.addEventListener('click', async (e) => {
+          const nowLocked = e.target.dataset.locked === '1';
+          try {
+            await AURUM.CrewAPI.setLocked(crewId, !nowLocked);
+            AURUM.showToast(nowLocked ? 'Crew unlocked.' : 'Crew locked.', 'default');
+            this.openCrewDetail(crewId);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not update lock status.', 'error');
+          }
+        });
+      document.querySelectorAll('.btn-detail-kick').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remove this member from the crew?')) return;
+          try {
+            await AURUM.CrewAPI.kickMember(crewId, btn.dataset.userId);
+            AURUM.showToast('Member removed.', 'default');
+            this.openCrewDetail(crewId);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not remove member.', 'error');
+          }
+        });
+      });
+      document.querySelectorAll('.btn-detail-promote').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const makeMod = btn.dataset.makeMod === 'true';
+          try {
+            await AURUM.CrewAPI.setModerator(crewId, btn.dataset.userId, makeMod);
+            AURUM.showToast(makeMod ? 'Member promoted to moderator.' : 'Moderator demoted.', 'default');
+            this.openCrewDetail(crewId);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not update role.', 'error');
+          }
+        });
+      });
     } catch (err) {
       body.innerHTML = `<p style="color:var(--color-danger);">Failed to load crew.</p>`;
       AURUM.showToast(err.message || 'Could not load crew.', 'error');
