@@ -1229,11 +1229,20 @@ window.ArenaPage = {
           </div>
         ` : ''}
         <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-1);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
-            text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Members</p>
+            text-transform:uppercase;letter-spacing:0.06em;">Members</p>
+          <button class="btn btn-ghost btn-sm" id="btn-detail-open-chat">💬 Chat</button>
+        </div>
+        <div>
           ${membersHTML}
         </div>
       `;
+      document.getElementById('btn-detail-open-chat')
+        ?.addEventListener('click', () => {
+          modal.style.display = 'none';
+          this.openCrewChat(crewId, crew.name);
+        });
     } catch (err) {
       body.innerHTML = `<p style="color:var(--color-danger);">Failed to load crew.</p>`;
       AURUM.showToast(err.message || 'Could not load crew.', 'error');
