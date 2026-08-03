@@ -575,7 +575,12 @@ export async function handleCrewRoutes(path, method, request, env) {
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
-      const result = await deleteCrewMessage(deleteMessageMatch[1], user.id, db);
+      const userRow = await db
+        .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+        .bind(user.id)
+        .first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      const result = await deleteCrewMessage(deleteMessageMatch[1], userRow.id, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
