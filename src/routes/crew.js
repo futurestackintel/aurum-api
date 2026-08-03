@@ -493,15 +493,15 @@ export async function handleCrewRoutes(path, method, request, env) {
               .prepare(`INSERT INTO crew_message_mentions (id, message_id, mentioned_user_id) VALUES (?, ?, ?)`)
               .bind(crypto.randomUUID(), messageId, mentionedUser.id)
               .run();
-            await db
-              .prepare(`
+            const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(messageMatch[1]).first();
+            await db.prepare(`
                 INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
                 VALUES (?, ?, 'crew_mention', 'You were mentioned', ?, ?, ?)
               `)
               .bind(
                 crypto.randomUUID(),
                 mentionedUser.id,
-                `You were mentioned in a crew chat message.`,
+                `You were mentioned in ${crewRow?.name || 'a crew'}'s chat.`,
                 `/crews/${messageMatch[1]}`,
                 new Date().toISOString(),
               )
