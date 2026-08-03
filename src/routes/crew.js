@@ -460,18 +460,23 @@ export async function handleCrewRoutes(path, method, request, env) {
         return jsonResponse({ error: 'Message cannot be empty' }, 400);
       }
 
-      const muteStatus = await isMemberMuted(messageMatch[1], user.id, db);
+      const userRow = await db
+        .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+        .bind(user.id)
+        .first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      const userId = userRow.id;
+      const muteStatus = await isMemberMuted(messageMatch[1], userId, db);
       if (muteStatus.muted) {
         return jsonResponse({
           error: `You are muted until ${muteStatus.muted_until}`,
           reason: muteStatus.reason,
         }, 403);
       }
-
       const messageId = crypto.randomUUID();
       await db
         .prepare(`INSERT INTO crew_messages (id, crew_id, sender_id, content) VALUES (?, ?, ?, ?)`)
-        .bind(messageId, messageMatch[1], user.id, body.content)
+        .bind(messageId, messageMatch[1], userId, body.content)
         .run();
 
       // Parse @mentions and insert one row per mentioned user
