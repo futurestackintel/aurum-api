@@ -346,6 +346,14 @@ const CrewAPI = {
 
   deleteMessage: (messageId) =>
     apiRequest('DELETE', `/api/crew-messages/${messageId}`),
+  leaveCrew: () =>
+    apiRequest('POST', '/api/crews/leave'),
+  kickMember: (crewId, targetUserId) =>
+    apiRequest('POST', `/api/crews/${crewId}/kick`, { target_user_id: targetUserId }),
+  setLocked: (crewId, locked) =>
+    apiRequest('POST', `/api/crews/${crewId}/lock`, { locked }),
+  setModerator: (crewId, targetUserId, makeModerator) =>
+    apiRequest('POST', `/api/crews/${crewId}/moderator`, { target_user_id: targetUserId, make_moderator: makeModerator }),
 };
 /* ============================================================
    UI HELPERS
