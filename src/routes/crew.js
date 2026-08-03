@@ -523,9 +523,14 @@ export async function handleCrewRoutes(path, method, request, env) {
     const user = await requireAuthFromQuery(request, env);
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
+    const userRow = await db
+      .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+      .bind(user.id)
+      .first();
+    if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
     const member = await db
       .prepare(`SELECT id FROM crew_members WHERE crew_id = ? AND user_id = ?`)
-      .bind(wsMatch[1], user.id)
+      .bind(wsMatch[1], userRow.id)
       .first();
     if (!member) return jsonResponse({ error: 'You are not a member of this crew' }, 403);
 
