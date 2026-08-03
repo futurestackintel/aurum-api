@@ -750,6 +750,7 @@ export default {
 
 // ── CORS helper ───────────────────────────────────────────────
 function withCors(response, cors) {
+  if (response.status === 101) return response;
   const newHeaders = new Headers(response.headers);
   Object.entries(cors).forEach(([k, v]) => newHeaders.set(k, v));
   return new Response(response.body, { status: response.status, headers: newHeaders });
