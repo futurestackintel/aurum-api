@@ -462,9 +462,9 @@ export async function kickMember(crewId, clerkId, targetUserId, db) {
     .run();
 
   return { kicked: true, crew_id: crewId, target_user_id: targetUserId };
+}
 
-// ── LOCK / UNLOCK CREW (captain only) ─────────────────────────
-
+// ── LOCK / UNLOCK CREW (captain only) ────────────────────────
 export async function setCrewLocked(crewId, clerkId, locked, db) {
   const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
   if (!userRow) return { error: 'User not found' };
