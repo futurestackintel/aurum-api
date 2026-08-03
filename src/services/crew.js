@@ -441,13 +441,27 @@ export async function kickMember(crewId, clerkId, targetUserId, db) {
     .first();
   if (!target) return { error: 'That user is not a member of this crew' };
 
+  const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
+
   await db.batch([
     db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(target.id),
     db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`).bind(crewId),
   ]);
 
+  await db.prepare(`
+      INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
+      VALUES (?, ?, 'crew_kicked', 'Removed from crew', ?, ?, ?)
+    `)
+    .bind(
+      crypto.randomUUID(),
+      targetUserId,
+      `You were removed from ${crewRow?.name || 'a crew'}.`,
+      '/crews',
+      new Date().toISOString(),
+    )
+    .run();
+
   return { kicked: true, crew_id: crewId, target_user_id: targetUserId };
-}
 
 // ── LOCK / UNLOCK CREW (captain only) ─────────────────────────
 
