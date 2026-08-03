@@ -492,6 +492,24 @@ export async function setModeratorRole(crewId, clerkId, targetUserId, makeModera
 
   await db.prepare(`UPDATE crew_members SET role = ? WHERE id = ?`).bind(newRole, target.id).run();
 
+  const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
+  await db.prepare(`
+      INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+    .bind(
+      crypto.randomUUID(),
+      targetUserId,
+      makeModerator ? 'crew_promoted' : 'crew_demoted',
+      makeModerator ? 'Promoted to Moderator' : 'Moderator role removed',
+      makeModerator
+        ? `You were promoted to Moderator in ${crewRow?.name || 'your crew'}.`
+        : `You are no longer a Moderator in ${crewRow?.name || 'your crew'}.`,
+      `/crews/${crewId}`,
+      new Date().toISOString(),
+    )
+    .run();
+
   return { crew_id: crewId, target_user_id: targetUserId, role: newRole };
 }
 
