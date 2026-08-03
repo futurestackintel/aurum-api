@@ -42,5 +42,20 @@ export async function sendDmMessage(channelId, senderId, content, db) {
     .bind(messageId, channelId, senderId, content)
     .run();
 
+  const recipientId = senderId === channel.user_a_id ? channel.user_b_id : channel.user_a_id;
+  const senderRow = await db.prepare(`SELECT username FROM users WHERE id = ?`).bind(senderId).first();
+  await db.prepare(`
+      INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
+      VALUES (?, ?, 'dm_received', 'New message', ?, ?, ?)
+    `)
+    .bind(
+      crypto.randomUUID(),
+      recipientId,
+      `${senderRow?.username || 'Someone'} sent you a message.`,
+      `/messages/${channelId}`,
+      new Date().toISOString(),
+    )
+    .run();
+
   return { message_id: messageId };
 }
