@@ -1199,11 +1199,28 @@ window.ArenaPage = {
     try {
       const { crew } = await AURUM.CrewAPI.getCrew(crewId);
       document.getElementById('crew-detail-title').textContent = crew.name;
+      let me = AURUM.ProfileCache.get();
+      if (!me) {
+        try { me = (await AURUM.AuthAPI.me()).user; } catch { me = null; }
+      }
+      const myMembership = (crew.members || []).find(m => m.user_id === me?.id);
+      const isCaptain = myMembership?.role === 'captain';
+      this.activeDetailCrewId = crewId;
       const membersHTML = (crew.members || []).map(m => `
         <div style="display:flex;justify-content:space-between;align-items:center;
           padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
           <span>${this.escapeHTML(m.username)}</span>
-          <span class="badge badge-muted" style="font-size:9px;">${m.role}</span>
+          <div style="display:flex;gap:var(--space-2);align-items:center;">
+            <span class="badge badge-muted" style="font-size:9px;">${m.role}</span>
+            ${isCaptain && m.user_id !== me?.id && m.role !== 'captain' ? `
+              <button class="btn btn-ghost btn-sm btn-detail-promote"
+                data-user-id="${m.user_id}" data-make-mod="${m.role !== 'moderator'}">
+                ${m.role === 'moderator' ? 'Demote' : 'Promote'}
+              </button>
+              <button class="btn btn-ghost btn-sm btn-detail-kick"
+                data-user-id="${m.user_id}">Kick</button>
+            ` : ''}
+          </div>
         </div>
       `).join('');
       body.innerHTML = `
