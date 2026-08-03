@@ -12,8 +12,9 @@ export async function handleDmRoutes(path, method, request, env) {
     try {
       const body = await request.json();
       if (!body.target_user_id) return jsonResponse({ error: 'target_user_id is required' }, 400);
-
-      const result = await getOrCreateDmChannel(user.id, body.target_user_id, db);
+      const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      const result = await getOrCreateDmChannel(userRow.id, body.target_user_id, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result, result.created ? 201 : 200);
     } catch (err) {
@@ -30,9 +31,10 @@ export async function handleDmRoutes(path, method, request, env) {
 
     try {
       const body = await request.json();
-      const result = await sendDmMessage(messageMatch[1], user.id, body.content, db);
+      const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      const result = await sendDmMessage(messageMatch[1], userRow.id, body.content, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
-
       const doId = env.DM_ROOM.idFromName(messageMatch[1]);
       const doStub = env.DM_ROOM.get(doId);
       await doStub.fetch('https://internal/broadcast', {
@@ -40,12 +42,11 @@ export async function handleDmRoutes(path, method, request, env) {
         body: JSON.stringify({
           id: result.message_id,
           channelId: messageMatch[1],
-          senderId: user.id,
+          senderId: userRow.id,
           content: body.content,
           createdAt: new Date().toISOString(),
         }),
       });
-
       return jsonResponse({ id: result.message_id, success: true }, 200);
     } catch (err) {
       console.error('Send DM error:', err);
