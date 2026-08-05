@@ -1245,6 +1245,20 @@ window.ArenaPage = {
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
             text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Crew Wallet</p>
           <p class="mono" style="font-size:var(--text-lg);">$${(crew.balance_usd || 0).toFixed(2)}</p>
+          ${isCaptain ? `<button class="btn btn-outline btn-sm" id="btn-detail-new-spend" style="margin-top:var(--space-1);">+ New Spend</button>` : ''}
+          <div id="crew-detail-spend-form" style="display:none;margin-top:var(--space-2);">
+            <input class="input" id="spend-amount-input" type="number" min="0.01" step="0.01" placeholder="Amount (USD)" style="margin-bottom:var(--space-1);" />
+            <input class="input" id="spend-reason-input" placeholder="Reason (required)" style="margin-bottom:var(--space-1);" />
+            <div style="display:flex;gap:var(--space-2);">
+              <button class="btn btn-primary btn-sm" id="btn-submit-spend">Submit</button>
+              <button class="btn btn-ghost btn-sm" id="btn-cancel-spend">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <div style="margin-bottom:var(--space-3);">
+          <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+            text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Wallet Activity</p>
+          <div id="crew-detail-transactions"><p style="font-size:var(--text-sm);color:var(--color-text-muted);">Loading...</p></div>
         </div>
         ${crew.rules ? `
           <div style="margin-bottom:var(--space-3);">
