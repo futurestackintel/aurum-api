@@ -1282,6 +1282,7 @@ window.ArenaPage = {
           modal.style.display = 'none';
           this.openCrewChat(crewId, crew.name);
         });
+      this.loadCrewWalletTransactions(crewId, myMembership?.role);
       document.getElementById('btn-detail-new-spend')
         ?.addEventListener('click', () => {
           const form = document.getElementById('crew-detail-spend-form');
