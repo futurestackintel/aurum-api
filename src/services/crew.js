@@ -939,8 +939,23 @@ export async function unfreezeCrew(crewId, adminId, db) {
   return { crew_id: crewId, is_frozen: false };
 }
 
-// ── FLAG CREW SPEND (regular members only, 48hr window) ────────
-
+// ── LIST CREW WALLET TRANSACTIONS ─────────────────────────────
+export async function getCrewWalletTransactions(crewId, limit, db) {
+  const { results } = await db
+    .prepare(`
+      SELECT t.id, t.type, t.amount_usd, t.balance_after_usd, t.reason, t.status,
+             t.required_cosigns, t.created_at, u.username AS initiated_by_username
+      FROM crew_wallet_transactions t
+      LEFT JOIN users u ON u.id = t.initiated_by
+      WHERE t.crew_id = ?
+      ORDER BY t.created_at DESC
+      LIMIT ?
+    `)
+    .bind(crewId, limit ?? 30)
+    .all();
+  return results;
+}
+// ── FLAG CREW SPEND (regular members only, 48hr window) ──────
 export async function flagCrewSpend(transactionId, clerkId, reason, db) {
   const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
   if (!userRow) return { error: 'User not found' };
