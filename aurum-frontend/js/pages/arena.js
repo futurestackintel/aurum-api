@@ -1361,6 +1361,80 @@ window.ArenaPage = {
       AURUM.showToast(err.message || 'Could not load crew.', 'error');
     }
   },
+  async loadCrewWalletTransactions(crewId, myRole) {
+    const container = document.getElementById('crew-detail-transactions');
+    if (!container) return;
+    try {
+      const { transactions } = await AURUM.CrewAPI.getWalletTransactions(crewId);
+      if (!transactions || !transactions.length) {
+        container.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted);">No activity yet.</p>`;
+        return;
+      }
+      container.innerHTML = transactions.map(t => {
+        const statusColor = t.status === 'executed' ? 'var(--color-text-muted)'
+          : t.status === 'vetoed' ? 'var(--color-danger)' : 'var(--color-gold, orange)';
+        const canAct = myRole === 'moderator' && t.status === 'pending_cosign';
+        const canFlag = myRole === 'member' && t.status === 'executed';
+        return `
+          <div style="padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
+            <div style="display:flex;justify-content:space-between;">
+              <span class="mono">-$${t.amount_usd.toFixed(2)}</span>
+              <span style="font-size:10px;color:${statusColor};text-transform:uppercase;">${t.status.replace('_', ' ')}</span>
+            </div>
+            <p style="font-size:var(--text-sm);color:var(--color-text-muted);">${this.escapeHTML(t.reason || '')}</p>
+            <p style="font-size:11px;color:var(--color-text-muted);">by ${this.escapeHTML(t.initiated_by_username || 'unknown')}${t.status === 'pending_cosign' ? ` · needs ${t.required_cosigns} co-sign(s)` : ''}</p>
+            ${canAct ? `
+              <div style="display:flex;gap:var(--space-2);margin-top:var(--space-1);">
+                <button class="btn btn-ghost btn-sm btn-cosign-spend" data-txn-id="${t.id}">Co-sign</button>
+                <button class="btn btn-ghost btn-sm btn-veto-spend" data-txn-id="${t.id}">Veto</button>
+              </div>
+            ` : ''}
+            ${canFlag ? `
+              <button class="btn btn-ghost btn-sm btn-flag-spend" data-txn-id="${t.id}" style="margin-top:var(--space-1);">Flag this spend</button>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+      document.querySelectorAll('.btn-cosign-spend').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          try {
+            await AURUM.CrewAPI.cosignSpend(btn.dataset.txnId);
+            AURUM.showToast('Co-signed.', 'default');
+            this.loadCrewWalletTransactions(crewId, myRole);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not co-sign.', 'error');
+          }
+        });
+      });
+      document.querySelectorAll('.btn-veto-spend').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const reason = prompt('Reason for veto (optional):') || '';
+          try {
+            await AURUM.CrewAPI.vetoSpend(btn.dataset.txnId, reason);
+            AURUM.showToast('Spend vetoed.', 'default');
+            this.loadCrewWalletTransactions(crewId, myRole);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not veto.', 'error');
+          }
+        });
+      });
+      document.querySelectorAll('.btn-flag-spend').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const reason = prompt('Why are you flagging this spend?');
+          if (!reason || !reason.trim()) return;
+          try {
+            await AURUM.CrewAPI.flagSpend(btn.dataset.txnId, reason.trim());
+            AURUM.showToast('Spend flagged for admin review.', 'default');
+            this.loadCrewWalletTransactions(crewId, myRole);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not flag spend.', 'error');
+          }
+        });
+      });
+    } catch (err) {
+      container.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm);">Failed to load activity.</p>`;
+    }
+  },
   async openCrewChat(crewId, crewName) {
     this.activeChatCrewId = crewId;
     document.getElementById('crew-chat-title').textContent = crewName || 'Crew Chat';
