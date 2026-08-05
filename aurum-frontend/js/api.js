@@ -354,6 +354,16 @@ const CrewAPI = {
     apiRequest('POST', `/api/crews/${crewId}/lock`, { locked }),
   setModerator: (crewId, targetUserId, makeModerator) =>
     apiRequest('POST', `/api/crews/${crewId}/moderator`, { target_user_id: targetUserId, make_moderator: makeModerator }),
+  getWalletTransactions: (crewId, limit = 30) =>
+    apiRequest('GET', `/api/crews/${crewId}/wallet/transactions?limit=${limit}`),
+  initiateSpend: (crewId, amountUsd, reason) =>
+    apiRequest('POST', `/api/crews/${crewId}/spend`, { amount_usd: amountUsd, reason }),
+  cosignSpend: (transactionId) =>
+    apiRequest('POST', `/api/crew-spends/${transactionId}/cosign`),
+  vetoSpend: (transactionId, vetoReason) =>
+    apiRequest('POST', `/api/crew-spends/${transactionId}/veto`, { veto_reason: vetoReason }),
+  flagSpend: (transactionId, reason) =>
+    apiRequest('POST', `/api/crew-spends/${transactionId}/flag`, { reason }),
 };
 /* ============================================================
    UI HELPERS
