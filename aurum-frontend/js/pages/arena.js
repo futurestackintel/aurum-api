@@ -1282,6 +1282,32 @@ window.ArenaPage = {
           modal.style.display = 'none';
           this.openCrewChat(crewId, crew.name);
         });
+      document.getElementById('btn-detail-new-spend')
+        ?.addEventListener('click', () => {
+          const form = document.getElementById('crew-detail-spend-form');
+          form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        });
+      document.getElementById('btn-cancel-spend')
+        ?.addEventListener('click', () => {
+          document.getElementById('crew-detail-spend-form').style.display = 'none';
+        });
+      document.getElementById('btn-submit-spend')
+        ?.addEventListener('click', async () => {
+          const amount = parseFloat(document.getElementById('spend-amount-input').value);
+          const reason = document.getElementById('spend-reason-input').value.trim();
+          if (!amount || amount <= 0) return AURUM.showToast('Enter a valid amount.', 'error');
+          if (!reason) return AURUM.showToast('A reason is required.', 'error');
+          try {
+            const result = await AURUM.CrewAPI.initiateSpend(crewId, amount, reason);
+            AURUM.showToast(
+              result.spend?.status === 'executed' ? 'Spend executed.' : 'Spend submitted, awaiting co-sign.',
+              'default'
+            );
+            this.openCrewDetail(crewId);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not submit spend.', 'error');
+          }
+        });
       document.getElementById('btn-detail-leave')
         ?.addEventListener('click', async () => {
           if (!confirm('Leave this crew?')) return;
