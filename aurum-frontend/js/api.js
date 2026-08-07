@@ -364,6 +364,12 @@ const CrewAPI = {
     apiRequest('POST', `/api/crew-spends/${transactionId}/veto`, { veto_reason: vetoReason }),
   flagSpend: (transactionId, reason) =>
     apiRequest('POST', `/api/crew-spends/${transactionId}/flag`, { reason }),
+  setRules: (crewId, rules) =>
+    apiRequest('POST', `/api/crews/${crewId}/rules`, { rules }),
+  muteMember: (crewId, targetUserId, durationHours, reason) =>
+    apiRequest('POST', `/api/crews/${crewId}/mute`, { target_user_id: targetUserId, duration_hours: durationHours, reason }),
+  disbandCrew: (crewId) =>
+    apiRequest('POST', `/api/crews/${crewId}/disband`),
 };
 /* ============================================================
    UI HELPERS
