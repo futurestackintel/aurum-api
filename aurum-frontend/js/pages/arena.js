@@ -1205,6 +1205,7 @@ window.ArenaPage = {
       }
       const myMembership = (crew.members || []).find(m => m.user_id === me?.id);
       const isCaptain = myMembership?.role === 'captain';
+      const isModerator = myMembership?.role === 'moderator';
       this.activeDetailCrewId = crewId;
       const membersHTML = (crew.members || []).map(m => `
         <div style="display:flex;justify-content:space-between;align-items:center;
@@ -1219,6 +1220,10 @@ window.ArenaPage = {
               </button>
               <button class="btn btn-ghost btn-sm btn-detail-kick"
                 data-user-id="${m.user_id}">Kick</button>
+            ` : ''}
+            ${(isCaptain || isModerator) && m.user_id !== me?.id && m.role !== 'captain' ? `
+              <button class="btn btn-ghost btn-sm btn-detail-mute"
+                data-user-id="${m.user_id}" data-username="${this.escapeHTML(m.username)}">Mute</button>
             ` : ''}
           </div>
         </div>
@@ -1235,6 +1240,9 @@ window.ArenaPage = {
           ${isCaptain ? `
             <button class="btn btn-outline btn-sm" id="btn-detail-toggle-lock" data-locked="${crew.is_locked ? '1' : '0'}">
               ${crew.is_locked ? 'Unlock Crew' : 'Lock Crew'}
+            </button>
+            <button class="btn btn-outline btn-sm" id="btn-detail-disband" style="color:var(--color-danger);border-color:var(--color-danger);">
+              Disband Crew
             </button>
           ` : ''}
           ${myMembership && !isCaptain ? `
@@ -1260,13 +1268,19 @@ window.ArenaPage = {
             text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Wallet Activity</p>
           <div id="crew-detail-transactions"><p style="font-size:var(--text-sm);color:var(--color-text-muted);">Loading...</p></div>
         </div>
-        ${crew.rules ? `
-          <div style="margin-bottom:var(--space-3);">
-            <p style="font-size:var(--text-xs);color:var(--color-text-muted);
-              text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Rules</p>
-            <p style="font-size:var(--text-sm);line-height:1.6;">${this.escapeHTML(crew.rules)}</p>
+        <div style="margin-bottom:var(--space-3);">
+          <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+            text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Rules</p>
+          ${crew.rules ? `<p style="font-size:var(--text-sm);line-height:1.6;">${this.escapeHTML(crew.rules)}</p>` : `<p style="font-size:var(--text-sm);color:var(--color-text-muted);">No rules set.</p>`}
+          ${isCaptain ? `<button class="btn btn-outline btn-sm" id="btn-detail-edit-rules" style="margin-top:var(--space-1);">Edit Rules</button>` : ''}
+          <div id="crew-detail-rules-form" style="display:none;margin-top:var(--space-2);">
+            <textarea class="input" id="rules-textarea" maxlength="2000" rows="4" style="width:100%;margin-bottom:var(--space-1);" placeholder="Crew rules (2000 char max)">${crew.rules ? this.escapeHTML(crew.rules) : ''}</textarea>
+            <div style="display:flex;gap:var(--space-2);">
+              <button class="btn btn-primary btn-sm" id="btn-save-rules">Save</button>
+              <button class="btn btn-ghost btn-sm" id="btn-cancel-rules">Cancel</button>
+            </div>
           </div>
-        ` : ''}
+        </div>
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-1);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
@@ -1332,6 +1346,59 @@ window.ArenaPage = {
             AURUM.showToast(err.message || 'Could not update lock status.', 'error');
           }
         });
+      document.getElementById('btn-detail-disband')
+        ?.addEventListener('click', async () => {
+          const typed = prompt(`This permanently deletes "${crew.name}" and splits the crew wallet among members. Type the crew name to confirm.`);
+          if (typed !== crew.name) {
+            if (typed !== null) AURUM.showToast('Crew name did not match. Disband cancelled.', 'error');
+            return;
+          }
+          try {
+            const result = await AURUM.CrewAPI.disbandCrew(crewId);
+            AURUM.showToast(`Crew disbanded. $${(result.total_split_usd || 0).toFixed(2)} split among ${result.members_paid} member(s).`, 'default');
+            modal.style.display = 'none';
+            this.loadCrews();
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not disband crew.', 'error');
+          }
+        });
+      document.getElementById('btn-detail-edit-rules')
+        ?.addEventListener('click', () => {
+          const form = document.getElementById('crew-detail-rules-form');
+          form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        });
+      document.getElementById('btn-cancel-rules')
+        ?.addEventListener('click', () => {
+          document.getElementById('crew-detail-rules-form').style.display = 'none';
+        });
+      document.getElementById('btn-save-rules')
+        ?.addEventListener('click', async () => {
+          const rules = document.getElementById('rules-textarea').value.trim();
+          if (rules.length > 2000) return AURUM.showToast('Rules must be 2000 characters or less.', 'error');
+          try {
+            await AURUM.CrewAPI.setRules(crewId, rules);
+            AURUM.showToast('Rules updated.', 'default');
+            this.openCrewDetail(crewId);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not update rules.', 'error');
+          }
+        });
+      document.querySelectorAll('.btn-detail-mute').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const reason = prompt(`Reason for muting ${btn.dataset.username}:`);
+          if (!reason || !reason.trim()) return;
+          const durationInput = prompt('Mute duration in hours (e.g. 24):', '24');
+          const duration = parseFloat(durationInput);
+          if (!duration || duration <= 0) return AURUM.showToast('Invalid duration.', 'error');
+          try {
+            await AURUM.CrewAPI.muteMember(crewId, btn.dataset.userId, duration, reason.trim());
+            AURUM.showToast(`${btn.dataset.username} muted.`, 'default');
+            this.openCrewDetail(crewId);
+          } catch (err) {
+            AURUM.showToast(err.message || 'Could not mute member.', 'error');
+          }
+        });
+      });
       document.querySelectorAll('.btn-detail-kick').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (!confirm('Remove this member from the crew?')) return;
