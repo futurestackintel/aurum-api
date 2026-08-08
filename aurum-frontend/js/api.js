@@ -385,6 +385,10 @@ const DmAPI = {
   sendMessage: (channelId, content) =>
     apiRequest('POST', `/api/dm/channels/${channelId}/messages`, { content }),
 };
+const SearchAPI = {
+  search: (q) =>
+    apiRequest('GET', `/api/search?q=${encodeURIComponent(q)}`),
+};
 /* ============================================================
    UI HELPERS
 ============================================================ */
