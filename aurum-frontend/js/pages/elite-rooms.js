@@ -59,7 +59,7 @@ window.ElitePage = {
             </div>
           </div>
           <button class="btn btn-primary btn-full" id="btn-upgrade-sovereign">
-            Upgrade to Sovereign — $99/mo
+            Upgrade to Sovereign — $29/mo
           </button>
         </div>
 
@@ -295,7 +295,7 @@ window.ElitePage = {
           }
         } catch (err) {
           AURUM.showToast(err.message || 'Upgrade failed.', 'error');
-          btn.textContent = 'Upgrade to Sovereign — $99/mo';
+          btn.textContent = 'Upgrade to Sovereign — $29/mo';
           btn.disabled    = false;
         }
       });
