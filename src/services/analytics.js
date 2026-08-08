@@ -123,7 +123,7 @@ export async function getRevenueBreakdown(env, period = 'month') {
   `).bind(since).first();
 
   // Calculate subscription revenue from tier prices
-  const SUB_PRICES = { contender: 2900, sovereign: 9900 }; // cents
+  const SUB_PRICES = { contender: 900, sovereign: 2900 }; // cents
   let subTotalCents = 0;
   const subBreakdown = {};
   for (const row of subscriptions.results) {
