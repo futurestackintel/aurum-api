@@ -371,6 +371,20 @@ const CrewAPI = {
   disbandCrew: (crewId) =>
     apiRequest('POST', `/api/crews/${crewId}/disband`),
 };
+
+const DmAPI = {
+  getChannels: () =>
+    apiRequest('GET', '/api/dm/channels'),
+  getOrCreateChannel: (targetUserId) =>
+    apiRequest('POST', '/api/dm/channels', { target_user_id: targetUserId }),
+  getMessages: (channelId, before) => {
+    let path = `/api/dm/channels/${channelId}/messages?limit=50`;
+    if (before) path += `&before=${encodeURIComponent(before)}`;
+    return apiRequest('GET', path);
+  },
+  sendMessage: (channelId, content) =>
+    apiRequest('POST', `/api/dm/channels/${channelId}/messages`, { content }),
+};
 /* ============================================================
    UI HELPERS
 ============================================================ */
@@ -564,6 +578,7 @@ window.AURUM = {
   WalletAPI,
   FoundingAPI,
   CrewAPI,
+  DmAPI,
   ProfileCache,
   showToast,
   showLeaguePromotion,
