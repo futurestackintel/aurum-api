@@ -583,6 +583,7 @@
       <div class="page-view" id="view-leaderboard"></div>
       <div class="page-view" id="view-profile"></div>
       <div class="page-view" id="view-elite"></div>
+      <div class="page-view" id="view-messages"></div>
     </div>
 
     <!-- Bottom Nav -->
@@ -607,8 +608,12 @@
         <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         Elite
       </button>
+      <button class="nav-item" data-view="messages">
+        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+        Messages
+      </button>
     </nav>
-
+	  
   </div>
 
   <!-- =====================================================
@@ -720,6 +725,7 @@
   <script src="js/pages/profile.js"></script>
   <script src="js/pages/elite-rooms.js"></script>
   <script src="js/pages/admin.js"></script>
+  <script src="js/pages/dm.js"></script>
 
   <script>
   /* ============================================
@@ -947,6 +953,8 @@
         leaderboard: () => window.LeaderboardPage?.init('view-leaderboard'),
         profile:     () => window.ProfilePage?.init('view-profile', App.user),
         elite:       () => window.ElitePage?.init('view-elite'),
+        messages:    () => window.DmPage?.init('view-messages'),
+      };
       };
       loaders[view]?.();
     },
