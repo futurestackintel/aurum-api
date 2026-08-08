@@ -22,6 +22,7 @@ import { handleFoundingRoutes }         from './routes/founding.js';
 import { handleCrewRoutes }             from './routes/crew.js';
 import { handleDmRoutes }               from './routes/dm.js';
 import { handleUserSearchRoutes }       from './routes/userSearch.js';
+import { handleSearchRoutes }           from './routes/search.js';
 import { handleCommentRoutes }          from './routes/comments.js';
 import { handleNotificationRoutes }     from './routes/notifications.js';
 import { runLeaderboardSnapshot }       from './services/leaderboardCron.js';
@@ -708,6 +709,7 @@ export default {
         (await handleCrewRoutes(pathname, request.method, request, env))      ||
         (await handleDmRoutes(pathname, request.method, request, env))        ||
         (await handleUserSearchRoutes(pathname, request.method, request, env)) ||
+        (await handleSearchRoutes(pathname, request.method, request, env))     ||
 		(await handleCommentRoutes(pathname, request.method, request, env))  ||
 		(await handleNotificationRoutes(pathname, request.method, request, env)) ||
         (await handleAdminRoutes(pathname, request.method, request, env));
