@@ -986,8 +986,8 @@
     };
     const tierSubs = {
       explorer:  'Free',
-      contender: '$29 / month',
-      sovereign: '$99 / month',
+      contender: '$9 / month',
+      sovereign: '$29 / month',
     };
 
     const nameEl = document.getElementById('settings-tier-name');
@@ -1004,7 +1004,7 @@
         <button class="btn btn-primary btn-sm" id="btn-upgrade-contender-settings">
           Upgrade to Contender
         </button>
-        <span style="font-size:10px;color:var(--color-text-muted);">$29/mo</span>
+        <span style="font-size:10px;color:var(--color-text-muted);">$9/mo</span>
       `;
       document.getElementById('btn-upgrade-contender-settings')
         ?.addEventListener('click', () => handleUpgrade('contender'));
