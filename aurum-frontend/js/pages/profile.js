@@ -177,7 +177,7 @@ window.ProfilePage = {
             Join Drop Circles, get verified, and unlock boosted placement.
           </p>
           <button class="btn btn-primary btn-full" id="btn-upgrade-contender">
-            Upgrade — $29/mo
+            Upgrade — $9/mo
           </button>
         </div>
 
@@ -362,7 +362,7 @@ window.ProfilePage = {
           if (data.authorization_url) window.location.href = data.authorization_url;
           else {
             AURUM.showToast('Upgrade failed to start. Please try again.', 'error');
-            btn.textContent = 'Upgrade — $29/mo';
+            btn.textContent = 'Upgrade — $9/mo';
             btn.disabled    = false;
           }
         } catch (err) {
