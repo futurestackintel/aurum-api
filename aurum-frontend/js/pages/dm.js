@@ -41,6 +41,7 @@ const DmPage = {
 
   async openThread(channelId, username) {
     this.activeChannelId = channelId;
+    this.activeUsername = username;
     this.container.innerHTML = `
       <div style="display:flex;flex-direction:column;height:100%;">
         <div style="padding:var(--space-3);border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:var(--space-2);">
@@ -55,12 +56,64 @@ const DmPage = {
           <button class="btn btn-primary btn-sm" id="dm-send-btn">Send</button>
         </div>
       </div>`;
-    document.getElementById('dm-back-btn').addEventListener('click', () => this.renderList());
+    document.getElementById('dm-back-btn').addEventListener('click', () => this.closeThread());
     document.getElementById('dm-send-btn').addEventListener('click', () => this.sendMessage());
     document.getElementById('dm-message-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this.sendMessage();
     });
     await this.loadMessages();
+    this.connectSocket(channelId);
+  },
+
+  connectSocket(channelId) {
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+    const token = AURUM.Auth.getToken();
+    if (!token) return;
+    const wsBase = API_BASE.replace('https://', 'wss://').replace('http://', 'ws://');
+    this.socket = new WebSocket(`${wsBase}/api/dm/channels/${channelId}/ws?token=${encodeURIComponent(token)}`);
+    this.socket.addEventListener('message', (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        this.appendMessage(msg);
+      } catch (err) {
+        /* ignore malformed message */
+      }
+    });
+    this.socket.addEventListener('close', () => {
+      this.socket = null;
+    });
+  },
+
+  closeThread() {
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+    this.activeChannelId = null;
+    this.renderList();
+  },
+
+  appendMessage(msg) {
+    const list = document.getElementById('dm-thread-messages');
+    if (!list) return;
+    const me = AURUM.ProfileCache.get();
+    const isMine = msg.senderId === me?.id;
+    const wasEmpty = list.querySelector('p') && !list.querySelector('div');
+    if (wasEmpty) list.innerHTML = '';
+    const bubble = document.createElement('div');
+    bubble.style.marginBottom = 'var(--space-2)';
+    bubble.style.textAlign = isMine ? 'right' : 'left';
+    bubble.innerHTML = `
+      <p style="display:inline-block;padding:var(--space-2);border-radius:8px;
+        background:${isMine ? 'var(--color-gold, #b8964f)' : 'var(--color-surface)'};
+        color:${isMine ? '#000' : 'inherit'};max-width:80%;">
+        ${this.escapeHTML(msg.content)}
+      </p>`;
+    list.appendChild(bubble);
+    list.scrollTop = list.scrollHeight;
   },
 
   async loadMessages() {
@@ -94,7 +147,6 @@ const DmPage = {
     input.value = '';
     try {
       await AURUM.DmAPI.sendMessage(this.activeChannelId, content);
-      await this.loadMessages();
     } catch (err) {
       AURUM.showToast(err.message || 'Could not send message.', 'error');
     }
