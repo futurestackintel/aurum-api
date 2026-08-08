@@ -539,6 +539,9 @@
             <span class="app-bar-metric-label">Balance</span>
           </div>
           <div class="app-bar-divider" id="appbar-divider" style="display:none;"></div>
+        <button class="notif-bell-btn" id="search-icon-btn" aria-label="Search" onclick="App.navigate('search')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
         <div class="notif-bell-wrap">
           <button class="notif-bell-btn" id="notif-bell-btn" aria-label="Notifications">
             <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
@@ -584,6 +587,7 @@
       <div class="page-view" id="view-profile"></div>
       <div class="page-view" id="view-elite"></div>
       <div class="page-view" id="view-messages"></div>
+      <div class="page-view" id="view-search"></div>
     </div>
 
     <!-- Bottom Nav -->
@@ -954,6 +958,7 @@
         profile:     () => window.ProfilePage?.init('view-profile', App.user),
         elite:       () => window.ElitePage?.init('view-elite'),
         messages:    () => window.DmPage?.init('view-messages'),
+        search:      () => window.SearchPage?.init('view-search'),
       };
       loaders[view]?.();
     },
