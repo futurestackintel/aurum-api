@@ -1,6 +1,5 @@
-import { getOrCreateDmChannel, sendDmMessage } from '../services/dm.js';
+import { getOrCreateDmChannel, sendDmMessage, getDmChannels, getDmMessages } from '../services/dm.js';
 import { requireAuth, requireAuthFromQuery } from '../middleware/auth.js';
-
 export async function handleDmRoutes(path, method, request, env) {
   const db = env.DB;
 
@@ -20,6 +19,48 @@ export async function handleDmRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Get/create DM channel error:', err);
       return jsonResponse({ error: 'Unable to open conversation. Please try again.' }, 500);
+    }
+  }
+
+	// ── GET /api/dm/channels ── list my DM conversations ─────────
+  if (path === '/api/dm/channels' && method === 'GET') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      const channels = await getDmChannels(userRow.id, db);
+      return jsonResponse({ channels });
+    } catch (err) {
+      console.error('List DM channels error:', err);
+      return jsonResponse({ error: 'Unable to load conversations. Please try again.' }, 500);
+    }
+  }
+
+  // ── GET /api/dm/channels/:id/messages ── message history ──────
+  const dmHistoryMatch = path.match(/^\/api\/dm\/channels\/([^/]+)\/messages$/);
+  if (dmHistoryMatch && method === 'GET') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      const channel = await db
+        .prepare(`SELECT id FROM dm_channels WHERE id = ? AND (user_a_id = ? OR user_b_id = ?)`)
+        .bind(dmHistoryMatch[1], userRow.id, userRow.id)
+        .first();
+      if (!channel) return jsonResponse({ error: 'You are not part of this conversation' }, 403);
+
+      const url = new URL(request.url);
+      const before = url.searchParams.get('before');
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const messages = await getDmMessages(dmHistoryMatch[1], limit, before, db);
+      return jsonResponse({ messages });
+    } catch (err) {
+      console.error('Get DM history error:', err);
+      return jsonResponse({ error: 'Unable to load messages. Please try again.' }, 500);
     }
   }
 
