@@ -38,7 +38,7 @@ export async function handleSubscriptionRoutes(pathname, request, env) {
         });
       }
 
-      const amount = tier === "contender" ? 29 : 99;
+      const amount = tier === "contender" ? 9 : 29;
       const payments = new PaymentService(env);
 
       // Uses dedicated subscription method — sets type: "subscription" in metadata
