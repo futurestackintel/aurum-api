@@ -1,5 +1,5 @@
 import { getOrCreateDmChannel, sendDmMessage } from '../services/dm.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireAuthFromQuery } from '../middleware/auth.js';
 
 export async function handleDmRoutes(path, method, request, env) {
   const db = env.DB;
@@ -21,6 +21,29 @@ export async function handleDmRoutes(path, method, request, env) {
       console.error('Get/create DM channel error:', err);
       return jsonResponse({ error: 'Unable to open conversation. Please try again.' }, 500);
     }
+  }
+
+	// ── GET /api/dm/channels/:id/ws ── live DM WebSocket connection ──
+  const wsMatch = path.match(/^\/api\/dm\/channels\/([^/]+)\/ws$/);
+  if (wsMatch && method === 'GET') {
+    const user = await requireAuthFromQuery(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    const userRow = await db
+      .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+      .bind(user.id)
+      .first();
+    if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+
+    const channel = await db
+      .prepare(`SELECT id FROM dm_channels WHERE id = ? AND (user_a_id = ? OR user_b_id = ?)`)
+      .bind(wsMatch[1], userRow.id, userRow.id)
+      .first();
+    if (!channel) return jsonResponse({ error: 'You are not part of this conversation' }, 403);
+
+    const doId = env.DM_ROOM.idFromName(wsMatch[1]);
+    const doStub = env.DM_ROOM.get(doId);
+    return doStub.fetch(request);
   }
 
   // ── POST /api/dm/channels/:id/messages — send a DM ──────────
