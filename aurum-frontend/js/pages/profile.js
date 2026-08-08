@@ -367,7 +367,7 @@ window.ProfilePage = {
           }
         } catch (err) {
           AURUM.showToast(err.message || 'Upgrade failed.', 'error');
-          btn.textContent = 'Upgrade — $29/mo';
+          btn.textContent = 'Upgrade — $9/mo';
           btn.disabled    = false;
         }
       });
