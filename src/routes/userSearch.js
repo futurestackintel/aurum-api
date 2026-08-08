@@ -22,6 +22,7 @@ export async function handleUserSearchRoutes(path, method, request, env) {
           WHERE username LIKE ? || '%'
             AND account_deleted = 0
             AND profile_visibility != 'private'
+            AND stealth_mode = 0
           ORDER BY username ASC
           LIMIT 20
         `)
