@@ -41,6 +41,21 @@ window.SearchPage = {
         this.renderResults();
       });
     });
+
+    document.getElementById('search-results').addEventListener('click', (e) => {
+      const btn = e.target.closest('.search-message-btn');
+      if (btn) this.messageUser(btn.dataset.userId, btn.dataset.username);
+    });
+  },
+
+  async messageUser(userId, username) {
+    try {
+      const { channel_id } = await AURUM.DmAPI.getOrCreateChannel(userId);
+      App.navigate('messages');
+      window.DmPage.openThread(channel_id, username);
+    } catch (err) {
+      showToast('Could not start conversation', 'error');
+    }
   },
 
   async runSearch(q) {
@@ -71,6 +86,7 @@ window.SearchPage = {
         <div class="search-result-row">
           <span class="search-result-title">${escapeHTML(u.username)}</span>
           <span class="search-result-sub">${u.league ? escapeHTML(u.league) : ''}</span>
+          <button class="search-message-btn" data-user-id="${escapeHTML(u.id)}" data-username="${escapeHTML(u.username)}">Message</button>
         </div>
       `).join('');
     } else if (this.currentTab === 'crews') {
