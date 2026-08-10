@@ -714,7 +714,7 @@ export default {
         (await handleProfileRoutes(pathname, request.method, request, env))    ||
 		(await handleCommentRoutes(pathname, request.method, request, env))  ||
 		(await handleNotificationRoutes(pathname, request.method, request, env)) ||
-        (await handleAdminRoutes(pathname, request.method, request, env));
+        (await handleAdminRoutes(pathname, request.method, request, env));       ||
 
       if (!response) {
         response = jsonResponse({ error: 'Route not found' }, 404);
