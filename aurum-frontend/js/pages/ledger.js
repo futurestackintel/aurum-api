@@ -710,7 +710,7 @@ window.LedgerPage = {
       <div class="post-card card fade-in">
         <div class="post-header">
           <div class="avatar avatar-sm ${league === 'sovereign' ? 'avatar-gold' : ''}">
-            ${initials}
+            ${AURUM.avatarInnerHTML(post.avatar_url, initials)}
           </div>
           <div class="post-meta">
             <div class="post-username">
