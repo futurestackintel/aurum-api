@@ -314,8 +314,9 @@ async function handleUpdateProfile(request, env) {
     profile_visibility,
     hide_aurum_score,
     hide_league,
+    avatar_url,
   } = body;
-
+	
   // Validate profile_visibility if provided
   const validVisibility = ['public', 'members', 'private'];
   if (profile_visibility && !validVisibility.includes(profile_visibility)) {
