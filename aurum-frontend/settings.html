@@ -87,6 +87,28 @@
       padding-bottom: var(--space-16);
     }
 
+.sticker-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-3);
+    }
+    .sticker-option {
+      background: var(--color-surface-2);
+      border: 2px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-2);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-1);
+      transition: border-color var(--transition-fast);
+    }
+    .sticker-option:hover { border-color: var(--color-gold-dim); }
+    .sticker-option.selected { border-color: var(--color-gold); box-shadow: var(--shadow-gold); }
+    .sticker-option img { width: 48px; height: 48px; }
+    .sticker-option span { font-size: var(--text-xs); color: var(--color-text-muted); }
+		
     /* ---- Section header ---- */
     .settings-section-header {
       padding: var(--space-4) 0 var(--space-2);
@@ -434,6 +456,28 @@
       </svg>
     </div>
 
+<!-- ===========================================
+         SECTION 1B — PROFILE STICKER
+    =========================================== -->
+    <div class="settings-section-header">
+      <p class="settings-section-title">Profile Sticker</p>
+    </div>
+    <div class="settings-edit-row" style="border-radius:var(--radius-lg);">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="settings-row-left">
+          <span class="settings-row-label">Current Sticker</span>
+          <span class="settings-row-sub" id="display-sticker">—</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btn-edit-sticker">Edit</button>
+      </div>
+      <div id="sticker-edit-panel" style="display:none;flex-direction:column;
+        gap:var(--space-3);margin-top:var(--space-3);">
+        <div class="sticker-grid" id="sticker-grid"></div>
+        <p id="sticker-error" style="font-size:var(--text-xs);
+          color:var(--color-danger);display:none;"></p>
+      </div>
+    </div>
+		
     <!-- ==========================================
          SECTION 2 — PRIVACY & VISIBILITY
     =========================================== -->
@@ -1076,6 +1120,49 @@
   /* --------------------------------------------------
      ACCOUNT — Username
   -------------------------------------------------- */
+		const STICKERS = [
+    { id: 'raven',     label: 'Raven' },
+    { id: 'serpent',   label: 'Serpent' },
+    { id: 'eye',       label: 'Eye' },
+    { id: 'crown',     label: 'Crown' },
+    { id: 'sigil',     label: 'Sigil' },
+    { id: 'anonymous', label: 'Anonymous' },
+  ];
+  function renderStickerGrid(currentId) {
+    const grid = document.getElementById('sticker-grid');
+    if (!grid) return;
+    grid.innerHTML = STICKERS.map(s => `
+      <div class="sticker-option ${s.id === currentId ? 'selected' : ''}" data-sticker-id="${s.id}">
+        <img src="assets/stickers/${s.id}.svg" alt="${s.label}" />
+        <span>${s.label}</span>
+      </div>
+    `).join('');
+    grid.querySelectorAll('.sticker-option').forEach(el => {
+      el.addEventListener('click', async () => {
+        const stickerId = el.dataset.stickerId;
+        const errEl = document.getElementById('sticker-error');
+        errEl.style.display = 'none';
+        try {
+          await AURUM.SettingsAPI.updateProfile({ avatar_url: stickerId });
+          AURUM.ProfileCache.clear();
+          grid.querySelectorAll('.sticker-option').forEach(o => o.classList.remove('selected'));
+          el.classList.add('selected');
+          const displayEl = document.getElementById('display-sticker');
+          if (displayEl) displayEl.textContent = STICKERS.find(s => s.id === stickerId)?.label || stickerId;
+          AURUM.showToast('Sticker updated.', 'gold');
+        } catch (err) {
+          errEl.textContent = err.message || 'Could not update sticker.';
+          errEl.style.display = 'block';
+        }
+      });
+    });
+  }
+  document.getElementById('btn-edit-sticker')
+    ?.addEventListener('click', () => {
+      const panel = document.getElementById('sticker-edit-panel');
+      if (panel) panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    });
+		
   document.getElementById('btn-edit-username')
     ?.addEventListener('click', () => {
       const panel = document.getElementById('username-edit-panel');
