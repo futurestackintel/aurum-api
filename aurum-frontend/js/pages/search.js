@@ -84,6 +84,7 @@ window.SearchPage = {
     if (this.currentTab === 'users') {
       resultsEl.innerHTML = items.map(u => `
         <div class="search-result-row">
+          <div class="avatar avatar-sm">${AURUM.avatarInnerHTML(u.avatar_url, escapeHTML(u.username).charAt(0).toUpperCase())}</div>
           <span class="search-result-title">${escapeHTML(u.username)}</span>
           <span class="search-result-sub">${u.league ? escapeHTML(u.league) : ''}</span>
           <button class="search-message-btn" data-user-id="${escapeHTML(u.id)}" data-username="${escapeHTML(u.username)}">Message</button>
