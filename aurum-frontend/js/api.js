@@ -389,6 +389,13 @@ const SearchAPI = {
   search: (q) =>
     apiRequest('GET', `/api/search?q=${encodeURIComponent(q)}`),
 };
+const KNOWN_STICKERS = ['raven', 'serpent', 'eye', 'crown', 'sigil', 'anonymous'];
+function avatarInnerHTML(avatarUrl, fallbackInitial) {
+  if (avatarUrl && KNOWN_STICKERS.includes(avatarUrl)) {
+    return `<img src="assets/stickers/${avatarUrl}.svg" alt="" class="avatar-sticker-img" />`;
+  }
+  return fallbackInitial;
+}
 /* ============================================================
    UI HELPERS
 ============================================================ */
@@ -583,6 +590,7 @@ window.AURUM = {
   FoundingAPI,
   CrewAPI,
   DmAPI,
+  avatarInnerHTML,
   ProfileCache,
   showToast,
   showLeaguePromotion,
