@@ -1332,7 +1332,7 @@ export async function getCrewById(crewId, db) {
 
   const { results: members } = await db
     .prepare(`
-      SELECT cm.user_id, cm.role, cm.joined_at, u.username, u.league
+      SELECT cm.user_id, cm.role, cm.joined_at, u.username, u.league, u.avatar_url
       FROM crew_members cm
       JOIN users u ON u.id = cm.user_id
       WHERE cm.crew_id = ?
