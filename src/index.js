@@ -347,9 +347,8 @@ async function handleUpdateProfile(request, env) {
   if (profile_visibility !== undefined){ fields.push('profile_visibility = ?');  values.push(profile_visibility); }
   if (hide_aurum_score  !== undefined) { fields.push('hide_aurum_score = ?');    values.push(hide_aurum_score ? 1 : 0); }
   if (hide_league       !== undefined) { fields.push('hide_league = ?');         values.push(hide_league ? 1 : 0); }
-
+  if (avatar_url        !== undefined) { fields.push('avatar_url = ?');          values.push(avatar_url); }
   if (fields.length === 0) return jsonResponse({ error: 'No valid fields provided' }, 400);
-
   fields.push('updated_at = ?');
   values.push(now);
   values.push(dbUser.id);
