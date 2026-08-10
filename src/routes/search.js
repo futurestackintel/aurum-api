@@ -14,7 +14,7 @@ export async function handleSearchRoutes(path, method, request, env) {
 
       const [usersResult, crewsResult, postsResult] = await Promise.all([
         db.prepare(`
-          SELECT id, username, league, aurum_score, hide_aurum_score, hide_league
+          SELECT id, username, league, aurum_score, hide_aurum_score, hide_league, avatar_url
           FROM users
           WHERE username LIKE ? || '%'
             AND account_deleted = 0
@@ -53,6 +53,7 @@ export async function handleSearchRoutes(path, method, request, env) {
         username: u.username,
         league: u.hide_league ? null : u.league,
         aurum_score: u.hide_aurum_score ? null : u.aurum_score,
+        avatar_url: u.avatar_url,
       }));
 
       const crews = crewsResult.results.map(c => ({
