@@ -1210,7 +1210,10 @@ window.ArenaPage = {
       const membersHTML = (crew.members || []).map(m => `
         <div style="display:flex;justify-content:space-between;align-items:center;
           padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
-          <span>${this.escapeHTML(m.username)}</span>
+          <div style="display:flex;align-items:center;gap:var(--space-2);">
+            <div class="avatar avatar-sm" style="width:24px;height:24px;font-size:11px;">${AURUM.avatarInnerHTML(m.avatar_url, this.escapeHTML(m.username).charAt(0).toUpperCase())}</div>
+            <span>${this.escapeHTML(m.username)}</span>
+          </div>
           <div style="display:flex;gap:var(--space-2);align-items:center;">
             <span class="badge badge-muted" style="font-size:9px;">${m.role}</span>
             ${isCaptain && m.user_id !== me?.id && m.role !== 'captain' ? `
