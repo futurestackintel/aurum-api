@@ -1214,6 +1214,7 @@ window.ArenaPage = {
             <div class="avatar avatar-sm" style="width:24px;height:24px;font-size:11px;">${AURUM.avatarInnerHTML(m.avatar_url, this.escapeHTML(m.username).charAt(0).toUpperCase())}</div>
             <span>${this.escapeHTML(m.username)}</span>
           </div>
+          </div>
           <div style="display:flex;gap:var(--space-2);align-items:center;">
             <span class="badge badge-muted" style="font-size:9px;">${m.role}</span>
             ${isCaptain && m.user_id !== me?.id && m.role !== 'captain' ? `
