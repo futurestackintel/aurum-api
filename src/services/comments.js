@@ -164,7 +164,7 @@ export async function getCommentsForPost(postId, db) {
     .prepare(`
       SELECT
         pc.id, pc.parent_comment_id, pc.content, pc.created_at,
-        pc.user_id, u.username, u.league
+        pc.user_id, u.username, u.league, u.avatar_url
       FROM post_comments pc
       JOIN users u ON u.id = pc.user_id
       WHERE pc.post_id = ?
