@@ -710,12 +710,11 @@ export default {
         (await handleCrewRoutes(pathname, request.method, request, env))      ||
         (await handleDmRoutes(pathname, request.method, request, env))        ||
         (await handleUserSearchRoutes(pathname, request.method, request, env)) ||
-        ((await handleSearchRoutes(pathname, request.method, request, env))     ||
+        (await handleSearchRoutes(pathname, request.method, request, env))     ||
         (await handleProfileRoutes(pathname, request.method, request, env))    ||
-		(await handleCommentRoutes(pathname, request.method, request, env))  ||
-		(await handleNotificationRoutes(pathname, request.method, request, env)) ||
-        (await handleAdminRoutes(pathname, request.method, request, env))       ||
-
+        (await handleCommentRoutes(pathname, request.method, request, env))    ||
+        (await handleNotificationRoutes(pathname, request.method, request, env)) ||
+        (await handleAdminRoutes(pathname, request.method, request, env));
       if (!response) {
         response = jsonResponse({ error: 'Route not found' }, 404);
       }
