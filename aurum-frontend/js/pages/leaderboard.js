@@ -220,7 +220,7 @@ window.LeaderboardPage = {
           <div class="lb-full-rank">${rankDisplay}</div>
 
           <div class="avatar avatar-sm ${isTop3 || isMe ? 'avatar-gold' : ''}">
-            ${displayInitial}
+            ${isStealth ? displayInitial : AURUM.avatarInnerHTML(entry.avatar_url, displayInitial)}
           </div>
 
           <div class="lb-full-info">
