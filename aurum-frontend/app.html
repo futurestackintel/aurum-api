@@ -918,7 +918,7 @@
         || this.user?.emailAddresses?.[0]?.emailAddress?.split('@')[0]
         || '?';
       if (score)  score.textContent  = AURUM.formatNumber(this.user?.aurum_score || 0);
-      if (avatar) avatar.textContent = username.charAt(0).toUpperCase();
+      if (avatar) avatar.innerHTML   = AURUM.avatarInnerHTML(this.user?.avatar_url, username.charAt(0).toUpperCase());
     },
 
     /* -----------------------------------------
