@@ -209,6 +209,56 @@ async function handlePublicLeaderboard(env) {
 
   return jsonResponse({ leaderboard: result, as_of: today });
 }
+async function handleAuthenticatedLeaderboard(type, env) {
+  const db = env.DB;
+  const TYPE_MAP = {
+    earners:   'highest_earner',
+    generous:  'most_generous',
+    champions: 'most_wins',
+    score:     'aurum_score',
+  };
+  const boardType = TYPE_MAP[type] || 'aurum_score';
+  const today = new Date().toISOString().slice(0, 10);
+  let { results } = await db
+    .prepare(`
+      SELECT ls.rank, ls.score, ls.avatar_url, ls.league_at_snapshot,
+             u.username, u.league, u.is_verified, u.stealth_mode
+      FROM leaderboard_snapshots ls
+      JOIN users u ON u.id = ls.user_id
+      WHERE ls.board_type = ?
+        AND ls.period     = 'daily'
+        AND ls.period_key = ?
+      ORDER BY ls.rank ASC
+      LIMIT 20
+    `)
+    .bind(boardType, today)
+    .all();
+  if (!results.length) {
+    const fallback = await db
+      .prepare(`
+        SELECT ls.rank, ls.score, ls.avatar_url, ls.league_at_snapshot,
+               u.username, u.league, u.is_verified, u.stealth_mode
+        FROM leaderboard_snapshots ls
+        JOIN users u ON u.id = ls.user_id
+        WHERE ls.board_type = ?
+          AND ls.period     = 'daily'
+        ORDER BY ls.period_key DESC, ls.rank ASC
+        LIMIT 20
+      `)
+      .bind(boardType)
+      .all();
+    results = fallback.results;
+  }
+  const entries = results.map(r => ({
+    username:   r.stealth_mode ? null : r.username,
+    league:     r.league_at_snapshot || r.league,
+    value:      r.score,
+    verified:   !!r.is_verified,
+    stealth:    !!r.stealth_mode,
+    avatar_url: r.stealth_mode ? null : r.avatar_url,
+  }));
+  return jsonResponse({ entries });
+}
 
 // ── Wealth Passport ───────────────────────────────────────────
 async function handlePassport(username, env) {
@@ -656,9 +706,18 @@ export default {
         }
       }
 
-      // ── Public leaderboard (no auth) ────────────────────
+      // ─── Public leaderboard (no auth) ──────────────
       if (pathname === '/leaderboard/public' && request.method === 'GET') {
         const res = await handlePublicLeaderboard(env);
+        return withCors(res, cors);
+      }
+      // ─── Authenticated full leaderboard ────────────
+      if (pathname === '/leaderboard' && request.method === 'GET') {
+        const authUser = await requireAuth(request, env);
+        if (authUser.error) return withCors(jsonResponse({ error: authUser.error }, 401), cors);
+        const url  = new URL(request.url);
+        const type = url.searchParams.get('type') || 'score';
+        const res  = await handleAuthenticatedLeaderboard(type, env);
         return withCors(res, cors);
       }
 
