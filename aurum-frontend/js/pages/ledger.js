@@ -486,7 +486,7 @@ window.LedgerPage = {
       <div class="comment-item" style="margin-left:${indent}px;" data-comment-id="${comment.id}">
         <div class="comment-row">
           <div class="avatar avatar-sm" style="width:24px;height:24px;font-size:11px;flex-shrink:0;">
-            ${initials}
+            ${AURUM.avatarInnerHTML(comment.avatar_url, initials)}
           </div>
           <div class="comment-body">
             <div class="comment-meta">
