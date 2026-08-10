@@ -971,6 +971,14 @@
     /* Pre-fill username input */
     const newUsernameInput = document.getElementById('new-username');
     if (newUsernameInput) newUsernameInput.value = username;
+    /* Profile sticker */
+    const stickerId = user.avatar_url || 'anonymous';
+    const displaySticker = document.getElementById('display-sticker');
+    if (displaySticker) {
+      const known = STICKERS.find(s => s.id === stickerId);
+      displaySticker.textContent = known ? known.label : 'Anonymous';
+    }
+    renderStickerGrid(stickerId);
 
     /* Privacy toggles
        FIX: read the real backend field names now that GET /api/auth/me
