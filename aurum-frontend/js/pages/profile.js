@@ -237,7 +237,7 @@ window.ProfilePage = {
 
     /* Header */
     const avatar = document.getElementById('profile-avatar');
-    if (avatar) avatar.textContent = username.charAt(0).toUpperCase();
+    if (avatar) avatar.innerHTML = AURUM.avatarInnerHTML(u.avatar_url, username.charAt(0).toUpperCase());
 
     const usernameEl = document.getElementById('profile-username');
     if (usernameEl) usernameEl.textContent = username;
