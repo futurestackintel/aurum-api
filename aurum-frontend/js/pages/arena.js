@@ -1638,7 +1638,11 @@ window.ArenaPage = {
     this.chatSocket.addEventListener('message', (event) => {
       try {
         const msg = JSON.parse(event.data);
-        this.appendCrewMessage(msg);
+        if (msg.type === 'reaction') {
+          this.refreshCrewReactions();
+        } else {
+          this.appendCrewMessage(msg);
+        }
       } catch (err) {
         /* ignore malformed message */
       }
