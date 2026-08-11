@@ -1544,6 +1544,83 @@ window.ArenaPage = {
     }
 
     this.connectCrewChatSocket(crewId);
+    this.wireCrewReactionHandlers();
+  },
+  wireCrewReactionHandlers() {
+    const list = document.getElementById('crew-chat-messages');
+    if (!list || list.dataset.reactionsWired) return;
+    list.dataset.reactionsWired = '1';
+    list.addEventListener('click', async (e) => {
+      const pill = e.target.closest('.reaction-pill');
+      const addBtn = e.target.closest('.reaction-add-btn');
+      if (pill) {
+        const messageId = pill.dataset.messageId;
+        const emoji = pill.dataset.emoji;
+        const isActive = pill.classList.contains('reaction-pill-active');
+        try {
+          if (isActive) {
+            await AURUM.CrewAPI.removeReaction(messageId);
+          } else {
+            await AURUM.CrewAPI.reactToMessage(messageId, emoji);
+          }
+          await this.refreshCrewReactions();
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not react.', 'error');
+        }
+        return;
+      }
+      if (addBtn) {
+        const messageId = addBtn.dataset.messageId;
+        this.openCrewEmojiPicker(addBtn, messageId);
+      }
+    });
+  },
+  openCrewEmojiPicker(anchorEl, messageId) {
+    document.querySelectorAll('.reaction-picker-popup').forEach(p => p.remove());
+    const emojiList = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
+    const popup = document.createElement('div');
+    popup.className = 'reaction-picker-popup';
+    popup.style.cssText = 'position:absolute;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:4px 6px;display:flex;gap:4px;z-index:1000;';
+    popup.innerHTML = emojiList.map(e => `<span data-emoji="${e}" style="cursor:pointer;font-size:16px;padding:2px;">${e}</span>`).join('');
+    document.body.appendChild(popup);
+    const rect = anchorEl.getBoundingClientRect();
+    popup.style.top = `${window.scrollY + rect.bottom + 4}px`;
+    popup.style.left = `${window.scrollX + rect.left}px`;
+    popup.querySelectorAll('span').forEach(span => {
+      span.addEventListener('click', async () => {
+        popup.remove();
+        try {
+          await AURUM.CrewAPI.reactToMessage(messageId, span.dataset.emoji);
+          await this.refreshCrewReactions();
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not react.', 'error');
+        }
+      });
+    });
+    setTimeout(() => {
+      document.addEventListener('click', function closePopup(ev) {
+        if (!popup.contains(ev.target) && ev.target !== anchorEl) {
+          popup.remove();
+          document.removeEventListener('click', closePopup);
+        }
+      });
+    }, 0);
+  },
+  async refreshCrewReactions() {
+    const list = document.getElementById('crew-chat-messages');
+    if (!list) return;
+    const messageIds = [...list.querySelectorAll('[data-message-id]')].map(el => el.dataset.messageId);
+    if (!messageIds.length) return;
+    try {
+      const reactData = await AURUM.CrewAPI.getReactions(messageIds);
+      this.crewMessageReactions = reactData.reactions || {};
+      list.querySelectorAll('.reaction-bar').forEach(bar => {
+        const messageId = bar.closest('[data-message-id]')?.dataset.messageId;
+        if (messageId) bar.outerHTML = this.reactionBarHTML(messageId, (this.crewMessageReactions[messageId] || {}));
+      });
+    } catch (err) {
+      /* Non-fatal — reaction counts just won't refresh */
+    }
   },
 	
   connectCrewChatSocket(crewId) {
