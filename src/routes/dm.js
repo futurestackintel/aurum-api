@@ -1,5 +1,6 @@
 import { getOrCreateDmChannel, sendDmMessage, getDmChannels, getDmMessages } from '../services/dm.js';
 import { requireAuth, requireAuthFromQuery } from '../middleware/auth.js';
+import { setReaction, removeReaction, getReactionsForMessages } from '../services/reactions.js';
 export async function handleDmRoutes(path, method, request, env) {
   const db = env.DB;
 
@@ -118,9 +119,75 @@ export async function handleDmRoutes(path, method, request, env) {
     }
   }
 
+  // ── POST /api/dm-messages/:id/reactions — set my reaction ──
+  const dmReactionMatch = path.match(/^\/api\/dm-messages\/([^/]+)\/reactions$/);
+  if (dmReactionMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.emoji) return jsonResponse({ error: 'emoji is required' }, 400);
+      const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      const result = await setReaction('dm', dmReactionMatch[1], userRow.id, body.emoji, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+
+      const msgRow = await db.prepare(`SELECT channel_id FROM dm_messages WHERE id = ?`).bind(dmReactionMatch[1]).first();
+      if (msgRow) {
+        const doId = env.DM_ROOM.idFromName(msgRow.channel_id);
+        const doStub = env.DM_ROOM.get(doId);
+        await doStub.fetch('https://internal/broadcast', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'reaction',
+            messageId: dmReactionMatch[1],
+            userId: userRow.id,
+            emoji: body.emoji,
+            action: 'set',
+          }),
+        });
+      }
+      return jsonResponse({ success: true }, 200);
+    } catch (err) {
+      console.error('Set DM reaction error:', err);
+      return jsonResponse({ error: 'Unable to react. Please try again.' }, 500);
+    }
+  }
+
+  // ── DELETE /api/dm-messages/:id/reactions — remove my reaction ──
+  if (dmReactionMatch && method === 'DELETE') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      await removeReaction('dm', dmReactionMatch[1], userRow.id, db);
+
+      const msgRow = await db.prepare(`SELECT channel_id FROM dm_messages WHERE id = ?`).bind(dmReactionMatch[1]).first();
+      if (msgRow) {
+        const doId = env.DM_ROOM.idFromName(msgRow.channel_id);
+        const doStub = env.DM_ROOM.get(doId);
+        await doStub.fetch('https://internal/broadcast', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'reaction',
+            messageId: dmReactionMatch[1],
+            userId: userRow.id,
+            action: 'remove',
+          }),
+        });
+      }
+      return jsonResponse({ success: true }, 200);
+    } catch (err) {
+      console.error('Remove DM reaction error:', err);
+      return jsonResponse({ error: 'Unable to remove reaction. Please try again.' }, 500);
+    }
+  }
+
   return null;
 }
-
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
