@@ -346,6 +346,12 @@ const CrewAPI = {
 
   deleteMessage: (messageId) =>
     apiRequest('DELETE', `/api/crew-messages/${messageId}`),
+  reactToMessage: (messageId, emoji) =>
+    apiRequest('POST', `/api/crew-messages/${messageId}/reactions`, { emoji }),
+  removeReaction: (messageId) =>
+    apiRequest('DELETE', `/api/crew-messages/${messageId}/reactions`),
+  getReactions: (messageIds) =>
+    apiRequest('POST', '/api/crew-messages/reactions/batch', { message_ids: messageIds }),
   leaveCrew: () =>
     apiRequest('POST', '/api/crews/leave'),
   kickMember: (crewId, targetUserId) =>
