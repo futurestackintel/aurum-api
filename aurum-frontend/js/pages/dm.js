@@ -67,6 +67,72 @@ const DmPage = {
     });
     await this.loadMessages();
     this.connectSocket(channelId);
+    this.wireReactionHandlers();
+  },
+  wireReactionHandlers() {
+    const list = document.getElementById('dm-thread-messages');
+    if (!list || list.dataset.reactionsWired) return;
+    list.dataset.reactionsWired = '1';
+    list.addEventListener('click', async (e) => {
+      const pill = e.target.closest('.reaction-pill');
+      const addBtn = e.target.closest('.reaction-add-btn');
+      if (pill) {
+        const messageId = pill.dataset.messageId;
+        const emoji = pill.dataset.emoji;
+        const isActive = pill.classList.contains('reaction-pill-active');
+        try {
+          if (isActive) {
+            await AURUM.DmAPI.removeReaction(messageId);
+          } else {
+            await AURUM.DmAPI.reactToMessage(messageId, emoji);
+          }
+          await this.loadMessages();
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not react.', 'error');
+        }
+        return;
+      }
+      if (addBtn) {
+        const messageId = addBtn.dataset.messageId;
+        this.openEmojiPicker(addBtn, messageId, 'dm');
+      }
+    });
+  },
+  openEmojiPicker(anchorEl, messageId, surface) {
+    document.querySelectorAll('.reaction-picker-popup').forEach(p => p.remove());
+    const emojiList = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
+    const popup = document.createElement('div');
+    popup.className = 'reaction-picker-popup';
+    popup.style.cssText = 'position:absolute;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:4px 6px;display:flex;gap:4px;z-index:1000;';
+    popup.innerHTML = emojiList.map(e => `<span data-emoji="${e}" style="cursor:pointer;font-size:16px;padding:2px;">${e}</span>`).join('');
+    document.body.appendChild(popup);
+    const rect = anchorEl.getBoundingClientRect();
+    popup.style.top = `${window.scrollY + rect.bottom + 4}px`;
+    popup.style.left = `${window.scrollX + rect.left}px`;
+    popup.querySelectorAll('span').forEach(span => {
+      span.addEventListener('click', async () => {
+        popup.remove();
+        try {
+          if (surface === 'dm') {
+            await AURUM.DmAPI.reactToMessage(messageId, span.dataset.emoji);
+            await this.loadMessages();
+          } else {
+            await AURUM.CrewAPI.reactToMessage(messageId, span.dataset.emoji);
+            await AURUM.ArenaPage.refreshCrewReactions();
+          }
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not react.', 'error');
+        }
+      });
+    });
+    setTimeout(() => {
+      document.addEventListener('click', function closePopup(ev) {
+        if (!popup.contains(ev.target) && ev.target !== anchorEl) {
+          popup.remove();
+          document.removeEventListener('click', closePopup);
+        }
+      });
+    }, 0);
   },
 
   connectSocket(channelId) {
