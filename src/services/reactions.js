@@ -1,13 +1,14 @@
 const VALID_EMOJI = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
 const VALID_TYPES = ['crew', 'dm'];
 
-async function messageExists(messageType, messageId, db) {
+async function getMessageRow(messageType, messageId, db) {
   const table = messageType === 'crew' ? 'crew_messages' : 'dm_messages';
+  const ownerCol = messageType === 'crew' ? 'sender_id, crew_id' : 'sender_id, channel_id';
   const row = await db
-    .prepare(`SELECT id FROM ${table} WHERE id = ? AND deleted_at IS NULL`)
+    .prepare(`SELECT id, ${ownerCol} FROM ${table} WHERE id = ? AND deleted_at IS NULL`)
     .bind(messageId)
     .first();
-  return !!row;
+  return row || null;
 }
 
 export async function setReaction(messageType, messageId, userId, emoji, db) {
