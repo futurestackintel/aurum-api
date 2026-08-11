@@ -1588,10 +1588,14 @@ window.ArenaPage = {
     const text = m.deleted ? '<em>Message removed</em>' : this.escapeHTML(m.content);
     const isMe = m.sender_id === AURUM.ProfileCache.get()?.id;
     const senderLabel = isMe ? 'You' : (this.crewMemberNames[m.sender_id] || m.sender_id);
+    const senderAvatar = this.crewMemberAvatars?.[m.sender_id];
     return `
-      <div class="chat-message" data-message-id="${m.id}">
-        <span class="chat-message-sender mono">${senderLabel}</span>
-        <span class="chat-message-text">${text}</span>
+      <div class="chat-message" data-message-id="${m.id}" style="display:flex;gap:var(--space-2);align-items:flex-start;">
+        <div class="avatar avatar-sm" style="width:22px;height:22px;font-size:10px;flex-shrink:0;">${AURUM.avatarInnerHTML(senderAvatar, senderLabel.charAt(0).toUpperCase())}</div>
+        <div>
+          <span class="chat-message-sender mono">${senderLabel}</span>
+          <span class="chat-message-text">${text}</span>
+        </div>
       </div>
     `;
   },
