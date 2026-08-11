@@ -48,11 +48,11 @@ const DmPage = {
     this.container.innerHTML = `
       <div style="display:flex;flex-direction:column;height:100%;">
         <div style="padding:var(--space-3);border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:var(--space-2);">
-          <button class="btn btn-ghost btn-sm" id="dm-back-btn">â† Back</button>
+          <button class="btn btn-ghost btn-sm" id="dm-back-btn">&larr; Back</button>
           <div class="avatar avatar-sm" style="width:28px;height:28px;">${AURUM.avatarInnerHTML(avatarUrl, this.escapeHTML(username).charAt(0).toUpperCase())}</div>
           <p style="font-weight:600;">${this.escapeHTML(username)}</p>
         </div>
-				div id="dm-thread-messages" style="flex:1;overflow-y:auto;padding:var(--space-3);">
+				<div id="dm-thread-messages" style="flex:1;overflow-y:auto;padding:var(--space-3);">
           <p style="color:var(--color-text-muted);">Loading messages...</p>
         </div>
         <div style="padding:var(--space-3);border-top:1px solid var(--color-border);display:flex;gap:var(--space-2);">
