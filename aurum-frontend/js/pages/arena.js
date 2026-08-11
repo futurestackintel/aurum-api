@@ -1531,6 +1531,13 @@ window.ArenaPage = {
     try {
       const data = await AURUM.CrewAPI.getMessages(crewId);
       const messages = (data.messages || []).slice().reverse();
+      this.crewMessageReactions = {};
+      try {
+        const reactData = await AURUM.CrewAPI.getReactions(messages.map(m => m.id));
+        this.crewMessageReactions = reactData.reactions || {};
+      } catch (err) {
+        /* Non-fatal — messages still show, just without reaction counts if this fails */
+      }
       this.renderCrewMessages(messages);
     } catch (err) {
       list.innerHTML = '<p style="text-align:center;color:var(--color-text-muted);font-size:var(--text-sm);">Could not load messages.</p>';
@@ -1589,13 +1596,29 @@ window.ArenaPage = {
     const isMe = m.sender_id === AURUM.ProfileCache.get()?.id;
     const senderLabel = isMe ? 'You' : (this.crewMemberNames[m.sender_id] || m.sender_id);
     const senderAvatar = this.crewMemberAvatars?.[m.sender_id];
+    const reactions = (this.crewMessageReactions && this.crewMessageReactions[m.id]) || {};
     return `
       <div class="chat-message" data-message-id="${m.id}" style="display:flex;gap:var(--space-2);align-items:flex-start;">
         <div class="avatar avatar-sm" style="width:22px;height:22px;font-size:10px;flex-shrink:0;">${AURUM.avatarInnerHTML(senderAvatar, senderLabel.charAt(0).toUpperCase())}</div>
         <div>
           <span class="chat-message-sender mono">${senderLabel}</span>
           <span class="chat-message-text">${text}</span>
+          ${this.reactionBarHTML(m.id, reactions)}
         </div>
+      </div>
+    `;
+  },
+  reactionBarHTML(messageId, reactions) {
+    const emojiList = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
+    const pills = Object.entries(reactions).map(([emoji, data]) => `
+      <button class="reaction-pill${data.reacted_by_me ? ' reaction-pill-active' : ''}" data-message-id="${messageId}" data-emoji="${emoji}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--color-border);background:${data.reacted_by_me ? 'var(--color-primary-muted, #333)' : 'transparent'};cursor:pointer;margin-right:2px;">
+        ${emoji} ${data.count}
+      </button>
+    `).join('');
+    return `
+      <div class="reaction-bar" style="margin-top:2px;display:flex;align-items:center;flex-wrap:wrap;">
+        ${pills}
+        <button class="reaction-add-btn" data-message-id="${messageId}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px dashed var(--color-border);background:transparent;cursor:pointer;color:var(--color-text-muted);">+</button>
       </div>
     `;
   },
