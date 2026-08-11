@@ -108,6 +108,8 @@ const DmPage = {
     const wasEmpty = list.querySelector('p') && !list.querySelector('div');
     if (wasEmpty) list.innerHTML = '';
     const bubble = document.createElement('div');
+    bubble.className = 'dm-message-wrap';
+    bubble.dataset.messageId = msg.id;
     bubble.style.marginBottom = 'var(--space-2)';
     bubble.style.textAlign = isMine ? 'right' : 'left';
     bubble.innerHTML = `
@@ -115,9 +117,23 @@ const DmPage = {
         background:${isMine ? 'var(--color-gold, #b8964f)' : 'var(--color-surface)'};
         color:${isMine ? '#000' : 'inherit'};max-width:80%;">
         ${this.escapeHTML(msg.content)}
-      </p>`;
+      </p>
+      ${this.reactionBarHTML(msg.id, {})}`;
     list.appendChild(bubble);
     list.scrollTop = list.scrollHeight;
+  },
+  reactionBarHTML(messageId, reactions) {
+    const pills = Object.entries(reactions).map(([emoji, data]) => `
+      <button class="reaction-pill${data.reacted_by_me ? ' reaction-pill-active' : ''}" data-message-id="${messageId}" data-emoji="${emoji}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--color-border);background:${data.reacted_by_me ? 'var(--color-primary-muted, #333)' : 'transparent'};cursor:pointer;margin-right:2px;">
+        ${emoji} ${data.count}
+      </button>
+    `).join('');
+    return `
+      <div class="reaction-bar" style="margin-top:2px;">
+        ${pills}
+        <button class="reaction-add-btn" data-message-id="${messageId}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px dashed var(--color-border);background:transparent;cursor:pointer;color:var(--color-text-muted);">+</button>
+      </div>
+    `;
   },
 
   async loadMessages() {
@@ -129,13 +145,21 @@ const DmPage = {
         list.innerHTML = `<p style="color:var(--color-text-muted);">No messages yet. Say hello.</p>`;
         return;
       }
+      this.dmMessageReactions = {};
+      try {
+        const reactData = await AURUM.DmAPI.getReactions(messages.map(m => m.id));
+        this.dmMessageReactions = reactData.reactions || {};
+      } catch (err) {
+        /* Non-fatal — messages still show, just without reaction counts if this fails */
+      }
       list.innerHTML = messages.slice().reverse().map(m => `
-        <div style="margin-bottom:var(--space-2);text-align:${m.sender_id === me?.id ? 'right' : 'left'};">
+        <div class="dm-message-wrap" data-message-id="${m.id}" style="margin-bottom:var(--space-2);text-align:${m.sender_id === me?.id ? 'right' : 'left'};">
           <p style="display:inline-block;padding:var(--space-2);border-radius:8px;
             background:${m.sender_id === me?.id ? 'var(--color-gold, #b8964f)' : 'var(--color-surface)'};
             color:${m.sender_id === me?.id ? '#000' : 'inherit'};max-width:80%;">
             ${m.deleted ? '<em>message deleted</em>' : this.escapeHTML(m.content)}
           </p>
+          ${this.reactionBarHTML(m.id, (this.dmMessageReactions[m.id] || {}))}
         </div>
       `).join('');
       list.scrollTop = list.scrollHeight;
