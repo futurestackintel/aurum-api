@@ -593,6 +593,24 @@ export async function handleCrewRoutes(path, method, request, env) {
         }
       }
 
+// ── POST /api/crew-messages/reactions/batch — fetch reactions for many messages ──
+      if (path === '/api/crew-messages/reactions/batch' && method === 'POST') {
+        const user = await requireAuth(request, env);
+        if (user.error) return jsonResponse({ error: user.error }, 401);
+
+        try {
+          const body = await request.json();
+          const messageIds = Array.isArray(body.message_ids) ? body.message_ids : [];
+          const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+          if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+          const reactions = await getReactionsForMessages('crew', messageIds, userRow.id, db);
+          return jsonResponse({ reactions });
+        } catch (err) {
+          console.error('Batch fetch crew reactions error:', err);
+          return jsonResponse({ error: 'Unable to load reactions. Please try again.' }, 500);
+        }
+      }
+	
       // ── DELETE /api/crew-messages/:id/reactions — remove my reaction ──
       if (reactionMatch && method === 'DELETE') {
         const user = await requireAuth(request, env);
