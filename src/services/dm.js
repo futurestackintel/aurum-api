@@ -28,6 +28,7 @@ export async function getDmChannels(userId, db) {
       c.id AS channel_id,
       CASE WHEN c.user_a_id = ? THEN c.user_b_id ELSE c.user_a_id END AS other_user_id,
       u.username AS other_username,
+      u.avatar_url AS other_avatar_url,
       (SELECT content FROM dm_messages WHERE channel_id = c.id AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1) AS last_message,
       (SELECT created_at FROM dm_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_at
     FROM dm_channels c
