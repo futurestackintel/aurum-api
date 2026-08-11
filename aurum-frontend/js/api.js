@@ -390,6 +390,12 @@ const DmAPI = {
   },
   sendMessage: (channelId, content) =>
     apiRequest('POST', `/api/dm/channels/${channelId}/messages`, { content }),
+  reactToMessage: (messageId, emoji) =>
+    apiRequest('POST', `/api/dm-messages/${messageId}/reactions`, { emoji }),
+  removeReaction: (messageId) =>
+    apiRequest('DELETE', `/api/dm-messages/${messageId}/reactions`),
+  getReactions: (messageIds) =>
+    apiRequest('POST', '/api/dm-messages/reactions/batch', { message_ids: messageIds }),
 };
 const SearchAPI = {
   search: (q) =>
