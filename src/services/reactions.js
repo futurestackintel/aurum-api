@@ -18,8 +18,8 @@ export async function setReaction(messageType, messageId, userId, emoji, db) {
   if (!VALID_EMOJI.includes(emoji)) {
     return { error: 'Invalid emoji' };
   }
-  const exists = await messageExists(messageType, messageId, db);
-  if (!exists) {
+  const messageRow = await getMessageRow(messageType, messageId, db);
+  if (!messageRow) {
     return { error: 'Message not found' };
   }
   // One reaction per user per message: clear any existing reaction first, then insert the new one
@@ -32,6 +32,32 @@ export async function setReaction(messageType, messageId, userId, emoji, db) {
     .prepare(`INSERT INTO message_reactions (id, message_type, message_id, user_id, emoji) VALUES (?, ?, ?, ?, ?)`)
     .bind(reactionId, messageType, messageId, userId, emoji)
     .run();
+
+  // Notify the message author (skip self-reactions)
+  if (messageRow.sender_id && messageRow.sender_id !== userId) {
+    try {
+      const reactorRow = await db.prepare(`SELECT username FROM users WHERE id = ?`).bind(userId).first();
+      const reactorName = reactorRow?.username || 'Someone';
+      const actionUrl = messageType === 'crew'
+        ? `/crews/${messageRow.crew_id}`
+        : `/messages/${messageRow.channel_id}`;
+      await db.prepare(`
+          INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
+          VALUES (?, ?, 'message_reaction', 'New reaction', ?, ?, ?)
+        `)
+        .bind(
+          crypto.randomUUID(),
+          messageRow.sender_id,
+          `${reactorName} reacted ${emoji} to your message.`,
+          actionUrl,
+          new Date().toISOString(),
+        )
+        .run();
+    } catch (err) {
+      // Non-fatal — reaction itself already succeeded, notification failure shouldn't break the request
+    }
+  }
+
   return { reaction_id: reactionId };
 }
 
