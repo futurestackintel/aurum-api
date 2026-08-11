@@ -38,6 +38,7 @@ import {
   getCrewMessages,
   getCrewWalletTransactions,
 } from '../services/crew.js';
+import { setReaction, removeReaction, getReactionsForMessages } from '../services/reactions.js';
 import { requireAuth, requireAdmin, requireAuthFromQuery } from '../middleware/auth.js';
 
 export async function handleCrewRoutes(path, method, request, env) {
@@ -555,6 +556,73 @@ export async function handleCrewRoutes(path, method, request, env) {
       return jsonResponse({ error: 'Unable to send message. Please try again.' }, 500);
     }
   }
+
+// ── POST /api/crew-messages/:id/reactions — set my reaction ──
+      const reactionMatch = path.match(/^\/api\/crew-messages\/([^/]+)\/reactions$/);
+      if (reactionMatch && method === 'POST') {
+        const user = await requireAuth(request, env);
+        if (user.error) return jsonResponse({ error: user.error }, 401);
+
+        try {
+          const body = await request.json();
+          if (!body.emoji) return jsonResponse({ error: 'emoji is required' }, 400);
+          const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+          if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+          const result = await setReaction('crew', reactionMatch[1], userRow.id, body.emoji, db);
+          if (result.error) return jsonResponse({ error: result.error }, 400);
+
+          const msgRow = await db.prepare(`SELECT crew_id FROM crew_messages WHERE id = ?`).bind(reactionMatch[1]).first();
+          if (msgRow) {
+            const doId = env.CREW_CHAT.idFromName(msgRow.crew_id);
+            const doStub = env.CREW_CHAT.get(doId);
+            await doStub.fetch('https://internal/broadcast', {
+              method: 'POST',
+              body: JSON.stringify({
+                type: 'reaction',
+                messageId: reactionMatch[1],
+                userId: userRow.id,
+                emoji: body.emoji,
+                action: 'set',
+              }),
+            });
+          }
+          return jsonResponse({ success: true }, 200);
+        } catch (err) {
+          console.error('Set crew reaction error:', err);
+          return jsonResponse({ error: 'Unable to react. Please try again.' }, 500);
+        }
+      }
+
+      // ── DELETE /api/crew-messages/:id/reactions — remove my reaction ──
+      if (reactionMatch && method === 'DELETE') {
+        const user = await requireAuth(request, env);
+        if (user.error) return jsonResponse({ error: user.error }, 401);
+
+        try {
+          const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+          if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+          await removeReaction('crew', reactionMatch[1], userRow.id, db);
+
+          const msgRow = await db.prepare(`SELECT crew_id FROM crew_messages WHERE id = ?`).bind(reactionMatch[1]).first();
+          if (msgRow) {
+            const doId = env.CREW_CHAT.idFromName(msgRow.crew_id);
+            const doStub = env.CREW_CHAT.get(doId);
+            await doStub.fetch('https://internal/broadcast', {
+              method: 'POST',
+              body: JSON.stringify({
+                type: 'reaction',
+                messageId: reactionMatch[1],
+                userId: userRow.id,
+                action: 'remove',
+              }),
+            });
+          }
+          return jsonResponse({ success: true }, 200);
+        } catch (err) {
+          console.error('Remove crew reaction error:', err);
+          return jsonResponse({ error: 'Unable to remove reaction. Please try again.' }, 500);
+        }
+      }	
 
 // ── GET /api/crews/:id/ws — live chat WebSocket connection ──
   const wsMatch = path.match(/^\/api\/crews\/([^/]+)\/ws$/);
