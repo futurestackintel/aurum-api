@@ -147,7 +147,11 @@ const DmPage = {
     this.socket.addEventListener('message', (event) => {
       try {
         const msg = JSON.parse(event.data);
-        this.appendMessage(msg);
+        if (msg.type === 'reaction') {
+          this.loadMessages();
+        } else {
+          this.appendMessage(msg);
+        }
       } catch (err) {
         /* ignore malformed message */
       }
