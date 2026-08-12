@@ -607,18 +607,39 @@ export async function reportDuelCheating(duelId, clerkId, reason, db) {
 // was invalid — release escrow to the original winner as normal).
 // Mirrors the shape of decideAppeal() in disputeResolution.js.
 
-export async function decideDuelDispute(duelId, decision, adminId, db) {
-  if (!['upheld', 'rejected'].includes(decision)) {
-    return { error: 'decision must be upheld or rejected' };
-  }
-
+export async function decideDuelDispute(duelId, decision, adminId, db, winnerId = null) {
   const duel = await db
     .prepare(`SELECT * FROM duels WHERE id = ?`)
     .bind(duelId)
     .first();
 
-  if (!duel)                                return { error: 'Duel not found' };
-  if (duel.dispute_status !== 'reported' && duel.status !== 'tied') {
+  if (!duel) return { error: 'Duel not found' };
+
+  // Tied duel: admin must supply an explicit winner_id — 'upheld'/'rejected' don't apply
+  if (duel.status === 'tied') {
+    if (!winnerId) {
+      return { error: 'winner_id is required to resolve a tied duel' };
+    }
+    if (winnerId !== duel.challenger_id && winnerId !== duel.target_id) {
+      return { error: 'winner_id must be one of the two duel participants' };
+    }
+    const payout = await releaseDuelEscrow(duelId, winnerId, duel, db);
+    if (payout.error) return payout;
+
+    await db.prepare(`
+      UPDATE duels
+      SET winner_id = ?, dispute_status = 'resolved', status = 'resolved', resolved_at = ?
+      WHERE id = ?
+    `).bind(winnerId, nowISO(), duelId).run();
+
+    return { resolved: true, duel_id: duelId, winner_id: winnerId, decision: 'tie_resolved' };
+  }
+
+  // Reported-cheating dispute path (not a tie)
+  if (!['upheld', 'rejected'].includes(decision)) {
+    return { error: 'decision must be upheld or rejected' };
+  }
+  if (duel.dispute_status !== 'reported') {
     return { error: 'This duel has no pending dispute' };
   }
 
@@ -629,13 +650,6 @@ export async function decideDuelDispute(duelId, decision, adminId, db) {
     finalWinnerId = duel.winner_id === duel.challenger_id
       ? duel.target_id
       : duel.challenger_id;
-  }
-
-  if (duel.status === 'tied' && !finalWinnerId) {
-    // Admin resolving a tie — decision param doubles as which side wins
-    // isn't expressible via upheld/rejected alone, so this path requires
-    // the admin route to pass an explicit winner_id instead (see routes).
-    return { error: 'Tied duels must be resolved with an explicit winner_id, not upheld/rejected' };
   }
 
   const payout = await releaseDuelEscrow(duelId, finalWinnerId, duel, db);
