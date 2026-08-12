@@ -1147,7 +1147,10 @@ export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
 
   if (!membership)                  return { error: 'You are not a member of this crew' };
   if (membership.role !== 'captain') return { error: 'Only the crew captain can start a battle' };
-
+  const muteStatus = await isMemberMuted(challengerCrewId, userId, db);
+  if (muteStatus.muted) {
+    return { error: `You are muted until ${muteStatus.muted_until}`, reason: muteStatus.reason };
+  }
   // Look up target crew
   const targetCrew = await db
     .prepare(`SELECT * FROM crews WHERE name = ?`)
