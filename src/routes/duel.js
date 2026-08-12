@@ -252,8 +252,10 @@ export async function handleDuelRoutes(path, method, request, env) {
 
     try {
       const body = await request.json();
-      if (!body.decision) return jsonResponse({ error: 'decision is required' }, 400);
-      const result = await decideDuelDispute(disputeDecisionMatch[1], body.decision, admin.id, db);
+      if (!body.decision && !body.winner_id) {
+        return jsonResponse({ error: 'decision or winner_id is required' }, 400);
+      }
+      const result = await decideDuelDispute(disputeDecisionMatch[1], body.decision, admin.id, db, body.winner_id);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
