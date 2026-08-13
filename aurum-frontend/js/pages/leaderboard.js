@@ -337,6 +337,33 @@ window.LeaderboardPage = {
       .your-rank-card {
         background: linear-gradient(135deg,
           var(--color-surface), rgba(201,168,76,0.05));
+        position: relative;
+        overflow: hidden;
+        animation: rankCardGlow 3s ease-in-out infinite;
+      }
+
+      .your-rank-card::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -60%;
+        width: 40%;
+        height: 100%;
+        background: linear-gradient(90deg,
+          transparent, rgba(201,168,76,0.08), transparent);
+        transform: skewX(-20deg);
+        animation: rankCardSheen 5s ease-in-out infinite;
+      }
+
+      @keyframes rankCardGlow {
+        0%, 100% { box-shadow: 0 0 0 1px var(--color-border-gold); }
+        50%      { box-shadow: 0 0 20px rgba(201,168,76,0.12), 0 0 0 1px var(--color-gold-dim); }
+      }
+
+      @keyframes rankCardSheen {
+        0%   { left: -60%; }
+        45%  { left: 130%; }
+        100% { left: 130%; }
       }
 
       .board-tabs {
@@ -389,6 +416,29 @@ window.LeaderboardPage = {
         background: linear-gradient(135deg,
           var(--color-surface), rgba(201,168,76,0.04));
         border-color: var(--color-border-gold);
+        position: relative;
+      }
+
+      .lb-full-item-top::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: var(--radius-lg);
+        padding: 1px;
+        background: linear-gradient(135deg, var(--color-gold), transparent 60%);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+      }
+
+      .lb-full-rank {
+        font-size: var(--text-xl);
+        transition: transform var(--transition-base);
+      }
+
+      .lb-full-item-top .lb-full-rank {
+        filter: drop-shadow(0 0 6px rgba(201,168,76,0.5));
       }
 
       /* Current user's row */
