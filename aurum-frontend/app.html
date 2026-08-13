@@ -166,22 +166,22 @@
 
     /* ---- Notification dropdown ---- */
     .notif-dropdown {
-      position: absolute;
-      top: calc(var(--nav-height) + 8px);
-      right: var(--space-4);
+      position: fixed;
+      top: calc(var(--nav-height) + env(safe-area-inset-top, 0px) + 8px);
+      right: max(var(--space-4), env(safe-area-inset-right, 0px));
       width: 340px;
       max-width: calc(100vw - 32px);
-      max-height: 420px;
+      max-height: calc(100vh - var(--nav-height) - env(safe-area-inset-top, 0px) - var(--bottom-nav-h) - env(safe-area-inset-bottom, 0px) - 24px);
       background: var(--color-surface);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-md);
       box-shadow: 0 12px 32px rgba(0,0,0,0.5);
-      z-index: var(--z-sticky);
+      z-index: var(--z-overlay);
       display: none;
       flex-direction: column;
       overflow: hidden;
     }
-
+	  
     .notif-dropdown.open { display: flex; }
 
     .notif-dropdown-header {
