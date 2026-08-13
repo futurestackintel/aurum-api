@@ -823,8 +823,7 @@ window.ArenaPage = {
             </div>
             <p style="font-size:var(--text-xs);color:var(--color-text);">${challenger}</p>
           </div>
-          <div style="font-family:var(--font-mono);font-size:var(--text-lg);
-            color:var(--color-gold);padding:0 var(--space-3);">VS</div>
+          <div class="duel-vs-badge">VS</div>
           <div style="text-align:center;flex:1;">
             <div class="avatar avatar-sm" style="margin:0 auto var(--space-1);">
               ${opponent.charAt(0).toUpperCase()}
@@ -1679,20 +1678,19 @@ window.ArenaPage = {
     const senderAvatar = this.crewMemberAvatars?.[m.sender_id];
     const reactions = (this.crewMessageReactions && this.crewMessageReactions[m.id]) || {};
     return `
-      <div class="chat-message" data-message-id="${m.id}" style="display:flex;gap:var(--space-2);align-items:flex-start;">
+      <div class="chat-message${isMe ? ' chat-message-me' : ''}" data-message-id="${m.id}">
         <div class="avatar avatar-sm" style="width:22px;height:22px;font-size:10px;flex-shrink:0;">${AURUM.avatarInnerHTML(senderAvatar, senderLabel.charAt(0).toUpperCase())}</div>
-        <div>
+        <div class="chat-message-body">
           <span class="chat-message-sender mono">${senderLabel}</span>
           <span class="chat-message-text">${text}</span>
           ${this.reactionBarHTML(m.id, reactions)}
         </div>
       </div>
     `;
-  },
   reactionBarHTML(messageId, reactions) {
     const emojiList = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
     const pills = Object.entries(reactions).map(([emoji, data]) => `
-      <button class="reaction-pill${data.reacted_by_me ? ' reaction-pill-active' : ''}" data-message-id="${messageId}" data-emoji="${emoji}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--color-border);background:${data.reacted_by_me ? 'var(--color-primary-muted, #333)' : 'transparent'};cursor:pointer;margin-right:2px;">
+      <button class="reaction-pill${data.reacted_by_me ? ' reaction-pill-active' : ''}" data-message-id="${messageId}" data-emoji="${emoji}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid ${data.reacted_by_me ? 'var(--color-gold-dim)' : 'var(--color-border)'};background:${data.reacted_by_me ? 'var(--color-gold-glow)' : 'transparent'};color:${data.reacted_by_me ? 'var(--color-gold)' : 'var(--color-text-muted)'};cursor:pointer;margin-right:2px;">
         ${emoji} ${data.count}
       </button>
     `).join('');
@@ -1865,6 +1863,21 @@ window.ArenaPage = {
         flex-direction: column;
         gap: var(--space-4);
         padding: var(--space-4);
+        position: relative;
+      }
+
+      .arena-wrap::before {
+        content: '';
+        position: absolute;
+        top: -40px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 320px;
+        height: 200px;
+        background: radial-gradient(ellipse at center,
+          rgba(201,168,76,0.08), transparent 70%);
+        pointer-events: none;
+        z-index: 0;
       }
 
       .arena-header {
@@ -1878,7 +1891,10 @@ window.ArenaPage = {
         font-family: var(--font-display);
         font-size: var(--text-3xl);
         font-weight: var(--weight-light);
-        color: var(--color-text);
+        background: linear-gradient(135deg, var(--color-text) 40%, var(--color-gold) 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
       }
 
       .arena-stats {
@@ -1940,9 +1956,25 @@ window.ArenaPage = {
         border: none;
       }
 
+      .arena-section-tab {
+        position: relative;
+      }
+
       .arena-section-tab.active {
         color: var(--color-gold);
         background: var(--color-gold-glow);
+      }
+
+      .arena-section-tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: -13px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60%;
+        height: 2px;
+        background: var(--color-gold);
+        box-shadow: 0 0 8px rgba(201,168,76,0.6);
       }
 
       /* Status filter tabs */
@@ -1979,6 +2011,30 @@ window.ArenaPage = {
         display: flex;
         flex-direction: column;
         gap: var(--space-4);
+        position: relative;
+        overflow: hidden;
+        transition: transform var(--transition-base), box-shadow var(--transition-base);
+      }
+
+      .challenge-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+        opacity: 0;
+        transition: opacity var(--transition-base);
+      }
+
+      .challenge-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg), 0 0 16px rgba(201,168,76,0.08);
+      }
+
+      .challenge-card:hover::before {
+        opacity: 1;
       }
 
       .challenge-top {
@@ -2103,16 +2159,50 @@ window.ArenaPage = {
         color: var(--color-gold);
       }
 
+      .duel-vs-badge {
+        position: relative;
+        font-family: var(--font-mono);
+        font-size: var(--text-lg);
+        font-weight: var(--weight-bold);
+        color: var(--color-gold);
+        padding: 0 var(--space-3);
+        text-shadow: 0 0 10px rgba(201,168,76,0.5);
+        animation: vsPulse 2s ease-in-out infinite;
+      }
+
+      @keyframes vsPulse {
+        0%, 100% { text-shadow: 0 0 6px rgba(201,168,76,0.35); }
+        50%      { text-shadow: 0 0 16px rgba(201,168,76,0.75); }
+      }
+
       /* Crew chat */
       .chat-message {
+        display: flex;
+        gap: var(--space-2);
+        align-items: flex-start;
+        max-width: 100%;
+      }
+
+      .chat-message-body {
         display: flex;
         flex-direction: column;
         gap: 2px;
         padding: var(--space-2) var(--space-3);
         background: var(--color-surface-2);
+        border: 1px solid var(--color-border);
         border-radius: var(--radius-md);
-        max-width: 80%;
-        align-self: flex-start;
+        max-width: 78%;
+      }
+
+      .chat-message-me {
+        flex-direction: row-reverse;
+      }
+
+      .chat-message-me .chat-message-body {
+        background: linear-gradient(135deg, rgba(201,168,76,0.10), var(--color-surface-2));
+        border-color: var(--color-border-gold);
+        align-items: flex-end;
+        text-align: right;
       }
 
       .chat-message-sender {
