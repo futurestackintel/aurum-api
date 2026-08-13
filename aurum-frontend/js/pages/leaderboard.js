@@ -298,8 +298,23 @@ window.LeaderboardPage = {
       .lb-page-wrap {
         display: flex;
         flex-direction: column;
-        gap: var(--space-4);
+        gap: var(--space-5);
         padding: var(--space-4);
+        position: relative;
+      }
+
+      .lb-page-wrap::before {
+        content: '';
+        position: absolute;
+        top: -40px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 320px;
+        height: 200px;
+        background: radial-gradient(ellipse at center,
+          rgba(201,168,76,0.08), transparent 70%);
+        pointer-events: none;
+        z-index: 0;
       }
 
       .lb-page-header {
@@ -313,7 +328,10 @@ window.LeaderboardPage = {
         font-family: var(--font-display);
         font-size: var(--text-3xl);
         font-weight: var(--weight-light);
-        color: var(--color-text);
+        background: linear-gradient(135deg, var(--color-text) 40%, var(--color-gold) 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
       }
 
       .your-rank-card {
