@@ -3,31 +3,44 @@ const DmPage = {
 
   async init(containerId) {
     this.container = document.getElementById(containerId);
+    this.applyStyles();
     await this.renderList();
   },
 
   async renderList() {
-    this.container.innerHTML = `<p style="padding:var(--space-4);color:var(--color-text-muted);">Loading conversations...</p>`;
+    this.container.innerHTML = `
+      <div class="dm-page-header">
+        <p class="section-eyebrow">Private Channel</p>
+        <h2 class="dm-page-title">Messages</h2>
+      </div>
+      <p class="dm-loading-text">Loading conversations...</p>`;
     try {
       const { channels } = await AURUM.DmAPI.getChannels();
       if (!channels || !channels.length) {
         this.container.innerHTML = `
-          <div style="padding:var(--space-4);text-align:center;color:var(--color-text-muted);">
-            <p>No conversations yet.</p>
+          <div class="dm-page-header">
+            <p class="section-eyebrow">Private Channel</p>
+            <h2 class="dm-page-title">Messages</h2>
+          </div>
+          <div class="empty-state">
+            <div class="empty-state-icon">✦</div>
+            <h4>No conversations yet</h4>
+            <p>Find someone in Search and say hello.</p>
           </div>`;
         return;
       }
       this.container.innerHTML = `
-        <div id="dm-list">
+        <div class="dm-page-header">
+          <p class="section-eyebrow">Private Channel</p>
+          <h2 class="dm-page-title">Messages</h2>
+        </div>
+        <div id="dm-list" class="dm-list">
           ${channels.map(c => `
-            <div class="dm-list-item" data-channel-id="${c.channel_id}" data-username="${this.escapeHTML(c.other_username)}" data-avatar="${this.escapeHTML(c.other_avatar_url || '')}"
-              style="padding:var(--space-3);border-bottom:1px solid var(--color-border);cursor:pointer;display:flex;align-items:center;gap:var(--space-3);">
-              <div class="avatar avatar-sm">${AURUM.avatarInnerHTML(c.other_avatar_url, this.escapeHTML(c.other_username).charAt(0).toUpperCase())}</div>
-              <div style="flex:1;min-width:0;">
-                <p style="font-weight:600;">${this.escapeHTML(c.other_username)}</p>
-                <p style="font-size:var(--text-sm);color:var(--color-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                  ${c.last_message ? this.escapeHTML(c.last_message) : 'No messages yet'}
-                </p>
+            <div class="dm-list-item" data-channel-id="${c.channel_id}" data-username="${this.escapeHTML(c.other_username)}" data-avatar="${this.escapeHTML(c.other_avatar_url || '')}">
+              <div class="avatar avatar-sm dm-list-avatar">${AURUM.avatarInnerHTML(c.other_avatar_url, this.escapeHTML(c.other_username).charAt(0).toUpperCase())}</div>
+              <div class="dm-list-info">
+                <p class="dm-list-name">${this.escapeHTML(c.other_username)}</p>
+                <p class="dm-list-preview">${c.last_message ? this.escapeHTML(c.last_message) : 'No messages yet'}</p>
               </div>
             </div>
           `).join('')}
@@ -38,26 +51,28 @@ const DmPage = {
         });
       });
     } catch (err) {
-      this.container.innerHTML = `<p style="padding:var(--space-4);color:var(--color-danger);">Failed to load conversations.</p>`;
+      this.container.innerHTML = `<p class="dm-loading-text" style="color:var(--color-danger);">Failed to load conversations.</p>`;
     }
   },
-
+	
   async openThread(channelId, username, avatarUrl) {
     this.activeChannelId = channelId;
     this.activeUsername = username;
     this.container.innerHTML = `
-      <div style="display:flex;flex-direction:column;height:100%;">
-        <div style="padding:var(--space-3);border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:var(--space-2);">
-          <button class="btn btn-ghost btn-sm" id="dm-back-btn">&larr; Back</button>
-          <div class="avatar avatar-sm" style="width:28px;height:28px;">${AURUM.avatarInnerHTML(avatarUrl, this.escapeHTML(username).charAt(0).toUpperCase())}</div>
-          <p style="font-weight:600;">${this.escapeHTML(username)}</p>
+      <div class="dm-thread">
+        <div class="dm-thread-header">
+          <button class="dm-back-btn" id="dm-back-btn" aria-label="Back">&larr;</button>
+          <div class="avatar avatar-sm dm-thread-avatar">${AURUM.avatarInnerHTML(avatarUrl, this.escapeHTML(username).charAt(0).toUpperCase())}</div>
+          <p class="dm-thread-name">${this.escapeHTML(username)}</p>
         </div>
-				<div id="dm-thread-messages" style="flex:1;overflow-y:auto;padding:var(--space-3);">
-          <p style="color:var(--color-text-muted);">Loading messages...</p>
+        <div id="dm-thread-messages" class="dm-thread-messages">
+          <p class="dm-loading-text">Loading messages...</p>
         </div>
-        <div style="padding:var(--space-3);border-top:1px solid var(--color-border);display:flex;gap:var(--space-2);">
-          <input class="input" id="dm-message-input" placeholder="Message..." style="flex:1;" />
-          <button class="btn btn-primary btn-sm" id="dm-send-btn">Send</button>
+        <div class="dm-input-bar">
+          <input class="input dm-input" id="dm-message-input" placeholder="Send a message..." />
+          <button class="dm-send-btn" id="dm-send-btn" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
         </div>
       </div>`;
     document.getElementById('dm-back-btn').addEventListener('click', () => this.closeThread());
@@ -178,28 +193,23 @@ const DmPage = {
     const wasEmpty = list.querySelector('p') && !list.querySelector('div');
     if (wasEmpty) list.innerHTML = '';
     const bubble = document.createElement('div');
-    bubble.className = 'dm-message-wrap';
+    bubble.className = `dm-message-wrap${isMine ? ' dm-message-mine' : ''}`;
     bubble.dataset.messageId = msg.id;
-    bubble.style.marginBottom = 'var(--space-2)';
-    bubble.style.textAlign = isMine ? 'right' : 'left';
     bubble.innerHTML = `
-      <p style="display:inline-block;padding:var(--space-2);border-radius:8px;
-        background:${isMine ? 'var(--color-gold, #b8964f)' : 'var(--color-surface)'};
-        color:${isMine ? '#000' : 'inherit'};max-width:80%;">
-        ${this.escapeHTML(msg.content)}
-      </p>
+      <p class="dm-bubble">${this.escapeHTML(msg.content)}</p>
       ${this.reactionBarHTML(msg.id, {})}`;
     list.appendChild(bubble);
     list.scrollTop = list.scrollHeight;
   },
+	
   reactionBarHTML(messageId, reactions) {
     const pills = Object.entries(reactions).map(([emoji, data]) => `
-      <button class="reaction-pill${data.reacted_by_me ? ' reaction-pill-active' : ''}" data-message-id="${messageId}" data-emoji="${emoji}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--color-border);background:${data.reacted_by_me ? 'var(--color-primary-muted, #333)' : 'transparent'};cursor:pointer;margin-right:2px;">
+      <button class="reaction-pill${data.reacted_by_me ? ' reaction-pill-active' : ''}" data-message-id="${messageId}" data-emoji="${emoji}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid ${data.reacted_by_me ? 'var(--color-gold-dim)' : 'var(--color-border)'};background:${data.reacted_by_me ? 'var(--color-gold-glow)' : 'transparent'};color:${data.reacted_by_me ? 'var(--color-gold)' : 'var(--color-text-muted)'};cursor:pointer;margin-right:2px;">
         ${emoji} ${data.count}
       </button>
     `).join('');
     return `
-      <div class="reaction-bar" style="margin-top:2px;">
+      <div class="reaction-bar" style="margin-top:4px;">
         ${pills}
         <button class="reaction-add-btn" data-message-id="${messageId}" style="font-size:11px;padding:1px 6px;border-radius:10px;border:1px dashed var(--color-border);background:transparent;cursor:pointer;color:var(--color-text-muted);">+</button>
       </div>
@@ -223,12 +233,8 @@ const DmPage = {
         /* Non-fatal — messages still show, just without reaction counts if this fails */
       }
       list.innerHTML = messages.slice().reverse().map(m => `
-        <div class="dm-message-wrap" data-message-id="${m.id}" style="margin-bottom:var(--space-2);text-align:${m.sender_id === me?.id ? 'right' : 'left'};">
-          <p style="display:inline-block;padding:var(--space-2);border-radius:8px;
-            background:${m.sender_id === me?.id ? 'var(--color-gold, #b8964f)' : 'var(--color-surface)'};
-            color:${m.sender_id === me?.id ? '#000' : 'inherit'};max-width:80%;">
-            ${m.deleted ? '<em>message deleted</em>' : this.escapeHTML(m.content)}
-          </p>
+        <div class="dm-message-wrap${m.sender_id === me?.id ? ' dm-message-mine' : ''}" data-message-id="${m.id}">
+          <p class="dm-bubble">${m.deleted ? '<em>message deleted</em>' : this.escapeHTML(m.content)}</p>
           ${this.reactionBarHTML(m.id, (this.dmMessageReactions[m.id] || {}))}
         </div>
       `).join('');
@@ -254,6 +260,175 @@ const DmPage = {
     const div = document.createElement('div');
     div.textContent = str ?? '';
     return div.innerHTML;
+  },
+
+  applyStyles() {
+    if (document.getElementById('dm-page-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'dm-page-styles';
+    style.textContent = `
+      .dm-page-header {
+        padding: var(--space-4) var(--space-4) var(--space-2);
+      }
+      .dm-page-title {
+        font-family: var(--font-display);
+        font-size: var(--text-3xl);
+        font-weight: var(--weight-light);
+        font-style: italic;
+        color: var(--color-text);
+      }
+      .dm-loading-text {
+        padding: var(--space-4);
+        color: var(--color-text-muted);
+        font-size: var(--text-sm);
+      }
+      .dm-list {
+        display: flex;
+        flex-direction: column;
+      }
+      .dm-list-item {
+        padding: var(--space-3) var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        transition: background var(--transition-fast);
+      }
+      .dm-list-item:hover {
+        background: var(--color-surface-2);
+      }
+      .dm-list-avatar {
+        box-shadow: 0 0 0 1px var(--color-border);
+        flex-shrink: 0;
+      }
+      .dm-list-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .dm-list-name {
+        font-family: var(--font-display);
+        font-size: var(--text-base);
+        font-weight: var(--weight-medium);
+        color: var(--color-text);
+      }
+      .dm-list-preview {
+        font-size: var(--text-sm);
+        color: var(--color-text-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 2px;
+      }
+      /* Thread */
+      .dm-thread {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      .dm-thread-header {
+        padding: var(--space-3) var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        background: var(--color-surface);
+      }
+      .dm-back-btn {
+        background: none;
+        border: none;
+        color: var(--color-text-muted);
+        font-size: var(--text-lg);
+        cursor: pointer;
+        padding: var(--space-1) var(--space-2);
+        transition: color var(--transition-fast);
+      }
+      .dm-back-btn:hover {
+        color: var(--color-gold);
+      }
+      .dm-thread-avatar {
+        width: 30px;
+        height: 30px;
+        box-shadow: 0 0 0 1px var(--color-border-gold);
+      }
+      .dm-thread-name {
+        font-family: var(--font-display);
+        font-style: italic;
+        font-size: var(--text-lg);
+        color: var(--color-text);
+      }
+      .dm-thread-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--space-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+      }
+      .dm-message-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        animation: fadeIn 0.25s ease;
+      }
+      .dm-message-mine {
+        align-items: flex-end;
+      }
+      .dm-bubble {
+        display: inline-block;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface-2);
+        border: 1px solid var(--color-border);
+        color: var(--color-text);
+        max-width: 78%;
+        font-size: var(--text-sm);
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .dm-message-mine .dm-bubble {
+        background: rgba(201,168,76,0.06);
+        border-color: var(--color-border-gold);
+        color: var(--color-text);
+      }
+      .dm-input-bar {
+        padding: var(--space-3) var(--space-4);
+        border-top: 1px solid var(--color-border);
+        display: flex;
+        gap: var(--space-2);
+        align-items: center;
+        background: var(--color-surface);
+      }
+      .dm-input {
+        flex: 1;
+      }
+      .dm-send-btn {
+        width: 38px;
+        height: 38px;
+        flex-shrink: 0;
+        border-radius: var(--radius-full);
+        background: var(--color-gold-glow);
+        border: 1px solid var(--color-border-gold);
+        color: var(--color-gold);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all var(--transition-base);
+      }
+      .dm-send-btn svg {
+        width: 16px;
+        height: 16px;
+      }
+      .dm-send-btn:hover {
+        background: var(--color-gold);
+        color: #0A0A0A;
+      }
+      .dm-send-btn:active {
+        transform: scale(0.92);
+      }
+    `;
+    document.head.appendChild(style);
   },
 };
 window.DmPage = DmPage;
