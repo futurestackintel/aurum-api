@@ -57,50 +57,58 @@
       padding: 0 var(--space-4);
     }
 
-    .app-bar-logo {
-      font-family: var(--font-display);
-      font-size: var(--text-2xl);
-      font-weight: var(--weight-light);
-      letter-spacing: 0.15em;
-      color: var(--color-gold);
+    .app-bar-mark {
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      transition: transform var(--transition-base), filter var(--transition-base);
     }
-
+    .app-bar-mark:hover {
+      transform: scale(1.08);
+      filter: drop-shadow(0 0 6px rgba(201,168,76,0.4));
+    }
     .app-bar-right {
       display: flex;
       align-items: center;
       gap: var(--space-3);
     }
-
-    /* Score + wallet cluster */
-    .app-bar-metrics {
+    /* Combined wallet + score capsule */
+    .app-bar-stats-capsule {
       display: flex;
       align-items: center;
-      gap: var(--space-4);
+      gap: var(--space-3);
+      padding: 5px var(--space-3);
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      transition: border-color var(--transition-base), box-shadow var(--transition-base);
     }
-
-    .app-bar-metric {
+    .app-bar-stats-capsule:hover {
+      border-color: var(--color-border-gold);
+      box-shadow: 0 0 10px rgba(201,168,76,0.12);
+    }
+    .app-bar-stat {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
+      line-height: 1;
     }
-
-    .app-bar-metric-value {
+    .app-bar-stat-value {
       font-family: var(--font-mono);
       font-size: var(--text-sm);
       color: var(--color-gold);
       line-height: 1;
     }
-
-    .app-bar-metric-label {
-      font-size: 9px;
+    .app-bar-stat-label {
+      font-size: 8px;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--color-text-muted);
+      margin-top: 2px;
     }
-
-    .app-bar-divider {
+    .app-bar-stat-divider {
       width: 1px;
-      height: 24px;
+      height: 20px;
       background: var(--color-border);
     }
 
@@ -537,19 +545,26 @@
 
     <!-- App Bar -->
     <div class="app-bar">
-      <span class="app-bar-logo">AURUM</span>
+      <img class="app-bar-mark" src="favicon-32x32.png" alt="AURUM" onclick="App.navigate('ledger')" />
       <div class="app-bar-right">
-        <div class="app-bar-metrics">
-          <!-- Wallet balance -->
-          <div class="app-bar-metric" id="appbar-wallet-wrap" style="display:none;cursor:pointer;"
-            title="Wallet" onclick="App.openWalletModal()">
-            <span class="app-bar-metric-value" id="user-wallet">₳0.00</span>
-            <span class="app-bar-metric-label">Balance</span>
+
+        <div class="app-bar-stats-capsule" id="appbar-wallet-wrap" style="display:none;cursor:pointer;"
+          title="Wallet" onclick="App.openWalletModal()">
+          <div class="app-bar-stat">
+            <span class="app-bar-stat-value" id="user-wallet">₳0.00</span>
+            <span class="app-bar-stat-label">Balance</span>
           </div>
-          <div class="app-bar-divider" id="appbar-divider" style="display:none;"></div>
+          <div class="app-bar-stat-divider" id="appbar-divider"></div>
+          <div class="app-bar-stat">
+            <span class="app-bar-stat-value" id="user-score">—</span>
+            <span class="app-bar-stat-label">Score</span>
+          </div>
+        </div>
+
         <button class="notif-bell-btn" id="search-icon-btn" aria-label="Search" onclick="App.navigate('search')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
+
         <div class="notif-bell-wrap">
           <button class="notif-bell-btn" id="notif-bell-btn" aria-label="Notifications">
             <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
@@ -565,28 +580,26 @@
             </div>
           </div>
         </div>
-          <!-- Admin icon — hidden by default, shown only if
-               /api/admin/check succeeds for this user -->
-          <button class="admin-icon-btn" id="admin-icon-btn"
-            style="display:none;" title="Admin Review Queue"
-            onclick="AdminPage.open()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="1.8">
-              <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/>
-            </svg>
-          </button>
-          <!-- Aurum Score -->
-          <!-- Aurum Score -->
-          <div class="app-bar-metric">
-            <span class="app-bar-metric-value" id="user-score">—</span>
-            <span class="app-bar-metric-label">Aurum Score</span>
-          </div>
-        </div>
+
+        <button class="notif-bell-btn" id="elite-icon-btn" aria-label="Elite Rooms" title="Elite Rooms" onclick="App.navigate('elite')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 8l4 3 6-7 6 7 4-3-2 11H4L2 8z"/></svg>
+        </button>
+
+        <!-- Admin icon — hidden by default, shown only if
+             /api/admin/check succeeds for this user -->
+        <button class="admin-icon-btn" id="admin-icon-btn"
+          style="display:none;" title="Admin Review Queue"
+          onclick="AdminPage.open()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.8">
+            <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/>
+          </svg>
+        </button>
+
         <div class="avatar avatar-sm avatar-gold" id="user-avatar"
           style="cursor:pointer;" onclick="App.navigate('profile')">—</div>
       </div>
     </div>
-
     <!-- Page Content -->
     <div class="page-content">
       <div class="page-view active" id="view-ledger"></div>
