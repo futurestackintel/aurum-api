@@ -8,6 +8,7 @@ window.LeaderboardPage = {
   initialized:  false,
   currentBoard: 'earners',
   cachedBoards: {},
+  previousRanks: {},
 
   init(containerId) {
     this.container = document.getElementById(containerId);
@@ -131,6 +132,19 @@ window.LeaderboardPage = {
       const entries = data.entries || data[type] || [];
 
       if (entries.length) {
+        const prevRanks = this.previousRanks[type] || {};
+        entries.forEach((entry, i) => {
+          if (!entry.username) return;
+          const key = entry.username.toLowerCase();
+          const prevRank = prevRanks[key];
+          entry.rankDelta = prevRank ? (prevRank - (i + 1)) : 0;
+        });
+        const newRanks = {};
+        entries.forEach((entry, i) => {
+          if (entry.username) newRanks[entry.username.toLowerCase()] = i + 1;
+        });
+        this.previousRanks[type] = newRanks;
+
         this.cachedBoards[type] = entries;
         this.renderBoard(entries, type);
         this.updateUserRank(entries, type);
@@ -217,7 +231,14 @@ window.LeaderboardPage = {
           ${isMe   ? 'lb-full-item-me'  : ''}"
           style="animation-delay:${index * 50}ms;">
 
-          <div class="lb-full-rank">${rankDisplay}</div>
+          <div class="lb-full-rank">
+            ${rankDisplay}
+            ${entry.rankDelta > 0
+              ? `<span class="rank-move rank-move-up">▲${entry.rankDelta}</span>`
+              : entry.rankDelta < 0
+                ? `<span class="rank-move rank-move-down">▼${Math.abs(entry.rankDelta)}</span>`
+                : ''}
+          </div>
 
           <div class="avatar avatar-sm ${isTop3 || isMe ? 'avatar-gold' : ''}">
             ${isStealth ? displayInitial : AURUM.avatarInnerHTML(entry.avatar_url, displayInitial)}
@@ -453,7 +474,20 @@ window.LeaderboardPage = {
         text-align: center;
         font-size: var(--text-lg);
         flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
       }
+
+      .rank-move {
+        font-size: 9px;
+        font-weight: var(--weight-semi);
+        letter-spacing: 0.02em;
+      }
+
+      .rank-move-up   { color: var(--color-success); }
+      .rank-move-down { color: var(--color-danger); }
 
       .lb-full-info {
         flex: 1;
