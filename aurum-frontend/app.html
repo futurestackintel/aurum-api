@@ -828,8 +828,11 @@
           }
         };
         tryLoad();
-        /* 3s timeout — don't block forever */
-        setTimeout(resolve, 3000);
+        /* Generous timeout â€” the boot screen covers this wait,
+           so it's better to give Clerk time on a slow connection
+           than to falsely show the login screen to an already
+           logged-in user. */
+        setTimeout(resolve, 9000);
       });
     },
 
