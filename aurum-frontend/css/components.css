@@ -327,7 +327,8 @@
   left: 0;
   right: 0;
   z-index: var(--z-sticky);
-  height: var(--bottom-nav-h);
+  min-height: var(--bottom-nav-h);
+  height: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
   background: rgba(17,17,17,0.96);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -336,10 +337,10 @@
   align-items: center;
   justify-content: space-around;
   padding: 0 var(--space-2);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   max-width: var(--max-width);
   margin: 0 auto;
 }
-
 .nav-item {
   display: flex;
   flex-direction: column;
