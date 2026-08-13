@@ -1236,22 +1236,31 @@ window.ArenaPage = {
           <p style="font-size:var(--text-sm);color:var(--color-text-muted);
             line-height:1.6;margin-bottom:var(--space-3);">${this.escapeHTML(crew.description)}</p>
         ` : ''}
-        <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);flex-wrap:wrap;align-items:center;">
-          <span class="badge badge-muted" style="font-size:9px;">${crew.member_count || 0} members</span>
-          <span class="badge badge-muted" style="font-size:9px;">${crew.is_locked ? 'Locked' : 'Open'}</span>
-          ${crew.is_frozen ? `<span class="badge badge-muted" style="font-size:9px;color:var(--color-danger);">Frozen</span>` : ''}
+        <div class="crew-status-strip">
+          <span class="crew-status-pill">${crew.member_count || 0} Members</span>
+          <span class="crew-status-pill ${crew.is_locked ? 'crew-status-pill-locked' : 'crew-status-pill-open'}">
+            ${crew.is_locked ? '🔒 Locked' : '🔓 Open'}
+          </span>
+          ${crew.is_frozen ? `<span class="crew-status-pill crew-status-pill-frozen">⚠ Frozen</span>` : ''}
+        </div>
+
+        <div class="crew-action-row">
+          ${myMembership && !isCaptain ? `
+            <button class="btn btn-outline btn-sm" id="btn-detail-leave">Leave Crew</button>
+          ` : ''}
           ${isCaptain ? `
             <button class="btn btn-outline btn-sm" id="btn-detail-toggle-lock" data-locked="${crew.is_locked ? '1' : '0'}">
               ${crew.is_locked ? 'Unlock Crew' : 'Lock Crew'}
             </button>
-            <button class="btn btn-outline btn-sm" id="btn-detail-disband" style="color:var(--color-danger);border-color:var(--color-danger);">
-              Disband Crew
-            </button>
-          ` : ''}
-          ${myMembership && !isCaptain ? `
-            <button class="btn btn-outline btn-sm" id="btn-detail-leave">Leave Crew</button>
           ` : ''}
         </div>
+
+        ${isCaptain ? `
+          <div class="crew-danger-zone">
+            <p class="crew-danger-zone-label">Danger Zone</p>
+            <button class="btn btn-danger btn-sm btn-full" id="btn-detail-disband">Disband Crew</button>
+          </div>
+        ` : ''}
         <div style="margin-bottom:var(--space-3);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
             text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Crew Wallet</p>
@@ -1271,13 +1280,14 @@ window.ArenaPage = {
             text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Wallet Activity</p>
           <div id="crew-detail-transactions"><p style="font-size:var(--text-sm);color:var(--color-text-muted);">Loading...</p></div>
         </div>
-        <div style="margin-bottom:var(--space-3);">
-          <p style="font-size:var(--text-xs);color:var(--color-text-muted);
-            text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Rules</p>
-          ${crew.rules ? `<p style="font-size:var(--text-sm);line-height:1.6;">${this.escapeHTML(crew.rules)}</p>` : `<p style="font-size:var(--text-sm);color:var(--color-text-muted);">No rules set.</p>`}
-          ${isCaptain ? `<button class="btn btn-outline btn-sm" id="btn-detail-edit-rules" style="margin-top:var(--space-1);">Edit Rules</button>` : ''}
+        <div class="crew-rules-block">
+          <div class="crew-rules-header">
+            <p class="crew-rules-label">✦ Crew Codex</p>
+            ${isCaptain ? `<button class="btn btn-ghost btn-sm" id="btn-detail-edit-rules">Edit</button>` : ''}
+          </div>
+          ${crew.rules ? `<p class="crew-rules-text">${this.escapeHTML(crew.rules)}</p>` : `<p class="crew-rules-empty">No rules set yet.</p>`}
           <div id="crew-detail-rules-form" style="display:none;margin-top:var(--space-2);">
-            <textarea class="input" id="rules-textarea" maxlength="2000" rows="4" style="width:100%;margin-bottom:var(--space-1);" placeholder="Crew rules (2000 char max)">${crew.rules ? this.escapeHTML(crew.rules) : ''}</textarea>
+            <textarea class="input" id="rules-textarea" maxlength="2000" rows="4" style="width:100%;margin-bottom:var(--space-2);" placeholder="Crew rules (2000 char max)">${crew.rules ? this.escapeHTML(crew.rules) : ''}</textarea>
             <div style="display:flex;gap:var(--space-2);">
               <button class="btn btn-primary btn-sm" id="btn-save-rules">Save</button>
               <button class="btn btn-ghost btn-sm" id="btn-cancel-rules">Cancel</button>
