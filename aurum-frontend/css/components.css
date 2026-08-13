@@ -346,30 +346,47 @@
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-4);
   color: var(--color-text-muted);
   font-size: var(--text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  transition: color var(--transition-base);
+  transition: color var(--transition-base), transform var(--transition-fast);
   cursor: pointer;
   border-radius: var(--radius-md);
+  position: relative;
 }
-
 .nav-item svg {
   width: 20px;
   height: 20px;
   stroke: currentColor;
   fill: none;
   stroke-width: 1.5;
+  transition: filter var(--transition-base);
 }
-
 .nav-item.active {
   color: var(--color-gold);
 }
-
+.nav-item.active svg {
+  filter: drop-shadow(0 0 5px rgba(201,168,76,0.5));
+}
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 2px;
+  background: var(--color-gold);
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 6px rgba(201,168,76,0.6);
+}
 .nav-item:hover {
   color: var(--color-text);
+}
+.nav-item:active {
+  transform: scale(0.92);
 }
 
 /* --- TOAST NOTIFICATION --- */
