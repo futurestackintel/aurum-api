@@ -172,7 +172,7 @@ input:focus, textarea:focus, select:focus {
 /* --- Page wrapper --- */
 .page {
   min-height: 100vh;
-  padding-bottom: var(--bottom-nav-h);
+  padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
 }
 
 /* --- Gold shimmer animation --- */
