@@ -956,7 +956,9 @@
       if (viewEl) viewEl.classList.add('active');
       if (navEl)  navEl.classList.add('active');
       this.currentView = view;
+      AURUM.Loader.show();
       this.loadView(view);
+      AURUM.Loader.hide();
     },
 
     loadView(view) {
