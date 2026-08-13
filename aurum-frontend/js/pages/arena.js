@@ -1687,6 +1687,8 @@ window.ArenaPage = {
         </div>
       </div>
     `;
+  },
+
   reactionBarHTML(messageId, reactions) {
     const emojiList = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
     const pills = Object.entries(reactions).map(([emoji, data]) => `
