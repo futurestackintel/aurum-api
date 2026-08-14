@@ -341,8 +341,8 @@ const CrewAPI = {
     return apiRequest('GET', path);
   },
 
-  sendMessage: (id, content) =>
-    apiRequest('POST', `/api/crews/${id}/messages`, { content }),
+  sendMessage: (id, content, replyToMessageId) =>
+    apiRequest('POST', `/api/crews/${id}/messages`, { content, reply_to_message_id: replyToMessageId || undefined }),
 
   deleteMessage: (messageId) =>
     apiRequest('DELETE', `/api/crew-messages/${messageId}`),
@@ -388,8 +388,8 @@ const DmAPI = {
     if (before) path += `&before=${encodeURIComponent(before)}`;
     return apiRequest('GET', path);
   },
-  sendMessage: (channelId, content) =>
-    apiRequest('POST', `/api/dm/channels/${channelId}/messages`, { content }),
+  sendMessage: (channelId, content, replyToMessageId) =>
+    apiRequest('POST', `/api/dm/channels/${channelId}/messages`, { content, reply_to_message_id: replyToMessageId || undefined }),
   reactToMessage: (messageId, emoji) =>
     apiRequest('POST', `/api/dm-messages/${messageId}/reactions`, { emoji }),
   removeReaction: (messageId) =>
