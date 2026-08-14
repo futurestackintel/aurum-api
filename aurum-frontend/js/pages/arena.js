@@ -2314,6 +2314,82 @@ window.ArenaPage = {
         line-height: 1.5;
         word-break: break-word;
       }
+
+      .chat-message {
+        transition: transform 0.15s ease;
+        position: relative;
+        touch-action: pan-y;
+      }
+      .chat-message.swipe-armed::after {
+        content: '↩';
+        position: absolute;
+        left: -26px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--color-gold);
+        font-size: 16px;
+      }
+      .reply-quote {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 4px 8px;
+        margin-bottom: 4px;
+        border-left: 2px solid var(--color-gold-dim);
+        background: rgba(201,168,76,0.06);
+        border-radius: 4px;
+      }
+      .reply-quote-sender {
+        font-size: 10px;
+        color: var(--color-gold);
+        font-weight: var(--weight-medium);
+      }
+      .reply-quote-text {
+        font-size: 11px;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 220px;
+      }
+      .reply-preview-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        background: var(--color-surface-2);
+        border-left: 2px solid var(--color-gold);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-2);
+      }
+      .reply-preview-content {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+      }
+      .reply-preview-label {
+        font-size: 10px;
+        color: var(--color-gold);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .reply-preview-text {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .reply-preview-cancel {
+        background: none;
+        border: none;
+        color: var(--color-text-muted);
+        font-size: 18px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
     `;
     document.head.appendChild(style);
   },
