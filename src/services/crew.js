@@ -716,17 +716,22 @@ export async function deleteCrewMessage(messageId, userId, db) {
 export async function getCrewMessages(crewId, limit, before, db) {
   const params = [crewId];
   let query = `
-    SELECT id, sender_id, content, created_at, deleted_at
-    FROM crew_messages
-    WHERE crew_id = ?
+    SELECT
+      m.id, m.sender_id, m.content, m.created_at, m.deleted_at, m.reply_to_message_id,
+      r.content AS reply_content, r.deleted_at AS reply_deleted_at,
+      ru.username AS reply_sender_username
+    FROM crew_messages m
+    LEFT JOIN crew_messages r ON r.id = m.reply_to_message_id
+    LEFT JOIN users ru ON ru.id = r.sender_id
+    WHERE m.crew_id = ?
   `;
 
   if (before) {
-    query += ` AND created_at < ?`;
+    query += ` AND m.created_at < ?`;
     params.push(before);
   }
 
-  query += ` ORDER BY created_at DESC LIMIT ?`;
+  query += ` ORDER BY m.created_at DESC LIMIT ?`;
   params.push(limit || 50);
 
   const { results } = await db.prepare(query).bind(...params).all();
@@ -737,6 +742,12 @@ export async function getCrewMessages(crewId, limit, before, db) {
     content: m.deleted_at ? null : m.content,
     deleted: !!m.deleted_at,
     created_at: m.created_at,
+    reply_to: m.reply_to_message_id ? {
+      id: m.reply_to_message_id,
+      sender_username: m.reply_sender_username,
+      content: m.reply_deleted_at ? null : (m.reply_content || '').slice(0, 80),
+      deleted: !!m.reply_deleted_at,
+    } : null,
   }));
 }
 
