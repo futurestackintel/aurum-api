@@ -500,10 +500,20 @@ export async function handleCrewRoutes(path, method, request, env) {
           reason: muteStatus.reason,
         }, 403);
       }
+      let replyToMessageId = null;
+      if (body.reply_to_message_id) {
+        const repliedMsg = await db
+          .prepare(`SELECT id FROM crew_messages WHERE id = ? AND crew_id = ? AND deleted_at IS NULL`)
+          .bind(body.reply_to_message_id, messageMatch[1])
+          .first();
+        if (!repliedMsg) return jsonResponse({ error: 'The message you are replying to was not found' }, 400);
+        replyToMessageId = repliedMsg.id;
+      }
+
       const messageId = crypto.randomUUID();
       await db
-        .prepare(`INSERT INTO crew_messages (id, crew_id, sender_id, content) VALUES (?, ?, ?, ?)`)
-        .bind(messageId, messageMatch[1], userId, body.content)
+        .prepare(`INSERT INTO crew_messages (id, crew_id, sender_id, content, reply_to_message_id) VALUES (?, ?, ?, ?, ?)`)
+        .bind(messageId, messageMatch[1], userId, body.content, replyToMessageId)
         .run();
 
       // Parse @mentions and insert one row per mentioned user
@@ -546,11 +556,12 @@ export async function handleCrewRoutes(path, method, request, env) {
           crewId: messageMatch[1],
           senderId: userId,
           content: body.content,
+          replyToMessageId,
           createdAt: new Date().toISOString(),
         }),
       });
 
-      return jsonResponse({ id: messageId, success: true }, 200);
+      return jsonResponse({ id: messageId, success: true, reply_to_message_id: replyToMessageId }, 200);
     } catch (err) {
       console.error('Send crew message error:', err);
       return jsonResponse({ error: 'Unable to send message. Please try again.' }, 500);
