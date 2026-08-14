@@ -98,7 +98,7 @@ export async function handleDmRoutes(path, method, request, env) {
       const body = await request.json();
       const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
       if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
-      const result = await sendDmMessage(messageMatch[1], userRow.id, body.content, db);
+      const result = await sendDmMessage(messageMatch[1], userRow.id, body.content, db, body.reply_to_message_id || null);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       const doId = env.DM_ROOM.idFromName(messageMatch[1]);
       const doStub = env.DM_ROOM.get(doId);
@@ -109,10 +109,11 @@ export async function handleDmRoutes(path, method, request, env) {
           channelId: messageMatch[1],
           senderId: userRow.id,
           content: body.content,
+          replyToMessageId: result.reply_to_message_id,
           createdAt: new Date().toISOString(),
         }),
       });
-      return jsonResponse({ id: result.message_id, success: true }, 200);
+      return jsonResponse({ id: result.message_id, success: true, reply_to_message_id: result.reply_to_message_id }, 200);
     } catch (err) {
       console.error('Send DM error:', err);
       return jsonResponse({ error: 'Unable to send message. Please try again.' }, 500);
