@@ -243,6 +243,21 @@
     }
 
     /* =====================================================
+       APP LINKS — use replace() instead of a normal navigation
+       so the landing page doesn't stay in browser history.
+       FIX: without this, pressing Back after signing in returns
+       users to the landing page instead of keeping them in the
+       app (the landing page was still sitting right behind
+       app.html in the history stack).
+    ===================================================== */
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[href^="app.html"]');
+      if (!link) return;
+      e.preventDefault();
+      window.location.replace(link.getAttribute('href'));
+    });
+
+    /* =====================================================
        LEADERBOARD
        Uses real /leaderboard/public data.
        Board type tabs filter from the same API response.
