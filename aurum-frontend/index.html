@@ -33,8 +33,98 @@
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/components.css" />
   <link rel="stylesheet" href="css/landing.css" />
+
+  <style>
+    .pwa-install-banner {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+      background: var(--color-surface);
+      border-top: 1px solid var(--color-border-gold);
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.4);
+      animation: pwaSlideUp 0.35s ease;
+    }
+    @keyframes pwaSlideUp {
+      from { transform: translateY(100%); }
+      to   { transform: translateY(0); }
+    }
+    .pwa-install-banner-content {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      min-width: 0;
+    }
+    .pwa-install-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      flex-shrink: 0;
+      box-shadow: 0 0 0 1px var(--color-border-gold);
+    }
+    .pwa-install-text { min-width: 0; }
+    .pwa-install-title {
+      font-size: var(--text-sm);
+      font-weight: 600;
+      color: var(--color-text);
+    }
+    .pwa-install-sub {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pwa-install-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+    .pwa-install-close {
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0 var(--space-1);
+      line-height: 1;
+    }
+    @media (min-width: 640px) {
+      .pwa-install-banner {
+        left: auto;
+        right: var(--space-4);
+        bottom: var(--space-4);
+        max-width: 360px;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border-gold);
+      }
+    }
+  </style>
 </head>
 <body>
+
+  <!-- ===== PWA INSTALL BANNER ===== -->
+  <div id="pwa-install-banner" class="pwa-install-banner" style="display:none;">
+    <div class="pwa-install-banner-content">
+      <img src="favicon-32x32.png" alt="AURUM" class="pwa-install-icon" />
+      <div class="pwa-install-text">
+        <p class="pwa-install-title">Install AURUM</p>
+        <p class="pwa-install-sub" id="pwa-install-sub">Add to your home screen for the full experience.</p>
+      </div>
+    </div>
+    <div class="pwa-install-actions">
+      <button class="btn btn-primary btn-sm" id="pwa-install-btn">Install</button>
+      <button class="pwa-install-close" id="pwa-install-close" aria-label="Dismiss">&times;</button>
+    </div>
+  </div>
 
   <!-- ===== FOUNDING MEMBER BANNER ===== -->
   <div id="founding-banner" style="display:none;
@@ -256,6 +346,72 @@
       e.preventDefault();
       window.location.replace(link.getAttribute('href'));
     });
+
+    /* =====================================================
+       PWA INSTALL PROMPT
+       Chrome/Android/Edge fire beforeinstallprompt — captured
+       and shown via a custom banner instead of the browser's
+       own unreliable mini-infobar. iOS Safari never fires that
+       event at all, so iOS gets manual "Add to Home Screen"
+       instructions instead. Dismissal is remembered only for
+       the browser session (sessionStorage), so every genuinely
+       new visit sees it again.
+    ===================================================== */
+    let deferredInstallPrompt = null;
+
+    function isStandalone() {
+      return window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+    }
+    function isIOS() {
+      return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+    }
+
+    function showInstallBanner(mode) {
+      if (isStandalone()) return;
+      if (sessionStorage.getItem('pwa-install-dismissed')) return;
+      const banner = document.getElementById('pwa-install-banner');
+      const sub    = document.getElementById('pwa-install-sub');
+      const btn    = document.getElementById('pwa-install-btn');
+      if (!banner) return;
+      if (mode === 'ios') {
+        sub.textContent = 'Tap the Share icon, then "Add to Home Screen".';
+        btn.style.display = 'none';
+      } else {
+        sub.textContent = 'Add to your home screen for the full experience.';
+        btn.style.display = '';
+      }
+      banner.style.display = 'flex';
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      showInstallBanner('android');
+    });
+
+    document.getElementById('pwa-install-btn')?.addEventListener('click', async () => {
+      const banner = document.getElementById('pwa-install-banner');
+      if (!deferredInstallPrompt) { banner.style.display = 'none'; return; }
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      banner.style.display = 'none';
+    });
+
+    document.getElementById('pwa-install-close')?.addEventListener('click', () => {
+      document.getElementById('pwa-install-banner').style.display = 'none';
+      sessionStorage.setItem('pwa-install-dismissed', '1');
+    });
+
+    window.addEventListener('appinstalled', () => {
+      const banner = document.getElementById('pwa-install-banner');
+      if (banner) banner.style.display = 'none';
+    });
+
+    if (isIOS() && !isStandalone()) {
+      setTimeout(() => showInstallBanner('ios'), 1500);
+    }
 
     /* =====================================================
        LEADERBOARD
