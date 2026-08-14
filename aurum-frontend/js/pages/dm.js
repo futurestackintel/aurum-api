@@ -68,6 +68,7 @@ const DmPage = {
         <div id="dm-thread-messages" class="dm-thread-messages">
           <p class="dm-loading-text">Loading messages...</p>
         </div>
+        <div id="dm-reply-bar-container"></div>
         <div class="dm-input-bar">
           <input class="input dm-input" id="dm-message-input" placeholder="Send a message..." />
           <button class="dm-send-btn" id="dm-send-btn" aria-label="Send">
@@ -83,6 +84,7 @@ const DmPage = {
     await this.loadMessages();
     this.connectSocket(channelId);
     this.wireReactionHandlers();
+    this.wireSwipeToReply();
   },
   wireReactionHandlers() {
     const list = document.getElementById('dm-thread-messages');
@@ -113,6 +115,67 @@ const DmPage = {
       }
     });
   },
+	wireSwipeToReply() {
+    const list = document.getElementById('dm-thread-messages');
+    if (!list || list.dataset.swipeWired) return;
+    list.dataset.swipeWired = '1';
+    let swipe = null;
+    list.addEventListener('touchstart', (e) => {
+      const bubble = e.target.closest('.dm-message-wrap');
+      if (!bubble) return;
+      swipe = { bubble, startX: e.touches[0].clientX };
+    }, { passive: true });
+    list.addEventListener('touchmove', (e) => {
+      if (!swipe) return;
+      const dx = e.touches[0].clientX - swipe.startX;
+      const clamped = Math.max(0, Math.min(dx, 70));
+      swipe.currentX = clamped;
+      swipe.bubble.style.transform = `translateX(${clamped}px)`;
+      swipe.bubble.classList.toggle('swipe-armed', clamped > 45);
+    }, { passive: true });
+    const endSwipe = () => {
+      if (!swipe) return;
+      swipe.bubble.style.transform = '';
+      swipe.bubble.classList.remove('swipe-armed');
+      if (swipe.currentX > 45) {
+        this.startReply(swipe.bubble.dataset.messageId);
+      }
+      swipe = null;
+    };
+    list.addEventListener('touchend', endSwipe);
+    list.addEventListener('touchcancel', endSwipe);
+  },
+
+  startReply(messageId) {
+    const bubble = document.querySelector(`#dm-thread-messages [data-message-id="${messageId}"]`);
+    if (!bubble) return;
+    const text = bubble.querySelector('.dm-bubble')?.textContent || '';
+    const isMine = bubble.classList.contains('dm-message-mine');
+    const sender = isMine ? 'yourself' : this.activeUsername;
+    this.replyingToMessage = { id: messageId, sender, text: text.slice(0, 80) };
+    this.renderReplyBar();
+  },
+
+  renderReplyBar() {
+    const container = document.getElementById('dm-reply-bar-container');
+    if (!container) return;
+    if (!this.replyingToMessage) { container.innerHTML = ''; return; }
+    const r = this.replyingToMessage;
+    container.innerHTML = `
+      <div class="reply-preview-bar">
+        <div class="reply-preview-content">
+          <span class="reply-preview-label">Replying to ${this.escapeHTML(r.sender)}</span>
+          <span class="reply-preview-text">${this.escapeHTML(r.text)}</span>
+        </div>
+        <button class="reply-preview-cancel" id="btn-cancel-dm-reply">&times;</button>
+      </div>
+    `;
+    document.getElementById('btn-cancel-dm-reply')?.addEventListener('click', () => {
+      this.replyingToMessage = null;
+      this.renderReplyBar();
+    });
+  },
+
   openEmojiPicker(anchorEl, messageId, surface) {
     document.querySelectorAll('.reaction-picker-popup').forEach(p => p.remove());
     const emojiList = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
@@ -192,10 +255,25 @@ const DmPage = {
     const isMine = msg.senderId === me?.id;
     const wasEmpty = list.querySelector('p') && !list.querySelector('div');
     if (wasEmpty) list.innerHTML = '';
+    let replyQuoteHTML = '';
+    if (msg.replyToMessageId) {
+      const originalBubble = list.querySelector(`[data-message-id="${msg.replyToMessageId}"]`);
+      if (originalBubble) {
+        const originalIsMine = originalBubble.classList.contains('dm-message-mine');
+        const originalSender = originalIsMine ? 'You' : this.activeUsername;
+        const originalText = originalBubble.querySelector('.dm-bubble')?.textContent || '';
+        replyQuoteHTML = `
+          <div class="reply-quote">
+            <span class="reply-quote-sender">${this.escapeHTML(originalSender)}</span>
+            <span class="reply-quote-text">${this.escapeHTML(originalText)}</span>
+          </div>`;
+      }
+    }
     const bubble = document.createElement('div');
     bubble.className = `dm-message-wrap${isMine ? ' dm-message-mine' : ''}`;
     bubble.dataset.messageId = msg.id;
     bubble.innerHTML = `
+      ${replyQuoteHTML}
       <p class="dm-bubble">${this.escapeHTML(msg.content)}</p>
       ${this.reactionBarHTML(msg.id, {})}`;
     list.appendChild(bubble);
@@ -234,6 +312,11 @@ const DmPage = {
       }
       list.innerHTML = messages.slice().reverse().map(m => `
         <div class="dm-message-wrap${m.sender_id === me?.id ? ' dm-message-mine' : ''}" data-message-id="${m.id}">
+          ${m.reply_to ? `
+            <div class="reply-quote">
+              <span class="reply-quote-sender">${this.escapeHTML(m.reply_to.sender_username || 'Someone')}</span>
+              <span class="reply-quote-text">${m.reply_to.deleted ? 'Message removed' : this.escapeHTML(m.reply_to.content)}</span>
+            </div>` : ''}
           <p class="dm-bubble">${m.deleted ? '<em>message deleted</em>' : this.escapeHTML(m.content)}</p>
           ${this.reactionBarHTML(m.id, (this.dmMessageReactions[m.id] || {}))}
         </div>
@@ -248,9 +331,12 @@ const DmPage = {
     const input = document.getElementById('dm-message-input');
     const content = input.value.trim();
     if (!content) return;
+    const replyToId = this.replyingToMessage?.id || null;
     input.value = '';
+    this.replyingToMessage = null;
+    this.renderReplyBar();
     try {
-      await AURUM.DmAPI.sendMessage(this.activeChannelId, content);
+      await AURUM.DmAPI.sendMessage(this.activeChannelId, content, replyToId);
     } catch (err) {
       AURUM.showToast(err.message || 'Could not send message.', 'error');
     }
@@ -426,6 +512,82 @@ const DmPage = {
       }
       .dm-send-btn:active {
         transform: scale(0.92);
+      }
+
+      .dm-message-wrap {
+        transition: transform 0.15s ease;
+        touch-action: pan-y;
+      }
+      .dm-message-wrap.swipe-armed::after {
+        content: '↩';
+        position: absolute;
+        left: -22px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--color-gold);
+        font-size: 14px;
+      }
+      .reply-quote {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 4px 8px;
+        margin-bottom: 4px;
+        border-left: 2px solid var(--color-border-gold);
+        background: var(--color-surface-2);
+        border-radius: 4px;
+        opacity: 0.85;
+      }
+      .reply-quote-sender {
+        font-size: 10px;
+        color: var(--color-text-muted);
+        font-weight: var(--weight-medium);
+      }
+      .reply-quote-text {
+        font-size: 11px;
+        color: var(--color-text-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 220px;
+      }
+      .reply-preview-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        margin: 0 var(--space-4);
+        background: var(--color-surface-2);
+        border-left: 2px solid var(--color-border-gold);
+        border-radius: var(--radius-md);
+      }
+      .reply-preview-content {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+      }
+      .reply-preview-label {
+        font-size: 10px;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .reply-preview-text {
+        font-size: var(--text-sm);
+        color: var(--color-text-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .reply-preview-cancel {
+        background: none;
+        border: none;
+        color: var(--color-text-muted);
+        font-size: 18px;
+        cursor: pointer;
+        flex-shrink: 0;
       }
     `;
     document.head.appendChild(style);
