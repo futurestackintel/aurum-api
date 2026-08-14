@@ -730,13 +730,13 @@ window.LedgerPage = {
     }[stakeStatus] || 'var(--color-text-muted)';
 
     const stakeStatusLabel = {
-      locked:         'Locked — Pending Review',
+      locked:         'Staked — Live',
       returned:       'Verified',
       appeal_pending: 'Disputed — Appeal Open',
       slashed:        'Removed — Fake Claim',
     }[stakeStatus] || stakeStatus;
 
-    const tipsEnabled = stakeStatus === 'returned';
+    const tipsEnabled = stakeStatus !== 'slashed';
 
     const cheers       = post.cheers || 0;
     const commentCount = post.comment_count ?? post.comments ?? 0;
@@ -804,7 +804,7 @@ window.LedgerPage = {
           <button class="btn-tip post-action-btn" data-post-id="${post.id}"
             data-receiver-id="${post.user_id || ''}"
             ${tipsEnabled ? '' : 'disabled'}
-            title="${tipsEnabled ? 'Send a tip' : 'Tips unlock once this win is verified'}">
+            title="${tipsEnabled ? 'Send a tip' : 'This post was ruled fake — tipping disabled'}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
