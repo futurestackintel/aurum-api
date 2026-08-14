@@ -378,6 +378,15 @@ window.LedgerPage = {
       });
     });
 
+    /* ---- Flag / report post ---- */
+    document.querySelectorAll('.btn-flag-post').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        this.openFlagReasonPicker(btn, btn.dataset.postId);
+      });
+    });
+	  
     /* ---- Comment icon — opens full-screen detail view ---- */
     document.querySelectorAll('.btn-comment-toggle').forEach(btn => {
       if (btn.dataset.bound) return;
@@ -651,6 +660,54 @@ window.LedgerPage = {
     });
   },
 
+  openFlagReasonPicker(anchorEl, postId) {
+    document.querySelectorAll('.flag-reason-popup').forEach(p => p.remove());
+    const reasons = [
+      { value: 'fake_claim',  label: 'Fake claim' },
+      { value: 'no_evidence', label: 'No evidence' },
+      { value: 'misleading',  label: 'Misleading' },
+      { value: 'spam',        label: 'Spam' },
+    ];
+    const popup = document.createElement('div');
+    popup.className = 'flag-reason-popup';
+    popup.innerHTML = `
+      <p class="flag-reason-popup-title">Report this post</p>
+      ${reasons.map(r => `<button class="flag-reason-option" data-reason="${r.value}">${r.label}</button>`).join('')}
+    `;
+    document.body.appendChild(popup);
+    const rect = anchorEl.getBoundingClientRect();
+    popup.style.top  = `${window.scrollY + rect.bottom + 6}px`;
+    popup.style.left = `${Math.max(8, window.scrollX + rect.left - 100)}px`;
+
+    popup.querySelectorAll('.flag-reason-option').forEach(optBtn => {
+      optBtn.addEventListener('click', async () => {
+        popup.remove();
+        anchorEl.disabled = true;
+        try {
+          const result = await AURUM.LedgerAPI.flagPost(postId, optBtn.dataset.reason);
+          AURUM.showToast(
+            result.suspended
+              ? 'Post flagged. It has enough reports to enter moderation review.'
+              : 'Post flagged. Thanks for helping keep AURUM honest.',
+            'gold'
+          );
+        } catch (err) {
+          anchorEl.disabled = false;
+          AURUM.showToast(err.message || 'Could not flag this post.', 'error');
+        }
+      });
+    });
+
+    setTimeout(() => {
+      document.addEventListener('click', function closePopup(ev) {
+        if (!popup.contains(ev.target) && ev.target !== anchorEl) {
+          popup.remove();
+          document.removeEventListener('click', closePopup);
+        }
+      });
+    }, 0);
+  },
+
   escapeHTML(str) {
     const div = document.createElement('div');
     div.textContent = str || '';
@@ -779,6 +836,17 @@ window.LedgerPage = {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">
                 <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
+              </svg>
+            </button>
+          ` : ''}
+
+          ${window.App?.user?.id && post.user_id !== window.App.user.id ? `
+            <button class="btn-flag-post post-action-btn" data-post-id="${post.id}"
+              title="Report this post">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                <line x1="4" y1="22" x2="4" y2="15"/>
               </svg>
             </button>
           ` : ''}
@@ -1189,6 +1257,45 @@ window.LedgerPage = {
         font-size: 10px;
         color: var(--color-text-muted);
         font-family: var(--font-mono);
+      }
+
+      .btn-flag-post:hover { color: var(--color-danger); }
+      .btn-flag-post:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      .flag-reason-popup {
+        position: absolute;
+        z-index: 1000;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--space-2);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 160px;
+      }
+      .flag-reason-popup-title {
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-text-muted);
+        padding: var(--space-1) var(--space-2);
+      }
+      .flag-reason-option {
+        background: none;
+        border: none;
+        text-align: left;
+        color: var(--color-text);
+        font-size: var(--text-sm);
+        padding: var(--space-2);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background var(--transition-fast);
+      }
+      .flag-reason-option:hover {
+        background: var(--color-surface-2);
+        color: var(--color-danger);
       }
     `;
     document.head.appendChild(style);
