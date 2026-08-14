@@ -233,6 +233,7 @@ window.ArenaPage = {
           <div class="modal-handle"></div>
           <h3 class="modal-title" id="crew-chat-title">Crew Chat</h3>
           <div id="crew-chat-messages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2) 0;"></div>
+          <div id="crew-chat-reply-bar-container"></div>
           <div style="display:flex;gap:var(--space-2);padding-top:var(--space-3);">
             <input class="input" id="crew-chat-input" placeholder="Message your crew..." style="flex:1;" />
             <button class="btn btn-primary btn-sm" id="btn-send-crew-message">Send</button>
@@ -1554,6 +1555,7 @@ window.ArenaPage = {
 
     this.connectCrewChatSocket(crewId);
     this.wireCrewReactionHandlers();
+    this.wireCrewSwipeToReply();
   },
   wireCrewReactionHandlers() {
     const list = document.getElementById('crew-chat-messages');
@@ -1584,6 +1586,66 @@ window.ArenaPage = {
       }
     });
   },
+	wireCrewSwipeToReply() {
+    const list = document.getElementById('crew-chat-messages');
+    if (!list || list.dataset.swipeWired) return;
+    list.dataset.swipeWired = '1';
+    let swipe = null;
+    list.addEventListener('touchstart', (e) => {
+      const bubble = e.target.closest('.chat-message');
+      if (!bubble) return;
+      swipe = { bubble, startX: e.touches[0].clientX };
+    }, { passive: true });
+    list.addEventListener('touchmove', (e) => {
+      if (!swipe) return;
+      const dx = e.touches[0].clientX - swipe.startX;
+      const clamped = Math.max(0, Math.min(dx, 70));
+      swipe.currentX = clamped;
+      swipe.bubble.style.transform = `translateX(${clamped}px)`;
+      swipe.bubble.classList.toggle('swipe-armed', clamped > 45);
+    }, { passive: true });
+    const endSwipe = () => {
+      if (!swipe) return;
+      swipe.bubble.style.transform = '';
+      swipe.bubble.classList.remove('swipe-armed');
+      if (swipe.currentX > 45) {
+        this.startCrewReply(swipe.bubble.dataset.messageId);
+      }
+      swipe = null;
+    };
+    list.addEventListener('touchend', endSwipe);
+    list.addEventListener('touchcancel', endSwipe);
+  },
+
+  startCrewReply(messageId) {
+    const bubble = document.querySelector(`#crew-chat-messages [data-message-id="${messageId}"]`);
+    if (!bubble) return;
+    const sender = bubble.querySelector('.chat-message-sender')?.textContent || 'Someone';
+    const text = bubble.querySelector('.chat-message-text')?.textContent || '';
+    this.replyingToCrewMessage = { id: messageId, sender, text: text.slice(0, 80) };
+    this.renderCrewReplyBar();
+  },
+
+  renderCrewReplyBar() {
+    const container = document.getElementById('crew-chat-reply-bar-container');
+    if (!container) return;
+    if (!this.replyingToCrewMessage) { container.innerHTML = ''; return; }
+    const r = this.replyingToCrewMessage;
+    container.innerHTML = `
+      <div class="reply-preview-bar">
+        <div class="reply-preview-content">
+          <span class="reply-preview-label">Replying to ${this.escapeHTML(r.sender)}</span>
+          <span class="reply-preview-text">${this.escapeHTML(r.text)}</span>
+        </div>
+        <button class="reply-preview-cancel" id="btn-cancel-crew-reply">&times;</button>
+      </div>
+    `;
+    document.getElementById('btn-cancel-crew-reply')?.addEventListener('click', () => {
+      this.replyingToCrewMessage = null;
+      this.renderCrewReplyBar();
+    });
+  },
+
   openCrewEmojiPicker(anchorEl, messageId) {
     document.querySelectorAll('.reaction-picker-popup').forEach(p => p.remove());
     const emojiList = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
@@ -1687,10 +1749,17 @@ window.ArenaPage = {
     const senderLabel = isMe ? 'You' : (this.crewMemberNames[m.sender_id] || m.sender_id);
     const senderAvatar = this.crewMemberAvatars?.[m.sender_id];
     const reactions = (this.crewMessageReactions && this.crewMessageReactions[m.id]) || {};
+    const replyHTML = m.reply_to ? `
+      <div class="reply-quote">
+        <span class="reply-quote-sender">${this.escapeHTML(m.reply_to.sender_username || 'Someone')}</span>
+        <span class="reply-quote-text">${m.reply_to.deleted ? 'Message removed' : this.escapeHTML(m.reply_to.content)}</span>
+      </div>
+    ` : '';
     return `
       <div class="chat-message${isMe ? ' chat-message-me' : ''}" data-message-id="${m.id}">
         <div class="avatar avatar-sm" style="width:22px;height:22px;font-size:10px;flex-shrink:0;">${AURUM.avatarInnerHTML(senderAvatar, senderLabel.charAt(0).toUpperCase())}</div>
         <div class="chat-message-body">
+          ${replyHTML}
           <span class="chat-message-sender mono">${senderLabel}</span>
           <span class="chat-message-text">${text}</span>
           ${this.reactionBarHTML(m.id, reactions)}
@@ -1717,11 +1786,23 @@ window.ArenaPage = {
   appendCrewMessage(msg) {
     const list = document.getElementById('crew-chat-messages');
     if (!list) return;
+    let replyTo = null;
+    if (msg.replyToMessageId) {
+      const originalBubble = list.querySelector(`[data-message-id="${msg.replyToMessageId}"]`);
+      if (originalBubble) {
+        replyTo = {
+          sender_username: originalBubble.querySelector('.chat-message-sender')?.textContent || 'Someone',
+          content: originalBubble.querySelector('.chat-message-text')?.textContent || '',
+          deleted: false,
+        };
+      }
+    }
     list.insertAdjacentHTML('beforeend', this.crewMessageHTML({
       id: msg.id,
       sender_id: msg.senderId,
       content: msg.content,
       deleted: false,
+      reply_to: replyTo,
     }));
     list.scrollTop = list.scrollHeight;
   },
@@ -1737,9 +1818,12 @@ window.ArenaPage = {
     const content = input?.value.trim();
     if (!content || !this.activeChatCrewId) return;
 
+    const replyToId = this.replyingToCrewMessage?.id || null;
     input.value = '';
+    this.replyingToCrewMessage = null;
+    this.renderCrewReplyBar();
     try {
-      await AURUM.CrewAPI.sendMessage(this.activeChatCrewId, content);
+      await AURUM.CrewAPI.sendMessage(this.activeChatCrewId, content, replyToId);
     } catch (err) {
       AURUM.showToast(err.message || 'Message failed to send.', 'error');
     }
