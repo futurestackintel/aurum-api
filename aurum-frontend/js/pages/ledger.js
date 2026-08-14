@@ -684,7 +684,7 @@ window.LedgerPage = {
         popup.remove();
         anchorEl.disabled = true;
         try {
-          const result = await AURUM.LedgerAPI.flagPost(postId, optBtn.dataset.reason);
+          const result = await AURUM.LedgerAPI.flagPost(postId, { reason: optBtn.dataset.reason });
           AURUM.showToast(
             result.suspended
               ? 'Post flagged. It has enough reports to enter moderation review.'
