@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AURUM Bridge — Connecting real opportunities with the right capital</title>
+<meta name="description" content="AURUM Bridge is researching legitimate business opportunities that may be suitable for future financing partnerships. Submit your opportunity for review.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #08070a;
+    --surface: #121014;
+    --surface-2: #19161a;
+    --line: rgba(198,161,91,.16);
+    --line-strong: rgba(198,161,91,.32);
+    --gold: #c6a15b;
+    --gold-bright: #e9c989;
+    --text: #f3efe7;
+    --text-muted: #9a9488;
+    --text-faint: #666057;
+    --radius: 14px;
+    --ease: cubic-bezier(.22,1,.36,1);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -5%, rgba(198,161,91,.08), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(198,161,91,.05), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter', -apple-system, sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  img,svg{display:block; max-width:100%;}
+  a{color:inherit; text-decoration:none;}
+  ul{list-style:none;}
+  h1,h2,h3{font-family:'Fraunces', serif; font-weight:500; letter-spacing:-.01em;}
+  .wrap{max-width:1140px; margin:0 auto; padding:0 24px;}
+  .eyebrow{
+    font-family:'Space Mono', monospace;
+    font-size:11.5px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--gold);
+    display:inline-flex;
+    align-items:center;
+    gap:9px;
+  }
+  .eyebrow::before{content:''; width:14px; height:1px; background:var(--gold);}
+
+  /* focus visibility */
+  a:focus-visible, button:focus-visible{
+    outline:2px solid var(--gold-bright);
+    outline-offset:3px;
+    border-radius:4px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important;}
+  }
+
+  /* ---------- NAV ---------- */
+  header{
+    position:sticky; top:0; z-index:50;
+    background:rgba(8,7,10,.78);
+    backdrop-filter:blur(14px) saturate(140%);
+    -webkit-backdrop-filter:blur(14px) saturate(140%);
+    border-bottom:1px solid var(--line);
+  }
+  nav{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 24px; max-width:1140px; margin:0 auto;
+  }
+  .logo{
+    display:flex; align-items:baseline; gap:8px;
+    font-family:'Fraunces', serif; font-size:19px; font-weight:500;
+  }
+  .logo .mark{color:var(--gold-bright);}
+  .logo .sub{
+    font-family:'Space Mono', monospace; font-size:9.5px; color:var(--text-faint);
+    letter-spacing:.1em; text-transform:uppercase; margin-left:2px;
+  }
+  .nav-links{display:flex; align-items:center; gap:34px;}
+  .nav-links a{
+    font-size:13.5px; color:var(--text-muted); transition:color .25s var(--ease);
+  }
+  .nav-links a:hover{color:var(--gold-bright);}
+  .nav-cta{display:none;}
+  @media(min-width:860px){ .nav-cta{display:inline-flex;} }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:13px 24px;
+    border-radius:9px;
+    font-size:13.5px; font-weight:600;
+    letter-spacing:.01em;
+    cursor:pointer;
+    border:1px solid transparent;
+    transition:transform .3s var(--ease), box-shadow .3s var(--ease), border-color .3s var(--ease), background .3s var(--ease);
+    white-space:nowrap;
+  }
+  .btn-primary{
+    background:linear-gradient(160deg, var(--gold-bright), var(--gold) 70%);
+    color:#100c05;
+  }
+  .btn-primary:hover{ transform:translateY(-2px); box-shadow:0 10px 30px -8px rgba(198,161,91,.55); }
+  .btn-ghost{
+    background:transparent; color:var(--text); border-color:var(--line-strong);
+  }
+  .btn-ghost:hover{ border-color:var(--gold); color:var(--gold-bright); }
+  .btn-sm{padding:10px 18px; font-size:12.5px;}
+
+  /* nav scroll shrink small touch */
+  .menu-btn{
+    display:flex; background:none; border:1px solid var(--line-strong);
+    border-radius:8px; padding:9px 11px; color:var(--text);
+  }
+  @media(min-width:860px){ .menu-btn{display:none;} }
+  .nav-links{display:none;}
+  @media(min-width:860px){ .nav-links{display:flex;} }
+
+  /* ---------- HERO ---------- */
+  .hero{
+    padding:76px 0 40px;
+    position:relative;
+  }
+  .hero-grid{
+    display:grid; grid-template-columns:1fr; gap:52px; align-items:center;
+  }
+  @media(min-width:900px){
+    .hero-grid{grid-template-columns: 1.05fr .95fr; gap:40px;}
+  }
+  .hero h1{
+    font-size:clamp(34px, 5.4vw, 54px);
+    line-height:1.09;
+    margin:20px 0 22px;
+    color:var(--text);
+  }
+  .hero h1 em{ font-style:italic; color:var(--gold-bright); }
+  .hero p.lede{
+    font-size:16.5px; color:var(--text-muted); max-width:520px; margin-bottom:30px;
+  }
+  .hero-ctas{display:flex; flex-wrap:wrap; gap:14px; margin-bottom:20px;}
+  .hero-note{
+    font-family:'Space Mono', monospace; font-size:11.5px; color:var(--text-faint);
+    display:flex; align-items:center; gap:8px; max-width:460px;
+    padding-top:6px; border-top:1px solid var(--line); margin-top:8px; width:fit-content;
+  }
+  .hero-note .dot{width:6px; height:6px; border-radius:50%; background:var(--gold); flex:none; animation:pulse 2.4s ease-in-out infinite;}
+  @keyframes pulse{ 0%,100%{opacity:.4;} 50%{opacity:1;} }
+
+  /* ---------- BRIDGE SIGNATURE GRAPHIC ---------- */
+  .bridge-stage{
+    position:relative;
+    border:1px solid var(--line);
+    border-radius:18px;
+    background:linear-gradient(180deg, rgba(255,255,255,.02), transparent);
+    padding:28px 20px 18px;
+    overflow:hidden;
+  }
+  .bridge-stage::before{
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(ellipse 300px 200px at 50% 0%, rgba(198,161,91,.10), transparent 70%);
+    pointer-events:none;
+  }
+  .bridge-labels{
+    display:flex; justify-content:space-between; font-family:'Space Mono',monospace;
+    font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint);
+    margin-bottom:6px; position:relative; z-index:2;
+  }
+  .bridge-labels .l-right{color:var(--gold);}
+  svg.bridge-svg{width:100%; height:auto; position:relative; z-index:2;}
+  .pier-label{
+    font-family:'Space Mono', monospace; font-size:10px; fill:var(--text-faint); letter-spacing:.04em;
+  }
+  .node-label{
+    font-family:'Fraunces', serif; font-size:13px; fill:var(--gold-bright);
+  }
+  .cable-path{
+    fill:none; stroke:var(--gold); stroke-width:1.4; opacity:.55;
+    stroke-dasharray:520; stroke-dashoffset:520;
+    animation:draw 2.2s var(--ease) forwards .3s;
+  }
+  .cable-path.secondary{ stroke:var(--gold); opacity:.28; animation-delay:.55s; }
+  @keyframes draw{ to{ stroke-dashoffset:0; } }
+  .node-pulse{
+    animation:nodepulse 2.6s ease-in-out infinite;
+    transform-origin:center;
+  }
+  @keyframes nodepulse{
+    0%,100%{ transform:scale(1); opacity:1; }
+    50%{ transform:scale(1.18); opacity:.75; }
+  }
+  .bridge-caption{
+    display:flex; justify-content:space-between; align-items:center;
+    border-top:1px solid var(--line); margin-top:10px; padding-top:12px;
+    font-size:12px; color:var(--text-faint); position:relative; z-index:2;
+  }
+  .bridge-caption strong{ color:var(--gold-bright); font-weight:500; }
+
+  /* ---------- SECTION SHELL ---------- */
+  section{ padding:88px 0; }
+  .section-head{ max-width:640px; margin-bottom:48px; }
+  .section-head h2{ font-size:clamp(26px,3.4vw,36px); margin-top:16px; }
+  .section-head p{ color:var(--text-muted); font-size:15.5px; margin-top:14px; }
+  .divider{ height:1px; background:var(--line); border:none; }
+
+  .reveal{ opacity:0; transform:translateY(22px); transition:opacity .8s var(--ease), transform .8s var(--ease); }
+  .reveal.in{ opacity:1; transform:translateY(0); }
+
+  /* ---------- WHAT IS ---------- */
+  .about-block{ display:grid; gap:40px; align-items:start; }
+  @media(min-width:860px){ .about-block{ grid-template-columns:.9fr 1.1fr; gap:64px; } }
+  .about-block p{ color:var(--text-muted); font-size:15.5px; margin-bottom:16px; }
+  .about-block p strong{ color:var(--text); font-weight:500; }
+
+  /* ---------- OPPORTUNITY CARDS ---------- */
+  .card-grid{ display:grid; gap:16px; grid-template-columns:1fr; }
+  @media(min-width:640px){ .card-grid{ grid-template-columns:1fr 1fr; } }
+  @media(min-width:980px){ .card-grid{ grid-template-columns:1fr 1fr 1fr; } }
+  .opp-card{
+    border:1px solid var(--line);
+    background:linear-gradient(160deg, var(--surface), var(--surface-2));
+    border-radius:var(--radius);
+    padding:26px 22px;
+    transition:border-color .3s var(--ease), transform .3s var(--ease), box-shadow .3s var(--ease);
+    position:relative;
+  }
+  .opp-card:hover{
+    border-color:var(--line-strong);
+    transform:translateY(-3px);
+    box-shadow:0 20px 40px -24px rgba(198,161,91,.35);
+  }
+  .opp-card .num{
+    font-family:'Space Mono', monospace; font-size:11px; color:var(--gold); letter-spacing:.08em;
+  }
+  .opp-card h3{
+    font-size:18px; margin:12px 0 8px; font-weight:500;
+  }
+  .opp-card p{ font-size:14px; color:var(--text-muted); }
+  .opp-note{
+    margin-top:26px; font-size:13.5px; color:var(--text-faint);
+    border-left:2px solid var(--gold); padding-left:14px;
+  }
+
+  /* ---------- HOW IT WORKS ---------- */
+  .steps{
+    display:grid; gap:0; grid-template-columns:1fr;
+    border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;
+  }
+  @media(min-width:860px){ .steps{ grid-template-columns:repeat(4,1fr); } }
+  .step{
+    padding:32px 26px;
+    border-bottom:1px solid var(--line);
+    position:relative;
+  }
+  @media(min-width:860px){
+    .step{ border-bottom:none; border-right:1px solid var(--line); }
+    .step:last-child{ border-right:none; }
+  }
+  .step:last-child{ border-bottom:none; }
+  .step .step-num{
+    font-family:'Space Mono', monospace; font-size:26px; color:var(--gold); opacity:.5; font-weight:700;
+  }
+  .step h3{ font-size:17px; margin:14px 0 8px; font-weight:500; }
+  .step p{ font-size:13.5px; color:var(--text-muted); }
+
+  /* ---------- WHAT WE WANT TO SEE ---------- */
+  .want-list{
+    display:grid; gap:14px; grid-template-columns:1fr;
+  }
+  @media(min-width:700px){ .want-list{ grid-template-columns:1fr 1fr; } }
+  .want-item{
+    display:flex; gap:12px; align-items:flex-start;
+    padding:16px 18px; border:1px solid var(--line); border-radius:10px;
+    background:rgba(255,255,255,.015);
+  }
+  .want-item .chk{
+    flex:none; width:18px; height:18px; margin-top:2px;
+    border-radius:4px; border:1px solid var(--gold);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .want-item .chk svg{ width:10px; height:10px; }
+  .want-item span{ font-size:14.5px; color:var(--text); }
+
+  /* ---------- WHO SHOULD SUBMIT ---------- */
+  .who-panel{
+    border:1px solid var(--line-strong);
+    border-radius:18px;
+    padding:42px 34px;
+    background:
+      radial-gradient(ellipse 500px 260px at 90% 0%, rgba(198,161,91,.10), transparent 65%),
+      var(--surface);
+  }
+  .who-list{ display:grid; gap:14px; margin-top:26px; grid-template-columns:1fr; }
+  @media(min-width:700px){ .who-list{ grid-template-columns:1fr 1fr; } }
+  .who-list li{
+    font-size:14.5px; color:var(--text-muted); padding-left:20px; position:relative;
+  }
+  .who-list li::before{
+    content:'—'; position:absolute; left:0; color:var(--gold);
+  }
+
+  /* ---------- NOTICE ---------- */
+  .notice{
+    border:1px solid var(--line-strong);
+    border-radius:var(--radius);
+    padding:30px 28px;
+    background:repeating-linear-gradient(135deg, rgba(198,161,91,.035) 0 2px, transparent 2px 22px), var(--surface-2);
+  }
+  .notice .eyebrow{ margin-bottom:14px; }
+  .notice p{ font-size:14px; color:var(--text-muted); margin-bottom:12px; }
+  .notice p:last-child{ margin-bottom:0; }
+
+  /* ---------- FINAL CTA ---------- */
+  .final-cta{
+    text-align:center;
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    padding:96px 0;
+  }
+  .final-cta h2{ font-size:clamp(28px,4vw,42px); margin:16px auto 14px; max-width:600px; }
+  .final-cta p{ color:var(--text-muted); font-size:15.5px; max-width:460px; margin:0 auto 30px; }
+  .final-cta .eyebrow{ justify-content:center; }
+
+  /* ---------- FOOTER ---------- */
+  footer{ padding:52px 0 40px; }
+  .footer-grid{
+    display:flex; flex-direction:column; gap:28px;
+  }
+  @media(min-width:700px){
+    .footer-grid{ flex-direction:row; justify-content:space-between; align-items:flex-start; }
+  }
+  .footer-brand .logo{ margin-bottom:8px; }
+  .footer-brand p{ font-size:13px; color:var(--text-faint); max-width:280px; }
+  .footer-links{ display:flex; gap:34px; flex-wrap:wrap; }
+  .footer-links a{ font-size:13.5px; color:var(--text-muted); }
+  .footer-links a:hover{ color:var(--gold-bright); }
+  .footer-bottom{
+    margin-top:40px; padding-top:22px; border-top:1px solid var(--line);
+    display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between;
+    font-family:'Space Mono', monospace; font-size:11px; color:var(--text-faint); letter-spacing:.04em;
+  }
+
+  /* ---------- STICKY MOBILE CTA ---------- */
+  .mobile-cta{
+    position:fixed; left:0; right:0; bottom:0; z-index:60;
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    background:rgba(8,7,10,.9);
+    backdrop-filter:blur(14px);
+    border-top:1px solid var(--line-strong);
+    display:flex;
+  }
+  @media(min-width:860px){ .mobile-cta{ display:none; } }
+  .mobile-cta .btn{ width:100%; }
+  @media(max-width:859px){ body{ padding-bottom:74px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <nav aria-label="Primary">
+    <a href="#top" class="logo">
+      <span class="mark">AURUM</span> Bridge
+      <span class="sub">— an AURUM initiative</span>
+    </a>
+    <div class="nav-links">
+      <a href="#what-is">What it is</a>
+      <a href="#opportunities">Opportunities</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#who">Who should submit</a>
+    </div>
+    <a class="btn btn-primary btn-sm nav-cta" href="https://forms.gle/kDqEx2VBRnsMWG8BA" target="_blank" rel="noopener">Submit Your Opportunity</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <span class="eyebrow">AURUM Ecosystem · Research &amp; Validation</span>
+          <h1>Have a real business opportunity that needs <em>capital</em>?</h1>
+          <p class="lede">AURUM Bridge is researching legitimate business opportunities that may be suitable for future financing partnerships. Tell us what you're building, what you need capital for, and how the opportunity generates revenue.</p>
+          <div class="hero-ctas">
+            <a class="btn btn-primary" href="https://forms.gle/kDqEx2VBRnsMWG8BA" target="_blank" rel="noopener">Submit Your Opportunity</a>
+            <a class="btn btn-ghost" href="#how-it-works">How It Works</a>
+          </div>
+          <p class="hero-note"><span class="dot"></span>Currently in research &amp; validation. Submission does not guarantee funding or financing.</p>
+        </div>
+
+        <div class="bridge-stage" role="img" aria-label="Diagram of a bridge connecting an opportunity pier to a capital pier, representing AURUM Bridge's research process">
+          <div class="bridge-labels">
+            <span>Opportunity</span>
+            <span class="l-right">Capital</span>
+          </div>
+          <svg class="bridge-svg" viewBox="0 0 480 220" xmlns="http://www.w3.org/2000/svg">
+            <!-- piers -->
+            <rect x="28" y="150" width="10" height="46" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+            <rect x="442" y="150" width="10" height="46" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+            <!-- deck -->
+            <path class="cable-path" d="M 20 150 L 460 150" />
+            <!-- suspension curve -->
+            <path class="cable-path secondary" d="M 20 60 Q 240 170 460 60" />
+            <!-- hangers -->
+            <g stroke="var(--gold)" stroke-width="1" opacity=".3">
+              <line x1="80" y1="150" x2="80" y2="86"/>
+              <line x1="150" y1="150" x2="150" y2="112"/>
+              <line x1="240" y1="150" x2="240" y2="150"/>
+              <line x1="330" y1="150" x2="330" y2="112"/>
+              <line x1="400" y1="150" x2="400" y2="86"/>
+            </g>
+            <!-- center node -->
+            <circle class="node-pulse" cx="240" cy="150" r="6" fill="var(--gold-bright)"/>
+            <circle cx="240" cy="150" r="12" fill="none" stroke="var(--gold)" opacity=".4"/>
+            <text x="240" y="184" text-anchor="middle" class="node-label">under review</text>
+            <text x="30" y="212" class="pier-label">opportunity submitted</text>
+            <text x="330" y="212" class="pier-label">financing partnership</text>
+          </svg>
+          <div class="bridge-caption">
+            <span>Status</span>
+            <strong>Discovery &amp; verification</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- WHAT IS -->
+  <section id="what-is">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">What it is</span>
+        <h2>A better way to discover financing opportunities</h2>
+      </div>
+      <div class="about-block reveal">
+        <div>
+          <p>Many businesses don't lack opportunity — <strong>they lack access to the right capital at the right time.</strong></p>
+          <p>AURUM Bridge is exploring a technology-driven way to identify, understand and evaluate legitimate business opportunities that may require financing.</p>
+        </div>
+        <div>
+          <p>We are currently collecting real-world opportunities so we can understand where financing gaps exist, what makes an opportunity viable, and how future partnerships with appropriate financial institutions could work.</p>
+          <p style="color:var(--text-faint); font-size:13.5px;">AURUM Bridge does not currently provide financing, lending, or investment services.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- OPPORTUNITY TYPES -->
+  <section id="opportunities">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Scope</span>
+        <h2>What kind of opportunities?</h2>
+        <p>We're interested in specific, explainable situations — not vague requests for money.</p>
+      </div>
+      <div class="card-grid reveal">
+        <div class="opp-card">
+          <span class="num">01</span>
+          <h3>Confirmed Orders</h3>
+          <p>Businesses that have identified customers or orders but need capital to fulfil them.</p>
+        </div>
+        <div class="opp-card">
+          <span class="num">02</span>
+          <h3>Inventory Opportunities</h3>
+          <p>Businesses with a clear demand for products and a defined inventory cycle.</p>
+        </div>
+        <div class="opp-card">
+          <span class="num">03</span>
+          <h3>Contracts &amp; Projects</h3>
+          <p>Revenue-generating contracts or projects that require working capital to execute.</p>
+        </div>
+        <div class="opp-card">
+          <span class="num">04</span>
+          <h3>Receivables</h3>
+          <p>Businesses awaiting payment for completed or contracted work.</p>
+        </div>
+        <div class="opp-card">
+          <span class="num">05</span>
+          <h3>Business Expansion</h3>
+          <p>Specific expansion opportunities with a clear economic case.</p>
+        </div>
+        <div class="opp-card">
+          <span class="num">06</span>
+          <h3>Other Opportunities</h3>
+          <p>Legitimate business opportunities that don't fit the categories above.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- HOW IT WORKS -->
+  <section id="how-it-works">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Process</span>
+        <h2>How it works</h2>
+      </div>
+      <div class="steps reveal">
+        <div class="step">
+          <span class="step-num">01</span>
+          <h3>Submit</h3>
+          <p>Tell us about your opportunity, the capital required and how the opportunity generates revenue.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">02</span>
+          <h3>Review</h3>
+          <p>We study the information provided and may request additional documentation or clarification.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">03</span>
+          <h3>Analysis</h3>
+          <p>We examine the business case, economics, evidence, timeline and potential risks.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">04</span>
+          <h3>Future Opportunities</h3>
+          <p>Selected opportunities may help inform future partnerships and financing solutions.</p>
+        </div>
+      </div>
+      <p style="margin-top:22px; font-size:13px; color:var(--text-faint);">Submission does not guarantee financing.</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- WHAT WE WANT TO SEE -->
+  <section id="want-to-see">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Before you submit</span>
+        <h2>What we want to see</h2>
+      </div>
+      <div class="want-list reveal">
+        <div class="want-item"><span class="chk"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9L10 3" stroke="var(--gold)" stroke-width="1.6"/></svg></span><span>A clearly defined business opportunity</span></div>
+        <div class="want-item"><span class="chk"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9L10 3" stroke="var(--gold)" stroke-width="1.6"/></svg></span><span>A specific use for the required capital</span></div>
+        <div class="want-item"><span class="chk"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9L10 3" stroke="var(--gold)" stroke-width="1.6"/></svg></span><span>A realistic revenue model</span></div>
+        <div class="want-item"><span class="chk"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9L10 3" stroke="var(--gold)" stroke-width="1.6"/></svg></span><span>Evidence of demand, where available</span></div>
+        <div class="want-item"><span class="chk"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9L10 3" stroke="var(--gold)" stroke-width="1.6"/></svg></span><span>Expected timeline</span></div>
+        <div class="want-item"><span class="chk"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9L10 3" stroke="var(--gold)" stroke-width="1.6"/></svg></span><span>Estimated revenue and profit</span></div>
+        <div class="want-item"><span class="chk"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9L10 3" stroke="var(--gold)" stroke-width="1.6"/></svg></span><span>Existing customers, orders or contracts, where applicable</span></div>
+        <div class="want-item"><span class="chk"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9L10 3" stroke="var(--gold)" stroke-width="1.6"/></svg></span><span>Awareness of potential risks</span></div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- WHO SHOULD SUBMIT -->
+  <section id="who">
+    <div class="wrap">
+      <div class="who-panel reveal">
+        <span class="eyebrow">Fit check</span>
+        <h2 style="font-size:clamp(24px,3vw,32px); margin-top:16px;">This may be for you if...</h2>
+        <ul class="who-list">
+          <li>You already operate a business</li>
+          <li>You have a specific transaction or opportunity</li>
+          <li>You have customers or evidence of demand</li>
+          <li>You need capital for a clearly defined purpose</li>
+          <li>You can explain how the opportunity generates revenue</li>
+          <li>You are willing to provide supporting information if requested</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- IMPORTANT NOTICE -->
+  <section id="notice" style="padding-top:0;">
+    <div class="wrap">
+      <div class="notice reveal">
+        <span class="eyebrow">Important notice</span>
+        <p>AURUM Bridge is currently an early-stage research and validation initiative. Submitting an opportunity does not constitute an application for a loan, investment or guaranteed financing, and does not create an obligation for AURUM Bridge or any third party to provide funding.</p>
+        <p>Information submitted may be reviewed for research, opportunity analysis and potential future partnership considerations. Additional verification may be requested.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section class="final-cta">
+    <div class="wrap">
+      <span class="eyebrow">Start here</span>
+      <h2>Have an opportunity worth exploring?</h2>
+      <p>Tell us about it. The first step is simply understanding what you're building.</p>
+      <a class="btn btn-primary" href="https://forms.gle/kDqEx2VBRnsMWG8BA" target="_blank" rel="noopener">Submit Your Opportunity</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="#top" class="logo"><span class="mark">AURUM</span> Bridge</a>
+        <p>An AURUM initiative, currently in research &amp; validation.</p>
+      </div>
+      <div class="footer-links">
+        <a href="https://forms.gle/kDqEx2VBRnsMWG8BA" target="_blank" rel="noopener">Submit Opportunity</a>
+        <a href="#what-is">About AURUM</a>
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© AURUM BRIDGE</span>
+      <span>CURRENTLY IN RESEARCH &amp; VALIDATION</span>
+    </div>
+  </div>
+</footer>
+
+<div class="mobile-cta">
+  <a class="btn btn-primary" href="https://forms.gle/kDqEx2VBRnsMWG8BA" target="_blank" rel="noopener">Submit Your Opportunity</a>
+</div>
+
+<script>
+  // scroll-reveal
+  const revealEls = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  revealEls.forEach(el => io.observe(el));
+
+  // mobile menu links smooth close (nav is link-based, no toggle needed since links list hidden on mobile in favor of sticky CTA)
+</script>
+
+</body>
+</html>
+
