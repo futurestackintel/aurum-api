@@ -95,8 +95,54 @@ window.ArenaPage = {
 
       </div>
 
-      <!-- Create Challenge Modal -->
-      <div class="modal-overlay" id="create-modal" style="display:none;">
+      <!-- Create Crew Battle Modal -->
+      <div class="modal-overlay" id="create-crew-battle-modal" style="display:none;">
+        <div class="modal">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title">Challenge a Crew</h3>
+          <div style="display:flex;flex-direction:column;gap:var(--space-4);">
+            <div class="input-group">
+              <label class="input-label">Battle Title</label>
+              <input class="input" id="crew-battle-title" placeholder="e.g. Most Revenue This Week" />
+            </div>
+            <div class="input-group">
+              <label class="input-label">Target Crew Name</label>
+              <input class="input" id="crew-battle-target" placeholder="Exact crew name" />
+            </div>
+            <div class="input-group">
+              <label class="input-label">Entry Contribution</label>
+              <select class="input" id="crew-battle-entry">
+                <option value="10">$10</option>
+                <option value="25">$25</option>
+                <option value="50">$50</option>
+                <option value="100">$100</option>
+                <option value="250">$250</option>
+              </select>
+              <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:var(--space-1);">
+                Deducted from your personal wallet as your crew's entry into the prize pool.
+              </p>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Battle Duration</label>
+              <select class="input" id="crew-battle-duration">
+                <option value="24">24 Hours</option>
+                <option value="48">48 Hours</option>
+                <option value="168">7 Days</option>
+              </select>
+            </div>
+            <p style="font-size:var(--text-xs);color:var(--color-text-muted);line-height:1.5;">
+              This starts immediately — the target crew is not asked to accept. Non-participant members vote on a winner once the window ends.
+            </p>
+            <div style="display:flex;gap:var(--space-3);">
+              <button class="btn btn-ghost btn-full" id="btn-cancel-crew-battle">Cancel</button>
+              <button class="btn btn-primary btn-full" id="btn-submit-crew-battle">Launch Battle</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create Crew Modal -->
+      <div class="modal-overlay" id="create-crew-modal" style="display:none;">
         <div class="modal">
           <div class="modal-handle"></div>
           <h3 class="modal-title">New Challenge</h3>
@@ -349,8 +395,21 @@ window.ArenaPage = {
         if (e.target.id === 'create-crew-modal')
           e.target.style.display = 'none';
       });
-    document.getElementById('btn-submit-crew')
-      ?.addEventListener('click', () => this.submitCrew());
+    document.getElementById('btn-submit-duel')
+      ?.addEventListener('click', () => this.submitDuel());
+
+    /* Create crew battle modal */
+    document.getElementById('btn-cancel-crew-battle')
+      ?.addEventListener('click', () => {
+        document.getElementById('create-crew-battle-modal').style.display = 'none';
+      });
+    document.getElementById('create-crew-battle-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'create-crew-battle-modal')
+          e.target.style.display = 'none';
+      });
+    document.getElementById('btn-submit-crew-battle')
+      ?.addEventListener('click', () => this.submitCrewBattle());
   },
 
   switchSection(section) {
@@ -1164,7 +1223,10 @@ window.ArenaPage = {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
       btn.addEventListener('click', () => {
-        AURUM.showToast('Battle flow coming soon.', 'default');
+        this.activeBattleCrewId = btn.dataset.crewId;
+        document.getElementById('crew-battle-title').value = '';
+        document.getElementById('crew-battle-target').value = '';
+        document.getElementById('create-crew-battle-modal').style.display = 'flex';
       });
     });
 
@@ -1852,6 +1914,47 @@ window.ArenaPage = {
       AURUM.showToast(err.message || 'Could not create crew.', 'error');
     } finally {
       btn.textContent = 'Create Crew';
+      btn.disabled    = false;
+    }
+  },
+
+  async submitCrewBattle() {
+    const title    = document.getElementById('crew-battle-title')?.value.trim();
+    const target   = document.getElementById('crew-battle-target')?.value.trim();
+    const entry    = document.getElementById('crew-battle-entry')?.value;
+    const duration = document.getElementById('crew-battle-duration')?.value;
+    const btn      = document.getElementById('btn-submit-crew-battle');
+
+    if (!title) {
+      AURUM.showToast('Add a battle title.', 'error'); return;
+    }
+    if (!target) {
+      AURUM.showToast('Enter the target crew\'s exact name.', 'error'); return;
+    }
+    if (!this.activeBattleCrewId) {
+      AURUM.showToast('Could not identify your crew.', 'error'); return;
+    }
+
+    btn.textContent = 'Launching...';
+    btn.disabled    = true;
+
+    try {
+      const endsAt = new Date(
+        Date.now() + parseInt(duration, 10) * 60 * 60 * 1000
+      ).toISOString();
+
+      await AURUM.CrewAPI.startBattle(this.activeBattleCrewId, {
+        target_crew_name: target,
+        title,
+        entry_contribution_usd: parseFloat(entry),
+        ends_at: endsAt,
+      });
+      document.getElementById('create-crew-battle-modal').style.display = 'none';
+      AURUM.showToast('Crew battle launched!', 'gold');
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not launch crew battle.', 'error');
+    } finally {
+      btn.textContent = 'Launch Battle';
       btn.disabled    = false;
     }
   },
