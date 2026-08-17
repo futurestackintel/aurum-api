@@ -141,8 +141,8 @@ window.ArenaPage = {
         </div>
       </div>
 
-      <!-- Create Crew Modal -->
-      <div class="modal-overlay" id="create-crew-modal" style="display:none;">
+      <!-- Create Challenge Modal -->
+      <div class="modal-overlay" id="create-modal" style="display:none;">
         <div class="modal">
           <div class="modal-handle"></div>
           <h3 class="modal-title">New Challenge</h3>
@@ -395,8 +395,8 @@ window.ArenaPage = {
         if (e.target.id === 'create-crew-modal')
           e.target.style.display = 'none';
       });
-    document.getElementById('btn-submit-duel')
-      ?.addEventListener('click', () => this.submitDuel());
+    document.getElementById('btn-submit-crew')
+      ?.addEventListener('click', () => this.submitCrew());
 
     /* Create crew battle modal */
     document.getElementById('btn-cancel-crew-battle')
