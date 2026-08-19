@@ -424,21 +424,21 @@ window.ProfilePage = {
     const url      = this.getPassportURL();
     return `My AURUM Wealth Passport ðŸ† League: ${league} | Score: ${score} ${url} #AURUM`;
   },
-  async copyReferralLink() {
+    async copyReferralLink() {
     const code = this.user?.referral_code;
     if (!code) {
       AURUM.showToast('Referral link not ready yet. Try again shortly.', 'error');
       return;
     }
     const link = `https://tryaurum.store/?ref=${code}`;
+    const message = `Join me on AURUM — the competitive achievement network where verified wins earn real money and status. Sign up with my link and we both earn: ${link}`;
     try {
-      await navigator.clipboard.writeText(link);
-      AURUM.showToast('Referral link copied!', 'success');
+      await navigator.clipboard.writeText(message);
+      AURUM.showToast('Referral message copied!', 'success');
     } catch (err) {
       AURUM.showToast('Could not copy link. Long-press to copy manually.', 'error');
     }
   },
-
   async sharePassport() {
     const url  = this.getPassportURL();
     const text = this.getShareText();
