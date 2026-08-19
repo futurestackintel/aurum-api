@@ -1213,7 +1213,7 @@
         const token = await window.Clerk.session.getToken();
         AURUM.Auth.setToken(token);
         App.user = window.Clerk.user;
-                const username = document.getElementById('signup-username').value.trim();
+        const username = document.getElementById('signup-username').value.trim();
         const email    = document.getElementById('signup-email').value.trim();
         try {
           const refCode = sessionStorage.getItem('aurum_ref_code') || undefined;
