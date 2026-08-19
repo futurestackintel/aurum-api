@@ -767,7 +767,19 @@
      visible flash for already-logged-in users on every refresh.
   ============================================ */
 
-  let pendingSignUp = null;
+    let pendingSignUp = null;
+
+  // Capture referral code from URL (?ref=CODE) and persist it across
+  // the signup -> OTP-verify flow, since the URL may not carry it
+  // through both steps. sessionStorage survives page reloads within
+  // the same tab but clears when the tab closes.
+  (function captureReferralCode() {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      sessionStorage.setItem('aurum_ref_code', ref);
+    }
+  })();
 
   const App = {
     user:        null,
@@ -1139,9 +1151,11 @@
         await window.Clerk.setActive({ session: attempt.createdSessionId });
         const token = await window.Clerk.session.getToken();
         AURUM.Auth.setToken(token);
-        App.user = window.Clerk.user;
+                App.user = window.Clerk.user;
         try {
-          await AURUM.AuthAPI.register({ username, email });
+          const refCode = sessionStorage.getItem('aurum_ref_code') || undefined;
+          await AURUM.AuthAPI.register({ username, email, ref_code: refCode });
+          sessionStorage.removeItem('aurum_ref_code');
         } catch (regErr) {
           console.error('Registration failed:', regErr);
           AURUM.showToast(
@@ -1199,10 +1213,12 @@
         const token = await window.Clerk.session.getToken();
         AURUM.Auth.setToken(token);
         App.user = window.Clerk.user;
-        const username = document.getElementById('signup-username').value.trim();
+                const username = document.getElementById('signup-username').value.trim();
         const email    = document.getElementById('signup-email').value.trim();
         try {
-          await AURUM.AuthAPI.register({ username, email });
+          const refCode = sessionStorage.getItem('aurum_ref_code') || undefined;
+          await AURUM.AuthAPI.register({ username, email, ref_code: refCode });
+          sessionStorage.removeItem('aurum_ref_code');
         } catch (regErr) {
           console.error('Registration failed:', regErr);
           AURUM.showToast(
