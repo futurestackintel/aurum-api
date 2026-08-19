@@ -70,13 +70,14 @@ export async function handleAuthRoutes(pathname, request, env) {
 
       // Resolve referrer (if a valid ref_code was passed) BEFORE insert,
       // so a bad/unknown code never blocks registration
-      let referrerId = null;
+            let referrerId = null;
       if (ref_code) {
         const referrer = await env.DB
           .prepare(`SELECT id FROM users WHERE referral_code = ? AND deleted_at IS NULL`)
           .bind(ref_code)
           .first();
-        if (referrer) referrerId = referrer.id;
+        // Guard: a referrer can never be the same account as the new signup
+        if (referrer && referrer.id !== userId) referrerId = referrer.id;
       }
 
       // Insert user ΓÇö only columns that exist in the schema
