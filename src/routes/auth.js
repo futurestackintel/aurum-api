@@ -188,7 +188,22 @@ export async function handleAuthRoutes(pathname, request, env) {
         .bind(auth.id)
         .first();
 
-      if (!user) return json({ error: "User not found" }, 404);
+            if (!user) return json({ error: "User not found" }, 404);
+
+      // Lazy-backfill: users created before the referral system shipped
+      // won't have a referral_code yet. Generate one on first load.
+      if (!user.referral_code) {
+        try {
+          const code = await generateReferralCode(env);
+          await env.DB
+            .prepare(`UPDATE users SET referral_code = ? WHERE id = ?`)
+            .bind(code, user.id)
+            .run();
+          user.referral_code = code;
+        } catch (err) {
+          console.error("Referral code backfill failed (non-fatal):", err.message);
+        }
+      }
 
       return json({ user });
     } catch (err) {
