@@ -172,7 +172,7 @@ export async function handleAuthRoutes(pathname, request, env) {
     try {
       const user = await env.DB
         .prepare(`
-          SELECT
+                    SELECT
             id, username, display_name, email, avatar_url, bio,
             tier, league, aurum_score,
             streak_current, streak_longest,
@@ -180,7 +180,8 @@ export async function handleAuthRoutes(pathname, request, env) {
             total_challenges_won, stealth_mode,
             is_verified, is_founding_member,
             kyc_status, created_at,
-            profile_visibility, hide_aurum_score, hide_league
+            profile_visibility, hide_aurum_score, hide_league,
+            referral_code
           FROM users
           WHERE clerk_id = ? AND deleted_at IS NULL
         `)
