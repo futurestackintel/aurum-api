@@ -169,6 +169,22 @@ window.ProfilePage = {
           </div>
         </div>
 
+                <!-- Refer & Earn -->
+        <div class="card">
+          <p class="profile-section-title">Refer & Earn</p>
+          <p style="font-size:var(--text-sm);color:var(--color-text-muted);
+            margin-bottom:var(--space-4);">
+            Share your link. Earn 50 Aurum Score for every friend who joins.
+          </p>
+          <div style="display:flex;gap:var(--space-2);align-items:center;
+            background:var(--color-surface-2,rgba(255,255,255,0.04));
+            border-radius:12px;padding:var(--space-3);">
+            <span class="mono" id="referral-link-display"
+              style="flex:1;font-size:var(--text-sm);color:var(--color-gold);
+              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">â€”</span>
+            <button class="btn btn-ghost btn-sm" id="btn-copy-referral">Copy</button>
+          </div>
+        </div>
         <!-- Upgrade CTA (Explorer only) -->
         <div class="upgrade-card card card-gold" id="upgrade-cta" style="display:none;">
           <p class="profile-section-title gold">Upgrade to Contender</p>
@@ -255,9 +271,13 @@ window.ProfilePage = {
     }
 
     /* Score */
-    const scoreEl = document.getElementById('profile-score');
+        const scoreEl = document.getElementById('profile-score');
     if (scoreEl) scoreEl.textContent = AURUM.formatNumber(score);
-
+    /* Referral link */
+    const referralEl = document.getElementById('referral-link-display');
+    if (referralEl && u.referral_code) {
+      referralEl.textContent = `tryaurum.store/?ref=${u.referral_code}`;
+    }
     const streakEl = document.getElementById('profile-streak');
     if (streakEl) streakEl.textContent = `${streak} days`;
 
@@ -383,8 +403,10 @@ window.ProfilePage = {
       ?.addEventListener('click', () => this.shareViaLinkedIn());
     document.getElementById('share-facebook')
       ?.addEventListener('click', () => this.shareViaFacebook());
-    document.getElementById('share-copy')
+        document.getElementById('share-copy')
       ?.addEventListener('click', () => this.copyPassportLink());
+    document.getElementById('btn-copy-referral')
+      ?.addEventListener('click', () => this.copyReferralLink());
   },
 
   /* --------------------------------------------------
@@ -400,7 +422,21 @@ window.ProfilePage = {
     const league   = this.user?.league   || 'Bronze';
     const score    = AURUM.formatNumber(this.user?.aurum_score || 0);
     const url      = this.getPassportURL();
-    return `My AURUM Wealth Passport 🏆 League: ${league} | Score: ${score} ${url} #AURUM`;
+    return `My AURUM Wealth Passport ðŸ† League: ${league} | Score: ${score} ${url} #AURUM`;
+  },
+  async copyReferralLink() {
+    const code = this.user?.referral_code;
+    if (!code) {
+      AURUM.showToast('Referral link not ready yet. Try again shortly.', 'error');
+      return;
+    }
+    const link = `https://tryaurum.store/?ref=${code}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      AURUM.showToast('Referral link copied!', 'success');
+    } catch (err) {
+      AURUM.showToast('Could not copy link. Long-press to copy manually.', 'error');
+    }
   },
 
   async sharePassport() {
