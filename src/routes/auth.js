@@ -20,6 +20,24 @@ function json(data, status = 200) {
   });
 }
 
+const REFERRAL_SIGNUP_POINTS = 50;
+
+async function generateReferralCode(env) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let code = "";
+    for (let i = 0; i < 7; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    const existing = await env.DB
+      .prepare(`SELECT id FROM users WHERE referral_code = ?`)
+      .bind(code)
+      .first();
+    if (!existing) return code;
+  }
+  throw new Error("Could not generate unique referral code");
+}
+
 export async function handleAuthRoutes(pathname, request, env) {
 
   // ── POST /auth/register ─────────────────────────────────────
@@ -27,9 +45,9 @@ export async function handleAuthRoutes(pathname, request, env) {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
-    const clerkUserId = auth.id;
+        const clerkUserId = auth.id;
     const body = await request.json();
-    const { email, username, display_name } = body;
+    const { email, username, display_name, ref_code } = body;
 
     if (!email || !username) {
       return json({ error: "email and username are required" }, 400);
@@ -46,24 +64,57 @@ export async function handleAuthRoutes(pathname, request, env) {
         return json({ message: "User already registered", user_id: existing.id });
       }
 
-      const now    = new Date().toISOString();
+            const now    = new Date().toISOString();
       const userId = crypto.randomUUID();
+      const newReferralCode = await generateReferralCode(env);
 
-      // Insert user — only columns that exist in the schema
+      // Resolve referrer (if a valid ref_code was passed) BEFORE insert,
+      // so a bad/unknown code never blocks registration
+      let referrerId = null;
+      if (ref_code) {
+        const referrer = await env.DB
+          .prepare(`SELECT id FROM users WHERE referral_code = ? AND deleted_at IS NULL`)
+          .bind(ref_code)
+          .first();
+        if (referrer) referrerId = referrer.id;
+      }
+
+      // Insert user ΓÇö only columns that exist in the schema
       await env.DB
         .prepare(`
           INSERT INTO users
             (id, clerk_id, email, username, display_name,
-             tier, league, aurum_score, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, 'explorer', 'bronze', 0, ?, ?)
+             tier, league, aurum_score, referral_code, referred_by,
+             created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, 'explorer', 'bronze', 0, ?, ?, ?, ?)
         `)
         .bind(
           userId, clerkUserId, email, username,
           display_name || username,
+          newReferralCode, referrerId,
           now, now
         )
         .run();
 
+      // Log referral + award points to referrer (non-blocking, failure is safe)
+      if (referrerId) {
+        try {
+          await env.DB
+            .prepare(`
+              INSERT INTO referrals (id, referrer_id, referred_id, points_awarded, created_at)
+              VALUES (?, ?, ?, ?, ?)
+            `)
+            .bind(crypto.randomUUID(), referrerId, userId, REFERRAL_SIGNUP_POINTS, now)
+            .run();
+
+          await env.DB
+            .prepare(`UPDATE users SET aurum_score = aurum_score + ? WHERE id = ?`)
+            .bind(REFERRAL_SIGNUP_POINTS, referrerId)
+            .run();
+        } catch (err) {
+          console.error("Referral logging failed (non-fatal):", err.message);
+        }
+      }
       // Auto-create wallet for new user
       const walletId = crypto.randomUUID();
       await env.DB
