@@ -4,7 +4,9 @@
    Every other CSS file references these vars.
 ============================================ */
 
-:/* --- Colors --- */
+:root {
+
+  /* --- Colors --- */
   --color-bg:          #0A0A0A;
   --color-surface:     #141210;
   --color-surface-2:   #1B1815;
