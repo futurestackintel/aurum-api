@@ -585,6 +585,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 8l4 3 6-7 6 7 4-3-2 11H4L2 8z"/></svg>
         </button>
 
+        <button class="notif-bell-btn" id="messages-icon-btn" aria-label="Messages" title="Messages" onclick="App.navigate('messages')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+        </button>
+
         <!-- Admin icon — hidden by default, shown only if
              /api/admin/check succeeds for this user -->
         <button class="admin-icon-btn" id="admin-icon-btn"
@@ -617,21 +621,18 @@
         <svg viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h6M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg>
         Ledger
       </button>
-      <button class="nav-item" data-view="arena">
-        <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        Arena
-      </button>
       <button class="nav-item" data-view="leaderboard">
         <svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
         Board
       </button>
+      <button class="nav-item-center" id="btn-post-win" aria-label="Post a Win">+</button>
+      <button class="nav-item" data-view="arena">
+        <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Arena
+      </button>
       <button class="nav-item" data-view="profile">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
         Profile
-      </button>
-      <button class="nav-item" data-view="messages">
-        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
-        Messages
       </button>
     </nav>
 	  
@@ -1059,6 +1060,19 @@
   ===================================================== */
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => App.navigate(btn.dataset.view));
+  });
+
+  /* Post-a-win quick action (bottom nav center button).
+     NOTE: currently jumps to Ledger and focuses the existing
+     inline composer (content + stake only). The demo's richer
+     sheet (Title/Category/Description/Evidence) is a separate,
+     larger piece pending a posts-table schema check — not built
+     here to avoid guessing at fields that may not exist yet. */
+  document.getElementById('btn-post-win')?.addEventListener('click', () => {
+    App.navigate('ledger');
+    setTimeout(() => {
+      document.getElementById('post-content')?.focus();
+    }, 100);
   });
 
   /* =====================================================
