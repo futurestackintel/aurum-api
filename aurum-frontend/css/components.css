@@ -389,6 +389,32 @@
   transform: scale(0.92);
 }
 
+.nav-item-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--color-gold-bright, #F4D764), var(--color-gold) 60%, var(--color-gold-dim));
+  color: #161200;
+  font-size: 26px;
+  font-weight: 700;
+  margin-top: -22px;
+  box-shadow: 0 4px 14px rgba(212,175,55,0.4);
+  border: none;
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow var(--transition-base);
+}
+
+.nav-item-center:hover {
+  box-shadow: 0 6px 20px rgba(212,175,55,0.55);
+}
+
+.nav-item-center:active {
+  transform: scale(0.94);
+}
+
 /* --- TOAST NOTIFICATION --- */
 .toast {
   position: fixed;
