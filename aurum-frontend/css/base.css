@@ -19,7 +19,7 @@ html {
 }
 
 body {
-  background-color: var(--color-bg);
+  background: radial-gradient(ellipse at top, #171310 0%, var(--color-bg) 55%);
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--text-base);
