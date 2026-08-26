@@ -143,6 +143,65 @@ window.LedgerPage = {
           </div>
         </div>
 
+        <!-- Full "Post a Win" sheet — richer alternative to the
+             quick inline composer above. Triggered by the bottom
+             nav's "+" button. Quick composer stays untouched. -->
+        <div class="modal-overlay" id="full-post-modal" style="display:none;">
+          <div class="modal">
+            <div class="modal-handle"></div>
+            <h3 class="modal-title">Post a Win</h3>
+
+            <div class="input-group">
+              <label class="input-label">Title</label>
+              <input class="input" type="text" id="fp-title" placeholder="What did you achieve?" />
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Category</label>
+              <select class="input" id="fp-category">
+                <option value="">Select category</option>
+                <option value="cybersecurity">Cybersecurity</option>
+                <option value="gaming">Gaming</option>
+                <option value="technology">Technology</option>
+                <option value="business">Business</option>
+                <option value="fitness">Fitness</option>
+                <option value="creativity">Creativity</option>
+                <option value="education">Education</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Description</label>
+              <textarea class="input" id="fp-description" rows="3" placeholder="Tell the story behind this win..."></textarea>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Evidence (link)</label>
+              <input class="input" type="url" id="fp-evidence" placeholder="https://... (certificate, screenshot, proof)" />
+              <p class="input-hint">Optional — a link to proof of your achievement.</p>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Stake</label>
+              <select class="input" id="fp-stake">
+                <option value="5">$5</option>
+                <option value="10">$10</option>
+                <option value="25">$25</option>
+                <option value="50">$50</option>
+                <option value="100">$100</option>
+                <option value="250">$250</option>
+                <option value="500">$500</option>
+                <option value="1000">$1,000</option>
+              </select>
+            </div>
+
+            <div style="display:flex;gap:var(--space-3);margin-top:var(--space-2);">
+              <button class="btn btn-ghost btn-full" id="btn-fp-cancel">Cancel</button>
+              <button class="btn btn-primary btn-full" id="btn-fp-submit">Post Win</button>
+            </div>
+          </div>
+        </div>
+
       </div>
     `;
 
@@ -150,7 +209,6 @@ window.LedgerPage = {
     this.bindEvents();
     this.setComposerAvatar();
   },
-
   setComposerAvatar() {
     const avatar = document.getElementById('composer-avatar');
     if (avatar && window.App?.user?.username) {
@@ -172,12 +230,22 @@ window.LedgerPage = {
     document.getElementById('btn-post')
       ?.addEventListener('click', () => this.submitPost());
 
-    /* Load more */
+    //* Load more */
     document.getElementById('btn-load-more')
       ?.addEventListener('click', () => {
         if (!this.loading && this.hasMore) {
           this.loadPosts(true);
         }
+      });
+
+    /* Full post sheet */
+    document.getElementById('btn-fp-cancel')
+      ?.addEventListener('click', () => this.closeFullPostSheet());
+    document.getElementById('btn-fp-submit')
+      ?.addEventListener('click', () => this.submitFullPost());
+    document.getElementById('full-post-modal')
+      ?.addEventListener('click', (e) => {
+        if (e.target.id === 'full-post-modal') this.closeFullPostSheet();
       });
 
     /* Detail view — back button — triggers browser history.back()
@@ -282,6 +350,58 @@ window.LedgerPage = {
       document.getElementById('post-content').value = '';
       document.getElementById('post-content').style.height = 'auto';
       AURUM.showToast('Win posted. Stake locked.', 'gold');
+      this.loadPosts(false);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Post failed.', 'error');
+    } finally {
+      btn.textContent = 'Post Win';
+      btn.disabled    = false;
+    }
+  },
+
+  openFullPostSheet() {
+    const modal = document.getElementById('full-post-modal');
+    if (modal) modal.style.display = 'flex';
+  },
+
+  closeFullPostSheet() {
+    const modal = document.getElementById('full-post-modal');
+    if (modal) modal.style.display = 'none';
+  },
+
+  async submitFullPost() {
+    const title       = document.getElementById('fp-title')?.value.trim();
+    const category    = document.getElementById('fp-category')?.value;
+    const description = document.getElementById('fp-description')?.value.trim();
+    const evidence    = document.getElementById('fp-evidence')?.value.trim();
+    const stake       = document.getElementById('fp-stake')?.value;
+    const btn         = document.getElementById('btn-fp-submit');
+
+    if (!description) {
+      AURUM.showToast('Add a description of your win.', 'error');
+      return;
+    }
+
+    btn.textContent = 'Posting...';
+    btn.disabled    = true;
+
+    try {
+      await AURUM.LedgerAPI.createPost({
+        content: description,
+        stake_amount: parseFloat(stake),
+        title: title || undefined,
+        achievement_category: category || undefined,
+        media_urls: evidence || undefined,
+      });
+
+      /* Reset fields */
+      document.getElementById('fp-title').value = '';
+      document.getElementById('fp-category').value = '';
+      document.getElementById('fp-description').value = '';
+      document.getElementById('fp-evidence').value = '';
+
+      AURUM.showToast('Win posted. Stake locked.', 'gold');
+      this.closeFullPostSheet();
       this.loadPosts(false);
     } catch (err) {
       AURUM.showToast(err.message || 'Post failed.', 'error');
@@ -793,8 +913,9 @@ window.LedgerPage = {
           </div>
         </div>
 
+        ${post.title ? `<p style="font-weight:var(--weight-semi);font-size:var(--text-base);color:var(--color-text);">${this.escapeHTML(post.title)}</p>` : ''}
+        ${post.achievement_category ? `<span class="badge badge-gold" style="font-size:9px;align-self:flex-start;">${this.escapeHTML(post.achievement_category)}</span>` : ''}
         <p class="post-content">${post.content || ''}</p>
-
         ${mediaUrl ? `
           <img src="${mediaUrl}" class="post-media" alt="Achievement proof" />
         ` : ''}
