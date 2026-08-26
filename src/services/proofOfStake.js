@@ -31,7 +31,7 @@ const VALID_FLAG_REASONS = ['fake_claim', 'no_evidence', 'misleading', 'spam'];
  * Returns post in the exact shape the frontend expects.
  */
 export async function createPost(clerkId, body, db) {
-  const { content, stake_amount, media_urls } = body;
+  const { content, stake_amount, media_urls, title, achievement_category } = body;
 
   // Resolve Clerk ID to internal DB user ID
   const dbUser = await db
@@ -110,13 +110,17 @@ export async function createPost(clerkId, body, db) {
   await db
     .prepare(`
       INSERT INTO posts
-        (id, user_id, content, media_urls, stake_amount_cents,
-         tips_received_cents, moderation_status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 0, 'active', ?, ?)
+        (id, user_id, content, media_urls, title, achievement_category,
+         stake_amount_cents, tips_received_cents, moderation_status,
+         created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active', ?, ?)
     `)
-    .bind(postId, userId, content.trim(), media_urls ?? null, stakeAmountCents, now, now)
+    .bind(
+      postId, userId, content.trim(), media_urls ?? null,
+      title?.trim() || null, achievement_category ?? null,
+      stakeAmountCents, now, now
+    )
     .run();
-
   // Insert into post_stakes — stake status tracked here, not on posts table
   await db
     .prepare(`
@@ -129,15 +133,18 @@ export async function createPost(clerkId, body, db) {
 
   return {
     post: {
-      id:            postId,
-      username:      user.username,
-      league:        user.league,
-      verified:      !!badge,
-      content:       content.trim(),
-      stake_amount:  stake_amount,
-      stake_status:  'locked',
-      tips_received: 0,
-      created_at:    now,
+      id:                   postId,
+      username:             user.username,
+      league:               user.league,
+      verified:             !!badge,
+      title:                title?.trim() || null,
+      achievement_category: achievement_category ?? null,
+      content:              content.trim(),
+      media_urls:           media_urls ?? null,
+      stake_amount:         stake_amount,
+      stake_status:         'locked',
+      tips_received:        0,
+      created_at:           now,
     },
   };
 }
@@ -654,7 +661,10 @@ export async function getLedgerPosts(limit, offset, db) {
       SELECT
         p.id,
         p.user_id,
+        p.title,
+        p.achievement_category,
         p.content,
+        p.media_urls,
         p.tips_received_cents,
         p.created_at,
         ps.amount_usd           AS stake_amount_usd,
