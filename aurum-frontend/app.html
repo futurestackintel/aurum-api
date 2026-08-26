@@ -1098,6 +1098,9 @@
       window.LedgerPage?.openFullPostSheet();
     }, 100);
   });
+  /* Note: still navigates to Ledger first so the sheet's backdrop
+     and post-submit feed refresh land on the right view, even
+     though the inline composer it used to focus no longer exists. */
 
   /* =====================================================
      AUTH TABS
