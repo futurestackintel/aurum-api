@@ -67,10 +67,34 @@
       transform: scale(1.08);
       filter: drop-shadow(0 0 6px rgba(201,168,76,0.4));
     }
-    .app-bar-right {
+        .app-bar-right {
       display: flex;
       align-items: center;
       gap: var(--space-3);
+      overflow-x: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      max-width: calc(100vw - 70px);
+    }
+    .app-bar-right::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Narrow phones — tighten spacing so all icons + avatar fit
+       without needing to scroll on most devices. The overflow-x
+       above is the safety net for anything still too narrow. */
+    @media (max-width: 380px) {
+      .app-bar-right {
+        gap: var(--space-1);
+      }
+      .notif-bell-btn,
+      .admin-icon-btn {
+        padding: var(--space-1);
+      }
+      .app-bar-stats-capsule {
+        gap: var(--space-2);
+        padding: 4px var(--space-2);
+      }
     }
     /* Combined wallet + score capsule */
     .app-bar-stats-capsule {
