@@ -73,37 +73,6 @@ window.LedgerPage = {
         <!-- Main feed view -->
         <div id="ledger-main">
 
-          <!-- Composer -->
-          <div class="composer card">
-            <div class="composer-top">
-              <div class="avatar avatar-sm avatar-gold" id="composer-avatar">—</div>
-              <div class="composer-input-wrap">
-                <textarea
-                  class="composer-input"
-                  id="post-content"
-                  placeholder="Post a verified win..."
-                  rows="1"
-                ></textarea>
-              </div>
-            </div>
-            <div class="composer-bottom">
-              <div class="stake-selector">
-                <span class="stake-label">Stake</span>
-                <select class="stake-select" id="post-stake">
-                  <option value="5">$5</option>
-                  <option value="10">$10</option>
-                  <option value="25">$25</option>
-                  <option value="50">$50</option>
-                  <option value="100">$100</option>
-                  <option value="250">$250</option>
-                  <option value="500">$500</option>
-                  <option value="1000">$1,000</option>
-                </select>
-              </div>
-              <button class="btn btn-primary btn-sm" id="btn-post">Post Win</button>
-            </div>
-          </div>
-
           <!-- Feed -->
           <div class="feed" id="ledger-feed"></div>
 
@@ -207,30 +176,10 @@ window.LedgerPage = {
 
     this.applyStyles();
     this.bindEvents();
-    this.setComposerAvatar();
-  },
-  setComposerAvatar() {
-    const avatar = document.getElementById('composer-avatar');
-    if (avatar && window.App?.user?.username) {
-      avatar.textContent = window.App.user.username.charAt(0).toUpperCase();
-    }
   },
 
   bindEvents() {
-    /* Auto-resize textarea */
-    const textarea = document.getElementById('post-content');
-    if (textarea) {
-      textarea.addEventListener('input', () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = textarea.scrollHeight + 'px';
-      });
-    }
-
-    /* Post button */
-    document.getElementById('btn-post')
-      ?.addEventListener('click', () => this.submitPost());
-
-    //* Load more */
+    /* Load more */
     document.getElementById('btn-load-more')
       ?.addEventListener('click', () => {
         if (!this.loading && this.hasMore) {
@@ -326,36 +275,6 @@ window.LedgerPage = {
     } finally {
       this.loading = false;
       this.bindPostEvents();
-    }
-  },
-
-  async submitPost() {
-    const content = document.getElementById('post-content')?.value.trim();
-    const stake   = document.getElementById('post-stake')?.value;
-    const btn     = document.getElementById('btn-post');
-
-    if (!content) {
-      AURUM.showToast('Write something worth staking.', 'error');
-      return;
-    }
-
-    btn.textContent = 'Posting...';
-    btn.disabled    = true;
-
-    try {
-      await AURUM.LedgerAPI.createPost({
-        content,
-        stake_amount: parseFloat(stake),
-      });
-      document.getElementById('post-content').value = '';
-      document.getElementById('post-content').style.height = 'auto';
-      AURUM.showToast('Win posted. Stake locked.', 'gold');
-      this.loadPosts(false);
-    } catch (err) {
-      AURUM.showToast(err.message || 'Post failed.', 'error');
-    } finally {
-      btn.textContent = 'Post Win';
-      btn.disabled    = false;
     }
   },
 
