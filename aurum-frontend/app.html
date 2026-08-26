@@ -1095,7 +1095,7 @@
   document.getElementById('btn-post-win')?.addEventListener('click', () => {
     App.navigate('ledger');
     setTimeout(() => {
-      document.getElementById('post-content')?.focus();
+      window.LedgerPage?.openFullPostSheet();
     }, 100);
   });
 
