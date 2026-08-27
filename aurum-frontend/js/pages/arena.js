@@ -289,6 +289,59 @@ window.ArenaPage = {
         </div>
       </div>
 
+      <!-- Request Spend Modal (Crew Wallet) -->
+      <div class="modal-overlay" id="request-spend-modal" style="display:none;">
+        <div class="modal">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title">Request Spend</h3>
+          <div style="display:flex;flex-direction:column;gap:var(--space-4);">
+            <div class="input-group">
+              <label class="input-label">Amount (USD)</label>
+              <input class="input" id="spend-amount-input" type="number" min="0.01" step="0.01" placeholder="0.00" />
+            </div>
+            <div class="input-group">
+              <label class="input-label">Reason</label>
+              <input class="input" id="spend-reason-input" placeholder="What is this spend for?" />
+            </div>
+            <div style="display:flex;gap:var(--space-3);">
+              <button class="btn btn-ghost btn-full" id="btn-cancel-spend">Cancel</button>
+              <button class="btn btn-primary btn-full" id="btn-submit-spend">Submit</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Co-Sign Request Modal (Crew Wallet) -->
+      <div class="modal-overlay" id="cosign-request-modal" style="display:none;">
+        <div class="modal">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title">Co-Sign Request</h3>
+          <div class="card" style="margin-bottom:var(--space-3);">
+            <div style="display:flex;justify-content:space-between;margin-bottom:var(--space-2);">
+              <span style="color:var(--color-text-muted);">Requested by</span>
+              <span style="font-weight:700;" id="cosign-requested-by">—</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:var(--space-2);">
+              <span style="color:var(--color-text-muted);">Reason</span>
+              <span style="font-weight:700;" id="cosign-reason">—</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:var(--color-text-muted);">Amount</span>
+              <span style="font-weight:700;color:var(--color-gold);" id="cosign-amount">—</span>
+            </div>
+          </div>
+          <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-3);" id="cosign-status-note"></p>
+          <div class="input-group" style="margin-bottom:var(--space-3);">
+            <label class="input-label">Reason (if rejecting)</label>
+            <input class="input" id="cosign-veto-reason-input" placeholder="Optional" />
+          </div>
+          <div style="display:flex;gap:var(--space-3);">
+            <button class="btn btn-ghost btn-full" id="btn-reject-cosign">Reject</button>
+            <button class="btn btn-primary btn-full" id="btn-approve-cosign">Approve (Co-Sign)</button>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-overlay" id="crew-detail-modal" style="display:none;">
         <div class="modal" style="display:flex;flex-direction:column;max-height:80vh;overflow-y:auto;">
           <div class="modal-handle"></div>
@@ -409,9 +462,32 @@ window.ArenaPage = {
       ?.addEventListener('click', e => {
         if (e.target.id === 'create-crew-battle-modal')
           e.target.style.display = 'none';
-      });
-    document.getElementById('btn-submit-crew-battle')
+      });document.getElementById('btn-submit-crew-battle')
       ?.addEventListener('click', () => this.submitCrewBattle());
+
+    /* Request Spend modal (Crew Wallet) */
+    document.getElementById('btn-cancel-spend')
+      ?.addEventListener('click', () => {
+        document.getElementById('request-spend-modal').style.display = 'none';
+      });
+    document.getElementById('request-spend-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'request-spend-modal')
+          e.target.style.display = 'none';
+      });
+    document.getElementById('btn-submit-spend')
+      ?.addEventListener('click', () => this.submitSpendRequest());
+
+    /* Co-Sign Request modal (Crew Wallet) */
+    document.getElementById('btn-reject-cosign')
+      ?.addEventListener('click', () => this.rejectCosignRequest());
+    document.getElementById('cosign-request-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'cosign-request-modal')
+          e.target.style.display = 'none';
+      });
+    document.getElementById('btn-approve-cosign')
+      ?.addEventListener('click', () => this.approveCosignRequest());
   },
 
   switchSection(section) {
@@ -1338,15 +1414,7 @@ window.ArenaPage = {
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
             text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Crew Wallet</p>
           <p class="mono" style="font-size:var(--text-lg);">$${(crew.balance_usd || 0).toFixed(2)}</p>
-          ${isCaptain ? `<button class="btn btn-outline btn-sm" id="btn-detail-new-spend" style="margin-top:var(--space-1);">+ New Spend</button>` : ''}
-          <div id="crew-detail-spend-form" style="display:none;margin-top:var(--space-2);">
-            <input class="input" id="spend-amount-input" type="number" min="0.01" step="0.01" placeholder="Amount (USD)" style="margin-bottom:var(--space-1);" />
-            <input class="input" id="spend-reason-input" placeholder="Reason (required)" style="margin-bottom:var(--space-1);" />
-            <div style="display:flex;gap:var(--space-2);">
-              <button class="btn btn-primary btn-sm" id="btn-submit-spend">Submit</button>
-              <button class="btn btn-ghost btn-sm" id="btn-cancel-spend">Cancel</button>
-            </div>
-          </div>
+          ${isCaptain ? `<button class="btn btn-outline btn-sm" id="btn-detail-new-spend" style="margin-top:var(--space-1);">Request Spend</button>` : ''}
         </div>
         <div style="margin-bottom:var(--space-3);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
@@ -1385,29 +1453,10 @@ window.ArenaPage = {
       this.loadCrewWalletTransactions(crewId, myMembership?.role);
       document.getElementById('btn-detail-new-spend')
         ?.addEventListener('click', () => {
-          const form = document.getElementById('crew-detail-spend-form');
-          form.style.display = form.style.display === 'none' ? 'block' : 'none';
-        });
-      document.getElementById('btn-cancel-spend')
-        ?.addEventListener('click', () => {
-          document.getElementById('crew-detail-spend-form').style.display = 'none';
-        });
-      document.getElementById('btn-submit-spend')
-        ?.addEventListener('click', async () => {
-          const amount = parseFloat(document.getElementById('spend-amount-input').value);
-          const reason = document.getElementById('spend-reason-input').value.trim();
-          if (!amount || amount <= 0) return AURUM.showToast('Enter a valid amount.', 'error');
-          if (!reason) return AURUM.showToast('A reason is required.', 'error');
-          try {
-            const result = await AURUM.CrewAPI.initiateSpend(crewId, amount, reason);
-            AURUM.showToast(
-              result.spend?.status === 'executed' ? 'Spend executed.' : 'Spend submitted, awaiting co-sign.',
-              'default'
-            );
-            this.openCrewDetail(crewId);
-          } catch (err) {
-            AURUM.showToast(err.message || 'Could not submit spend.', 'error');
-          }
+          this.activeSpendCrewId = crewId;
+          document.getElementById('spend-amount-input').value = '';
+          document.getElementById('spend-reason-input').value = '';
+          document.getElementById('request-spend-modal').style.display = 'flex';
         });
       document.getElementById('btn-detail-leave')
         ?.addEventListener('click', async () => {
@@ -1529,46 +1578,33 @@ window.ArenaPage = {
         const canAct = myRole === 'moderator' && t.status === 'pending_cosign';
         const canFlag = myRole === 'member' && t.status === 'executed';
         return `
-          <div style="padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
+          <div style="padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);${canAct ? 'cursor:pointer;' : ''}"
+            ${canAct ? `class="btn-review-cosign" data-txn-id="${t.id}" data-amount="${t.amount_usd}" data-reason="${this.escapeHTML(t.reason || '')}" data-by="${this.escapeHTML(t.initiated_by_username || 'unknown')}" data-required="${t.required_cosigns}"` : ''}>
             <div style="display:flex;justify-content:space-between;">
               <span class="mono">-$${t.amount_usd.toFixed(2)}</span>
               <span style="font-size:10px;color:${statusColor};text-transform:uppercase;">${t.status.replace('_', ' ')}</span>
             </div>
             <p style="font-size:var(--text-sm);color:var(--color-text-muted);">${this.escapeHTML(t.reason || '')}</p>
             <p style="font-size:11px;color:var(--color-text-muted);">by ${this.escapeHTML(t.initiated_by_username || 'unknown')}${t.status === 'pending_cosign' ? ` · needs ${t.required_cosigns} co-sign(s)` : ''}</p>
-            ${canAct ? `
-              <div style="display:flex;gap:var(--space-2);margin-top:var(--space-1);">
-                <button class="btn btn-ghost btn-sm btn-cosign-spend" data-txn-id="${t.id}">Co-sign</button>
-                <button class="btn btn-ghost btn-sm btn-veto-spend" data-txn-id="${t.id}">Veto</button>
-              </div>
-            ` : ''}
+            ${canAct ? `<p style="font-size:11px;color:var(--color-gold);margin-top:var(--space-1);">Tap to review ›</p>` : ''}
             ${canFlag ? `
               <button class="btn btn-ghost btn-sm btn-flag-spend" data-txn-id="${t.id}" style="margin-top:var(--space-1);">Flag this spend</button>
             ` : ''}
           </div>
         `;
       }).join('');
-      document.querySelectorAll('.btn-cosign-spend').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          try {
-            await AURUM.CrewAPI.cosignSpend(btn.dataset.txnId);
-            AURUM.showToast('Co-signed.', 'default');
-            this.loadCrewWalletTransactions(crewId, myRole);
-          } catch (err) {
-            AURUM.showToast(err.message || 'Could not co-sign.', 'error');
-          }
-        });
-      });
-      document.querySelectorAll('.btn-veto-spend').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const reason = prompt('Reason for veto (optional):') || '';
-          try {
-            await AURUM.CrewAPI.vetoSpend(btn.dataset.txnId, reason);
-            AURUM.showToast('Spend vetoed.', 'default');
-            this.loadCrewWalletTransactions(crewId, myRole);
-          } catch (err) {
-            AURUM.showToast(err.message || 'Could not veto.', 'error');
-          }
+      document.querySelectorAll('.btn-review-cosign').forEach(row => {
+        row.addEventListener('click', () => {
+          this.activeCosignTxnId  = row.dataset.txnId;
+          this.activeCosignCrewId = crewId;
+          this.activeCosignMyRole = myRole;
+          document.getElementById('cosign-requested-by').textContent = row.dataset.by;
+          document.getElementById('cosign-reason').textContent = row.dataset.reason || '—';
+          document.getElementById('cosign-amount').textContent = '$' + parseFloat(row.dataset.amount).toFixed(2);
+          document.getElementById('cosign-veto-reason-input').value = '';
+          document.getElementById('cosign-status-note').textContent =
+            `Requires ${row.dataset.required} moderator co-sign(s) to release funds.`;
+          document.getElementById('cosign-request-modal').style.display = 'flex';
         });
       });
       document.querySelectorAll('.btn-flag-spend').forEach(btn => {
@@ -1971,6 +2007,73 @@ async openCrewChat(crewId, crewName) {
     } finally {
       btn.textContent = 'Launch Battle';
       btn.disabled    = false;
+    }
+  },
+
+  async submitSpendRequest() {
+    const crewId = this.activeSpendCrewId;
+    const amount = parseFloat(document.getElementById('spend-amount-input').value);
+    const reason = document.getElementById('spend-reason-input').value.trim();
+    const btn    = document.getElementById('btn-submit-spend');
+
+    if (!amount || amount <= 0) return AURUM.showToast('Enter a valid amount.', 'error');
+    if (!reason) return AURUM.showToast('A reason is required.', 'error');
+    if (!crewId) return AURUM.showToast('Could not identify crew.', 'error');
+
+    btn.textContent = 'Submitting...';
+    btn.disabled    = true;
+
+    try {
+      const result = await AURUM.CrewAPI.initiateSpend(crewId, amount, reason);
+      document.getElementById('request-spend-modal').style.display = 'none';
+      AURUM.showToast(
+        result.spend?.status === 'executed' ? 'Spend executed.' : 'Spend submitted, awaiting co-sign.',
+        'default'
+      );
+      this.openCrewDetail(crewId);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not submit spend.', 'error');
+    } finally {
+      btn.textContent = 'Submit';
+      btn.disabled    = false;
+    }
+  },
+
+  async approveCosignRequest() {
+    const txnId  = this.activeCosignTxnId;
+    const crewId = this.activeCosignCrewId;
+    const myRole = this.activeCosignMyRole;
+    const btn    = document.getElementById('btn-approve-cosign');
+
+    btn.textContent = 'Co-signing...';
+    btn.disabled    = true;
+
+    try {
+      await AURUM.CrewAPI.cosignSpend(txnId);
+      document.getElementById('cosign-request-modal').style.display = 'none';
+      AURUM.showToast('Co-signed.', 'default');
+      this.loadCrewWalletTransactions(crewId, myRole);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not co-sign.', 'error');
+    } finally {
+      btn.textContent = 'Approve (Co-Sign)';
+      btn.disabled    = false;
+    }
+  },
+
+  async rejectCosignRequest() {
+    const txnId  = this.activeCosignTxnId;
+    const crewId = this.activeCosignCrewId;
+    const myRole = this.activeCosignMyRole;
+    const reason = document.getElementById('cosign-veto-reason-input').value.trim();
+
+    try {
+      await AURUM.CrewAPI.vetoSpend(txnId, reason);
+      document.getElementById('cosign-request-modal').style.display = 'none';
+      AURUM.showToast('Spend vetoed.', 'default');
+      this.loadCrewWalletTransactions(crewId, myRole);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not veto.', 'error');
     }
   },
 
