@@ -109,6 +109,28 @@ export async function requireAuthFromQuery(request, env) {
     return { error: err.message };
   }
 }
+/**
+ * Auth check for endpoints that are publicly viewable but should
+ * personalize their response when a valid session exists. Never
+ * throws or blocks the request — returns { id: null } if there's
+ * no token, a malformed header, or the token fails to verify.
+ */
+export async function optionalAuth(request, env) {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return { id: null };
+  }
+  const token = authHeader.slice(7);
+  try {
+    const payload = await verifyJWT(token);
+    return {
+      id:    payload.sub,
+      email: payload.email ?? null,
+    };
+  } catch (err) {
+    return { id: null };
+  }
+}
 
 /**
  * Verify the request is from an admin.
