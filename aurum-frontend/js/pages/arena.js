@@ -274,10 +274,12 @@ window.ArenaPage = {
       </div>
 
       <!-- Crew Chat Modal -->
-      <div class="modal-overlay" id="crew-chat-modal" style="display:none;">
-        <div class="modal" style="display:flex;flex-direction:column;height:80vh;max-height:600px;">
+      <div class="modal" style="display:flex;flex-direction:column;height:80vh;max-height:600px;">
           <div class="modal-handle"></div>
-          <h3 class="modal-title" id="crew-chat-title">Crew Chat</h3>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2);">
+            <h3 class="modal-title" id="crew-chat-title" style="margin:0;">Crew Chat</h3>
+            <button class="btn btn-ghost btn-sm" id="btn-open-crew-profile-from-chat">Crew Profile ›</button>
+          </div>
           <div id="crew-chat-messages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2) 0;"></div>
           <div id="crew-chat-reply-bar-container"></div>
           <div style="display:flex;gap:var(--space-2);padding-top:var(--space-3);">
@@ -1164,7 +1166,8 @@ window.ArenaPage = {
   crewHTML(crew, index) {
     return `
       <div class="challenge-card card fade-in" style="animation-delay:${index * 80}ms;">
-        <div class="challenge-top" style="cursor:pointer;" data-crew-detail-id="${crew.id}">
+        <div class="challenge-top" style="cursor:pointer;"
+          ${crew.user_member ? `data-crew-chat-id="${crew.id}" data-crew-chat-name="${this.escapeHTML(crew.name)}"` : `data-crew-detail-id="${crew.id}"`}>
           <div class="challenge-icon">⚔️</div>
           <div class="challenge-info">
             <p class="challenge-title">${crew.name}</p>
@@ -1242,6 +1245,13 @@ window.ArenaPage = {
       el.dataset.bound = '1';
       el.addEventListener('click', () => {
         this.openCrewDetail(el.dataset.crewDetailId);
+      });
+    });
+	  document.querySelectorAll('[data-crew-chat-id]').forEach(el => {
+      if (el.dataset.bound) return;
+      el.dataset.bound = '1';
+      el.addEventListener('click', () => {
+        this.openCrewChat(el.dataset.crewChatId, el.dataset.crewChatName);
       });
     });
   },
@@ -1578,10 +1588,15 @@ window.ArenaPage = {
       container.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm);">Failed to load activity.</p>`;
     }
   },
-  async openCrewChat(crewId, crewName) {
+async openCrewChat(crewId, crewName) {
     this.activeChatCrewId = crewId;
     document.getElementById('crew-chat-title').textContent = crewName || 'Crew Chat';
     document.getElementById('crew-chat-modal').style.display = 'flex';
+    document.getElementById('btn-open-crew-profile-from-chat').onclick = () => {
+      document.getElementById('crew-chat-modal').style.display = 'none';
+      this.closeCrewChat();
+      this.openCrewDetail(crewId);
+    };
 
     const list = document.getElementById('crew-chat-messages');
     list.innerHTML = '<p style="text-align:center;color:var(--color-text-muted);font-size:var(--text-sm);">Loading...</p>';
