@@ -342,6 +342,24 @@ window.ArenaPage = {
         </div>
       </div>
 
+            <!-- Battle Vote Modal -->
+      <div class="modal-overlay" id="battle-vote-modal" style="display:none;">
+        <div class="modal">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title" id="battle-vote-title">Crew Battle</h3>
+          <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3);">Pick the crew you think should win this battle.</p>
+          <div class="card" id="battle-vote-option-a" style="cursor:pointer;margin-bottom:var(--space-2);display:flex;justify-content:space-between;align-items:center;">
+            <span id="battle-vote-option-a-label" style="font-weight:700;">—</span>
+            <span class="badge badge-muted" id="battle-vote-option-a-pct">—</span>
+          </div>
+          <div class="card" id="battle-vote-option-b" style="cursor:pointer;margin-bottom:var(--space-2);display:flex;justify-content:space-between;align-items:center;">
+            <span id="battle-vote-option-b-label" style="font-weight:700;">—</span>
+            <span class="badge badge-muted" id="battle-vote-option-b-pct">—</span>
+          </div>
+          <p style="font-size:var(--text-xs);color:var(--color-text-muted);" id="battle-vote-status"></p>
+        </div>
+      </div>
+
       <div class="modal-overlay" id="crew-detail-modal" style="display:none;">
         <div class="modal" style="display:flex;flex-direction:column;max-height:80vh;overflow-y:auto;">
           <div class="modal-handle"></div>
@@ -486,8 +504,19 @@ window.ArenaPage = {
         if (e.target.id === 'cosign-request-modal')
           e.target.style.display = 'none';
       });
-    document.getElementById('btn-approve-cosign')
+        document.getElementById('btn-approve-cosign')
       ?.addEventListener('click', () => this.approveCosignRequest());
+
+    /* Battle Vote modal */
+    document.getElementById('battle-vote-option-a')
+      ?.addEventListener('click', (e) => this.castBattleVote(e.currentTarget.dataset.crewId));
+    document.getElementById('battle-vote-option-b')
+      ?.addEventListener('click', (e) => this.castBattleVote(e.currentTarget.dataset.crewId));
+    document.getElementById('battle-vote-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'battle-vote-modal')
+          e.target.style.display = 'none';
+      });
   },
 
   switchSection(section) {
@@ -1416,11 +1445,12 @@ window.ArenaPage = {
           <p class="mono" style="font-size:var(--text-lg);">$${(crew.balance_usd || 0).toFixed(2)}</p>
           ${isCaptain ? `<button class="btn btn-outline btn-sm" id="btn-detail-new-spend" style="margin-top:var(--space-1);">Request Spend</button>` : ''}
         </div>
-        <div style="margin-bottom:var(--space-3);">
+                <div style="margin-bottom:var(--space-3);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
             text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Wallet Activity</p>
           <div id="crew-detail-transactions"><p style="font-size:var(--text-sm);color:var(--color-text-muted);">Loading...</p></div>
         </div>
+        <div id="crew-detail-battle-section"></div>
         <div class="crew-rules-block">
           <div class="crew-rules-header">
             <p class="crew-rules-label">✦ Crew Codex</p>
@@ -1451,6 +1481,7 @@ window.ArenaPage = {
           this.openCrewChat(crewId, crew.name);
         });
       this.loadCrewWalletTransactions(crewId, myMembership?.role);
+      this.loadCrewBattleSection(crewId, me?.id);
       document.getElementById('btn-detail-new-spend')
         ?.addEventListener('click', () => {
           this.activeSpendCrewId = crewId;
@@ -1620,11 +1651,87 @@ window.ArenaPage = {
           }
         });
       });
-    } catch (err) {
+        } catch (err) {
       container.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm);">Failed to load activity.</p>`;
     }
   },
-async openCrewChat(crewId, crewName) {
+
+  async loadCrewBattleSection(crewId, myUserId) {
+    const container = document.getElementById('crew-detail-battle-section');
+    if (!container) return;
+    try {
+      const { battle } = await AURUM.CrewAPI.getActiveBattle(crewId);
+      if (!battle) { container.innerHTML = ''; return; }
+      this.activeCrewBattle = battle;
+      const isChallengerSide = battle.challenger_crew_id === crewId;
+      const usName   = isChallengerSide ? battle.challenger_crew_name : battle.target_crew_name;
+      const themName = isChallengerSide ? battle.target_crew_name     : battle.challenger_crew_name;
+      const usPct    = isChallengerSide ? battle.challenger_pct       : battle.target_pct;
+      const themPct  = isChallengerSide ? battle.target_pct           : battle.challenger_pct;
+      container.innerHTML = `
+        <div style="margin-bottom:var(--space-3);">
+          <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+            text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Crew Battle</p>
+          <div class="card card-sm">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">
+              <span style="font-weight:700;">${this.escapeHTML(usName)} <span style="color:var(--color-text-muted);">vs</span> ${this.escapeHTML(themName)}</span>
+              <span class="badge badge-muted" style="font-size:9px;">${battle.status === 'pending' ? 'Voting Open' : battle.status}</span>
+            </div>
+            <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-2);">${this.escapeHTML(battle.title)} · ${battle.total_votes} vote(s)</p>
+            <div style="display:flex;gap:2px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:var(--space-2);">
+              <div style="width:${usPct}%;background:var(--color-gold);"></div>
+              <div style="width:${themPct}%;background:var(--color-surface-2);"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-muted);margin-bottom:var(--space-3);">
+              <span>${this.escapeHTML(usName)}: ${usPct}%</span>
+              <span>${this.escapeHTML(themName)}: ${themPct}%</span>
+            </div>
+            ${battle.can_vote ? `
+              <button class="btn btn-outline btn-full btn-sm" id="btn-open-battle-vote">
+                ${battle.my_vote ? 'Change Your Vote' : 'Cast Your Vote'}
+              </button>
+            ` : `<p style="font-size:11px;color:var(--color-text-muted);">Members of either crew cannot vote on this battle.</p>`}
+          </div>
+        </div>
+      `;
+      document.getElementById('btn-open-battle-vote')
+        ?.addEventListener('click', () => this.openBattleVoteSheet(crewId, myUserId));
+    } catch (err) {
+      container.innerHTML = '';
+    }
+  },
+
+  openBattleVoteSheet(crewId, myUserId) {
+    const battle = this.activeCrewBattle;
+    if (!battle) return;
+    this.activeVoteCrewId = crewId;
+    this.activeVoteUserId = myUserId;
+    document.getElementById('battle-vote-title').textContent = battle.title;
+    document.getElementById('battle-vote-option-a').dataset.crewId = battle.challenger_crew_id;
+    document.getElementById('battle-vote-option-a-label').textContent = battle.challenger_crew_name;
+    document.getElementById('battle-vote-option-a-pct').textContent = battle.challenger_pct + '%';
+    document.getElementById('battle-vote-option-b').dataset.crewId = battle.target_crew_id;
+    document.getElementById('battle-vote-option-b-label').textContent = battle.target_crew_name;
+    document.getElementById('battle-vote-option-b-pct').textContent = battle.target_pct + '%';
+    document.getElementById('battle-vote-status').textContent =
+      battle.my_vote ? 'You already voted — tap to change your vote' : 'Tap a crew to cast your vote';
+    document.getElementById('battle-vote-modal').style.display = 'flex';
+  },
+
+  async castBattleVote(votedCrewId) {
+    const battle = this.activeCrewBattle;
+    if (!battle) return;
+    try {
+      await AURUM.CrewAPI.voteBattle(battle.id, votedCrewId);
+      AURUM.showToast('Vote recorded.', 'gold');
+      document.getElementById('battle-vote-modal').style.display = 'none';
+      this.loadCrewBattleSection(this.activeVoteCrewId, this.activeVoteUserId);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not cast vote.', 'error');
+    }
+  },
+
+  async openCrewChat(crewId, crewName) {
     this.activeChatCrewId = crewId;
     document.getElementById('crew-chat-title').textContent = crewName || 'Crew Chat';
     document.getElementById('crew-chat-modal').style.display = 'flex';
