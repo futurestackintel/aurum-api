@@ -37,6 +37,7 @@ import {
   deleteCrewMessage,
   getCrewMessages,
   getCrewWalletTransactions,
+  getActiveCrewBattle,
 } from '../services/crew.js';
 import { setReaction, removeReaction, getReactionsForMessages } from '../services/reactions.js';
 import { requireAuth, requireAdmin, requireAuthFromQuery, optionalAuth } from '../middleware/auth.js';
@@ -117,6 +118,19 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Create crew battle error:', err);
       return jsonResponse({ error: 'Unable to create crew battle. Please try again.' }, 500);
+    }
+  }
+
+  // ── GET /api/crews/:id/battle/active — current battle + live tally ──
+  const activeBattleMatch = path.match(/^\/api\/crews\/([^/]+)\/battle\/active$/);
+  if (activeBattleMatch && method === 'GET') {
+    try {
+      const user   = await optionalAuth(request, env);
+      const result = await getActiveCrewBattle(activeBattleMatch[1], user.id, db);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Get active crew battle error:', err);
+      return jsonResponse({ error: 'Unable to load battle. Please try again.' }, 500);
     }
   }
 
