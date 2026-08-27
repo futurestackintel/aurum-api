@@ -274,7 +274,8 @@ window.ArenaPage = {
       </div>
 
       <!-- Crew Chat Modal -->
-      <div class="modal" style="display:flex;flex-direction:column;height:80vh;max-height:600px;">
+      <div class="modal-overlay" id="crew-chat-modal" style="display:none;">
+        <div class="modal" style="display:flex;flex-direction:column;height:80vh;max-height:600px;">
           <div class="modal-handle"></div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2);">
             <h3 class="modal-title" id="crew-chat-title" style="margin:0;">Crew Chat</h3>
