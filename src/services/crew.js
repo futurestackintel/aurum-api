@@ -1359,7 +1359,19 @@ export async function getCrewById(crewId, db) {
 
 // ── GET ALL CREWS ────────────────────────────────────────────
 
-export async function getCrews(limit, offset, db) {
+export async function getCrews(limit, offset, clerkId, db) {
+  let myCrewId = null;
+  if (clerkId) {
+    const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+    if (userRow) {
+      const membership = await db
+        .prepare(`SELECT crew_id FROM crew_members WHERE user_id = ?`)
+        .bind(userRow.id)
+        .first();
+      if (membership) myCrewId = membership.crew_id;
+    }
+  }
+
   const { results } = await db
     .prepare(`
       SELECT id, name, description, member_count, created_at
@@ -1370,5 +1382,5 @@ export async function getCrews(limit, offset, db) {
     .bind(limit ?? 20, offset ?? 0)
     .all();
 
-  return results;
+  return results.map(c => ({ ...c, user_member: c.id === myCrewId }));
 }
