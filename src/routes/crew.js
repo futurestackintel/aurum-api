@@ -46,10 +46,11 @@ export async function handleCrewRoutes(path, method, request, env) {
   // ── GET /api/crews ──────────────────────────────────────
   if (path === '/api/crews' && method === 'GET') {
     try {
+      const user   = await optionalAuth(request, env);
       const url    = new URL(request.url);
       const limit  = parseInt(url.searchParams.get('limit')  ?? '20');
       const offset = parseInt(url.searchParams.get('offset') ?? '0');
-      const crews  = await getCrews(limit, offset, db);
+      const crews  = await getCrews(limit, offset, user.id, db);
       return jsonResponse({ crews });
     } catch (err) {
       console.error('Get crews error:', err);
