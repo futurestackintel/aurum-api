@@ -666,6 +666,7 @@ const BackNav = {
 window.AURUM = {
   Auth,
   AuthAPI,
+  BackNav,
   AdminAPI,
   LeaderboardAPI,
   StatsAPI,
