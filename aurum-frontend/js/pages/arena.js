@@ -1272,8 +1272,7 @@ window.ArenaPage = {
   crewHTML(crew, index) {
     return `
       <div class="challenge-card card fade-in" style="animation-delay:${index * 80}ms;">
-        <div class="challenge-top" style="cursor:pointer;"
-          ${crew.user_member ? `data-crew-chat-id="${crew.id}" data-crew-chat-name="${this.escapeHTML(crew.name)}"` : `data-crew-detail-id="${crew.id}"`}>
+        <div class="challenge-top" ${crew.user_member ? `style="cursor:pointer;" data-crew-chat-id="${crew.id}" data-crew-chat-name="${this.escapeHTML(crew.name)}"` : ''}>
           <div class="challenge-icon">⚔️</div>
           <div class="challenge-info">
             <p class="challenge-title">${crew.name}</p>
