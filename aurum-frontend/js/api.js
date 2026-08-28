@@ -323,7 +323,7 @@ const CrewAPI = {
   getCrews: (limit = 20, offset = 0) =>
     apiRequest('GET', `/api/crews?limit=${limit}&offset=${offset}`, null, 'optional'),
   getCrew: (id) =>
-    apiRequest('GET', `/api/crews/${id}`, null, false),
+    apiRequest('GET', `/api/crews/${id}`),
 
   createCrew: (data) =>
     apiRequest('POST', '/api/crews', data),
