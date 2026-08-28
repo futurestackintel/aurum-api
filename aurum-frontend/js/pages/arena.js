@@ -361,6 +361,19 @@ window.ArenaPage = {
         </div>
       </div>
 
+      <!-- Member Action Modal -->
+      <div class="modal-overlay" id="member-action-modal" style="display:none;">
+        <div class="modal">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title" id="member-action-title">Member</h3>
+          <div style="display:flex;flex-direction:column;gap:var(--space-3);">
+            <button class="btn btn-outline btn-full" id="btn-action-promote" style="display:none;">Promote to Moderator</button>
+            <button class="btn btn-outline btn-full" id="btn-action-mute" style="display:none;">Mute in Crew Chat</button>
+            <button class="btn btn-danger btn-full" id="btn-action-kick" style="display:none;">Remove from Crew</button>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-overlay" id="crew-detail-modal" style="display:none;">
         <div class="modal" style="display:flex;flex-direction:column;max-height:80vh;overflow-y:auto;">
           <div class="modal-handle"></div>
@@ -517,6 +530,53 @@ window.ArenaPage = {
       ?.addEventListener('click', e => {
         if (e.target.id === 'battle-vote-modal')
           e.target.style.display = 'none';
+      });
+
+    /* Member Action modal */
+    document.getElementById('member-action-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'member-action-modal')
+          e.target.style.display = 'none';
+      });
+    document.getElementById('btn-action-promote')
+      ?.addEventListener('click', async (e) => {
+        const makeMod = e.currentTarget.dataset.makeMod === 'true';
+        try {
+          await AURUM.CrewAPI.setModerator(this.activeActionCrewId, this.activeActionUserId, makeMod);
+          document.getElementById('member-action-modal').style.display = 'none';
+          AURUM.showToast(makeMod ? 'Member promoted to moderator.' : 'Moderator demoted.', 'default');
+          this.openCrewDetail(this.activeActionCrewId);
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not update role.', 'error');
+        }
+      });
+    document.getElementById('btn-action-mute')
+      ?.addEventListener('click', async () => {
+        const reason = prompt(`Reason for muting ${this.activeActionUsername}:`);
+        if (!reason || !reason.trim()) return;
+        const durationInput = prompt('Mute duration in hours (e.g. 24):', '24');
+        const duration = parseFloat(durationInput);
+        if (!duration || duration <= 0) return AURUM.showToast('Invalid duration.', 'error');
+        try {
+          await AURUM.CrewAPI.muteMember(this.activeActionCrewId, this.activeActionUserId, duration, reason.trim());
+          document.getElementById('member-action-modal').style.display = 'none';
+          AURUM.showToast(`${this.activeActionUsername} muted.`, 'default');
+          this.openCrewDetail(this.activeActionCrewId);
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not mute member.', 'error');
+        }
+      });
+    document.getElementById('btn-action-kick')
+      ?.addEventListener('click', async () => {
+        if (!confirm(`Remove ${this.activeActionUsername} from the crew?`)) return;
+        try {
+          await AURUM.CrewAPI.kickMember(this.activeActionCrewId, this.activeActionUserId);
+          document.getElementById('member-action-modal').style.display = 'none';
+          AURUM.showToast('Member removed.', 'default');
+          this.openCrewDetail(this.activeActionCrewId);
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not remove member.', 'error');
+        }
       });
   },
 
@@ -1384,31 +1444,27 @@ window.ArenaPage = {
       const isCaptain = myMembership?.role === 'captain';
       const isModerator = myMembership?.role === 'moderator';
       this.activeDetailCrewId = crewId;
-      const membersHTML = (crew.members || []).map(m => `
-        <div style="display:flex;justify-content:space-between;align-items:center;
-          padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
+      const membersHTML = (crew.members || []).map(m => {
+        const canPromote = isCaptain && m.user_id !== me?.id && m.role !== 'captain';
+        const canMute    = (isCaptain || isModerator) && m.user_id !== me?.id && m.role !== 'captain';
+        const canKick    = isCaptain && m.user_id !== me?.id && m.role !== 'captain';
+        const actionable = canPromote || canMute || canKick;
+        return `
+        <div class="${actionable ? 'btn-member-row' : ''}"
+          style="display:flex;justify-content:space-between;align-items:center;
+            padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);${actionable ? 'cursor:pointer;' : ''}"
+          ${actionable ? `data-user-id="${m.user_id}" data-username="${this.escapeHTML(m.username)}" data-role="${m.role}" data-can-promote="${canPromote}" data-can-mute="${canMute}" data-can-kick="${canKick}"` : ''}>
           <div style="display:flex;align-items:center;gap:var(--space-2);">
             <div class="avatar avatar-sm" style="width:24px;height:24px;font-size:11px;">${AURUM.avatarInnerHTML(m.avatar_url, this.escapeHTML(m.username).charAt(0).toUpperCase())}</div>
             <span>${this.escapeHTML(m.username)}</span>
           </div>
-          </div>
           <div style="display:flex;gap:var(--space-2);align-items:center;">
             <span class="badge badge-muted" style="font-size:9px;">${m.role}</span>
-            ${isCaptain && m.user_id !== me?.id && m.role !== 'captain' ? `
-              <button class="btn btn-ghost btn-sm btn-detail-promote"
-                data-user-id="${m.user_id}" data-make-mod="${m.role !== 'moderator'}">
-                ${m.role === 'moderator' ? 'Demote' : 'Promote'}
-              </button>
-              <button class="btn btn-ghost btn-sm btn-detail-kick"
-                data-user-id="${m.user_id}">Kick</button>
-            ` : ''}
-            ${(isCaptain || isModerator) && m.user_id !== me?.id && m.role !== 'captain' ? `
-              <button class="btn btn-ghost btn-sm btn-detail-mute"
-                data-user-id="${m.user_id}" data-username="${this.escapeHTML(m.username)}">Mute</button>
-            ` : ''}
+            ${actionable ? `<span style="color:var(--color-text-muted);font-size:11px;">›</span>` : ''}
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
       body.innerHTML = `
         ${crew.description ? `
           <p style="font-size:var(--text-sm);color:var(--color-text-muted);
@@ -1480,6 +1536,22 @@ window.ArenaPage = {
           modal.style.display = 'none';
           this.openCrewChat(crewId, crew.name);
         });
+      document.querySelectorAll('.btn-member-row').forEach(row => {
+        row.addEventListener('click', () => {
+          this.activeActionCrewId  = crewId;
+          this.activeActionUserId  = row.dataset.userId;
+          this.activeActionUsername = row.dataset.username;
+          const isMod = row.dataset.role === 'moderator';
+          document.getElementById('member-action-title').textContent = row.dataset.username;
+          const promoteBtn = document.getElementById('btn-action-promote');
+          promoteBtn.style.display = row.dataset.canPromote === 'true' ? 'block' : 'none';
+          promoteBtn.textContent = isMod ? 'Demote to Member' : 'Promote to Moderator';
+          promoteBtn.dataset.makeMod = isMod ? 'false' : 'true';
+          document.getElementById('btn-action-mute').style.display = row.dataset.canMute === 'true' ? 'block' : 'none';
+          document.getElementById('btn-action-kick').style.display = row.dataset.canKick === 'true' ? 'block' : 'none';
+          document.getElementById('member-action-modal').style.display = 'flex';
+        });
+      });
       this.loadCrewWalletTransactions(crewId, myMembership?.role);
       this.loadCrewBattleSection(crewId, me?.id);
       document.getElementById('btn-detail-new-spend')
@@ -1549,47 +1621,7 @@ window.ArenaPage = {
             AURUM.showToast(err.message || 'Could not update rules.', 'error');
           }
         });
-      document.querySelectorAll('.btn-detail-mute').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const reason = prompt(`Reason for muting ${btn.dataset.username}:`);
-          if (!reason || !reason.trim()) return;
-          const durationInput = prompt('Mute duration in hours (e.g. 24):', '24');
-          const duration = parseFloat(durationInput);
-          if (!duration || duration <= 0) return AURUM.showToast('Invalid duration.', 'error');
-          try {
-            await AURUM.CrewAPI.muteMember(crewId, btn.dataset.userId, duration, reason.trim());
-            AURUM.showToast(`${btn.dataset.username} muted.`, 'default');
-            this.openCrewDetail(crewId);
-          } catch (err) {
-            AURUM.showToast(err.message || 'Could not mute member.', 'error');
-          }
-        });
-      });
-      document.querySelectorAll('.btn-detail-kick').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('Remove this member from the crew?')) return;
-          try {
-            await AURUM.CrewAPI.kickMember(crewId, btn.dataset.userId);
-            AURUM.showToast('Member removed.', 'default');
-            this.openCrewDetail(crewId);
-          } catch (err) {
-            AURUM.showToast(err.message || 'Could not remove member.', 'error');
-          }
-        });
-      });
-      document.querySelectorAll('.btn-detail-promote').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const makeMod = btn.dataset.makeMod === 'true';
-          try {
-            await AURUM.CrewAPI.setModerator(crewId, btn.dataset.userId, makeMod);
-            AURUM.showToast(makeMod ? 'Member promoted to moderator.' : 'Moderator demoted.', 'default');
-            this.openCrewDetail(crewId);
-          } catch (err) {
-            AURUM.showToast(err.message || 'Could not update role.', 'error');
-          }
-        });
-      });
-    } catch (err) {
+      } catch (err) {
       body.innerHTML = `<p style="color:var(--color-danger);">Failed to load crew.</p>`;
       AURUM.showToast(err.message || 'Could not load crew.', 'error');
     }
