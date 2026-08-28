@@ -585,9 +585,84 @@ const ProfileCache = {
 };
 
 /* ============================================================
+   BACK NAVIGATION
+   Makes the phone/browser back button close whatever's open
+   instead of leaving the app. Works generically off two things
+   every screen already uses: any element with class
+   "modal-overlay" being shown/hidden via style.display, and
+   App.navigate() switching bottom-nav tabs. No individual modal
+   or page file needs to be touched — this observes the pattern
+   rather than hooking each call site.
+   Known gap: the notification dropdown (uses a CSS class, not
+   style.display) isn't covered yet — low priority, can add later
+   if it turns out to matter.
+============================================================ */
+const BackNav = {
+  stack: [],
+  suppressPop: false,
+
+  init() {
+    history.replaceState({ aurumRoot: true }, '');
+    window.addEventListener('popstate', () => this.handlePopState());
+
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach(m => {
+        if (m.attributeName !== 'style') return;
+        const el = m.target;
+        if (!el.classList || !el.classList.contains('modal-overlay')) return;
+
+        const isOpen = el.style.display === 'flex';
+        const idx = this.stack.findIndex(e => e.type === 'modal' && e.el === el);
+
+        if (isOpen && idx === -1) {
+          this.stack.push({ type: 'modal', el });
+          if (!this.suppressPop) history.pushState({ aurumDepth: this.stack.length }, '');
+        } else if (!isOpen && idx !== -1) {
+          this.stack.splice(idx, 1);
+          if (!this.suppressPop) {
+            /* Closed via a Cancel/X button, not the back gesture —
+               consume the matching history entry so Back still
+               means Back next time, instead of piling up. */
+            this.suppressPop = true;
+            history.back();
+            setTimeout(() => { this.suppressPop = false; }, 0);
+          }
+        }
+      });
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['style'],
+      subtree: true,
+    });
+  },
+
+  pushView(view) {
+    if (this.suppressPop) return;
+    if (view === 'ledger') return; /* home tab — no back-stack entry needed */
+    const lastViewIdx = this.stack.findIndex(e => e.type === 'view');
+    if (lastViewIdx !== -1) this.stack.splice(lastViewIdx, 1);
+    this.stack.push({ type: 'view', view });
+    history.pushState({ aurumDepth: this.stack.length }, '');
+  },
+
+  handlePopState() {
+    if (this.suppressPop) return;
+    const top = this.stack.pop();
+    if (!top) return; /* nothing tracked open — let the browser do its normal thing */
+    this.suppressPop = true;
+    if (top.type === 'modal') {
+      top.el.style.display = 'none';
+    } else if (top.type === 'view') {
+      window.App?.navigate('ledger');
+    }
+    setTimeout(() => { this.suppressPop = false; }, 0);
+  },
+};
+
+/* ============================================================
    EXPORT
 ============================================================ */
-
 window.AURUM = {
   Auth,
   AuthAPI,
