@@ -1005,6 +1005,7 @@
       if (viewEl) viewEl.classList.add('active');
       if (navEl)  navEl.classList.add('active');
       this.currentView = view;
+      AURUM.BackNav?.pushView(view);
       AURUM.Loader.show();
       this.loadView(view);
       AURUM.Loader.hide();
@@ -1599,6 +1600,7 @@
      BOOT
   ===================================================== */
   window.addEventListener('load', () => {
+    AURUM.BackNav.init();
     App.init();
     Notifications.init();
   });
