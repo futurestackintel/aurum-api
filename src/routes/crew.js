@@ -75,10 +75,20 @@ export async function handleCrewRoutes(path, method, request, env) {
     }
   }
 
-  // ── GET /api/crews/:id ──────────────────────────────────
   const singleMatch = path.match(/^\/api\/crews\/([^/]+)$/);
   if (singleMatch && method === 'GET') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
     try {
+      const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(user.id).first();
+      if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
+      const member = await db
+        .prepare(`SELECT id FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+        .bind(singleMatch[1], userRow.id)
+        .first();
+      if (!member) return jsonResponse({ error: 'You must be a member of this crew to view it' }, 403);
+
       const crew = await getCrewById(singleMatch[1], db);
       if (!crew) return jsonResponse({ error: 'Crew not found' }, 404);
       return jsonResponse({ crew });
