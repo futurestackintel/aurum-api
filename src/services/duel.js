@@ -43,13 +43,23 @@ export async function createDuel(clerkId, body, db) {
   const challengerId = await resolveUserId(clerkId, db);
   if (!challengerId) return { error: 'User not found' };
 
-  const { target_username, title, description, duel_tip_amount } = body;
+    const {
+    target_username, title, description, duel_tip_amount,
+    duel_type, quick_game_type,
+  } = body;
 
   if (!target_username)                          return { error: 'target_username is required' };
   if (!title || title.trim().length === 0)       return { error: 'title is required' };
   if (!duel_tip_amount || duel_tip_amount < MIN_DUEL_TIP_AMOUNT) {
     return { error: `Minimum duel tip amount is $${MIN_DUEL_TIP_AMOUNT}` };
   }
+
+  const duelType = duel_type === 'quick' ? 'quick' : 'proof';
+  const VALID_QUICK_GAMES = ['reflex_tap', 'trivia'];
+  if (duelType === 'quick' && !VALID_QUICK_GAMES.includes(quick_game_type)) {
+    return { error: `quick_game_type must be one of: ${VALID_QUICK_GAMES.join(', ')}` };
+  }
+  const quickGameType = duelType === 'quick' ? quick_game_type : null;
 
   const target = await db
     .prepare(`SELECT id, username FROM users WHERE username = ?`)
@@ -76,12 +86,13 @@ export async function createDuel(clerkId, body, db) {
   const expiresAt = new Date(now.getTime() + DUEL_EXPIRY_HOURS * 60 * 60 * 1000);
   const duelId    = crypto.randomUUID();
 
-  await db
+    await db
     .prepare(`
       INSERT INTO duels
         (id, challenger_id, target_id, title, description,
-         duel_tip_amount, status, expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+         duel_tip_amount, status, expires_at, created_at,
+         duel_type, quick_game_type)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
     `)
     .bind(
       duelId,
@@ -92,6 +103,8 @@ export async function createDuel(clerkId, body, db) {
       duel_tip_amount,
       expiresAt.toISOString(),
       now.toISOString(),
+      duelType,
+      quickGameType,
     )
     .run();
 
@@ -100,7 +113,7 @@ export async function createDuel(clerkId, body, db) {
     .bind(challengerId)
     .first();
 
-  return {
+    return {
     duel: {
       id:              duelId,
       challenger:      challenger?.username ?? null,
@@ -111,6 +124,8 @@ export async function createDuel(clerkId, body, db) {
       status:          'pending',
       expires_at:      expiresAt.toISOString(),
       created_at:      now.toISOString(),
+      duel_type:       duelType,
+      quick_game_type: quickGameType,
     },
   };
 }
