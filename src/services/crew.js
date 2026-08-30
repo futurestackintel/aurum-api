@@ -687,7 +687,11 @@ export async function isMemberMuted(crewId, userId, db) {
 return activeMute ? { muted: true, muted_until: activeMute.muted_until, reason: activeMute.reason } : { muted: false };
 }
 
-export async function deleteCrewMessage(messageId, userId, db) {
+export async function deleteCrewMessage(messageId, clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
   const message = await db
     .prepare(`SELECT crew_id, deleted_at FROM crew_messages WHERE id = ?`)
     .bind(messageId)
