@@ -32,6 +32,7 @@ import {
   castDuelVote,
   reportDuelCheating,
   decideDuelDispute,
+  submitQuickDuelScore,
 } from '../services/duel.js';
 
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -241,6 +242,25 @@ export async function handleDuelRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Report duel error:', err);
       return jsonResponse({ error: 'Unable to submit report. Please try again.' }, 500);
+    }
+  }
+
+    // ── POST /api/duels/:id/score ────────────────────────────
+  // Quick Duel score submission — blind-then-reveal, resolves
+  // and pays out automatically once both players have submitted.
+  const scoreMatch = path.match(/^\/api\/duels\/([^/]+)\/score$/);
+  if (scoreMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body   = await request.json();
+      const result = await submitQuickDuelScore(scoreMatch[1], user.id, body.score, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Submit quick duel score error:', err);
+      return jsonResponse({ error: 'Unable to submit score. Please try again.' }, 500);
     }
   }
 
