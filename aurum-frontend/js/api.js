@@ -175,8 +175,10 @@ getDuels:    (limit = 20, offset = 0) =>
 
   vote:        (id, participantId) =>
     apiRequest('POST', `/api/duels/${id}/vote/${participantId}`),
-};
 
+  submitScore: (id, score) =>
+    apiRequest('POST', `/api/duels/${id}/score`, { score }),
+};
 /* --- Tips --- */
 const TipsAPI = {
   send: (data) => apiRequest('POST', '/api/tips', data),
