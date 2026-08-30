@@ -2629,9 +2629,34 @@ window.ArenaPage = {
         animation: vsPulse 2s ease-in-out infinite;
       }
 
-      @keyframes vsPulse {
+            @keyframes vsPulse {
         0%, 100% { text-shadow: 0 0 6px rgba(201,168,76,0.35); }
         50%      { text-shadow: 0 0 16px rgba(201,168,76,0.75); }
+      }
+
+      .duel-marquee-wrap {
+        overflow: hidden;
+        white-space: nowrap;
+        background: var(--color-gold-glow);
+        border: 1px solid var(--color-border-gold);
+        border-radius: var(--radius-md);
+        padding: var(--space-2) 0;
+        margin-bottom: var(--space-3);
+      }
+
+      .duel-marquee-track {
+        display: inline-block;
+        padding-left: 100%;
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--color-gold);
+        letter-spacing: 0.02em;
+        animation: duelMarqueeScroll 18s linear infinite;
+      }
+
+      @keyframes duelMarqueeScroll {
+        0%   { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
       }
 
       /* Crew chat */
