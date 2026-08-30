@@ -1116,7 +1116,16 @@ window.ArenaPage = {
               data-duel-id="${duel.id}">Decline</button>
           ` : ''}
 
-          ${isActive ? `
+          ${isActive && duel.duel_type === 'quick' && (duel.is_challenger || duel.is_opponent) ? `
+            <button class="btn btn-primary btn-full btn-sm btn-play-quick-duel"
+              data-duel-id="${duel.id}"
+              data-game-type="${duel.quick_game_type}"
+              style="flex:1;">
+              ▶ Play Now
+            </button>
+          ` : ''}
+
+          ${isActive && duel.duel_type !== 'quick' ? `
             <!-- Audience tip buttons — held in escrow, not paid out instantly -->
             <button class="btn btn-ghost btn-sm btn-tip-challenger"
               data-duel-id="${duel.id}"
