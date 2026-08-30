@@ -515,6 +515,115 @@ export async function castDuelVote(duelId, participantId, clerkId, db) {
   };
 }
 
+// ── FEATURE: SUBMIT QUICK DUEL SCORE ─────────────────────────
+// Records one participant's score for a Quick Duel (duel_type =
+// 'quick'). Blind-then-reveal: scores are stored but neither
+// player's score is exposed until BOTH have submitted, at which
+// point the higher score wins and payout is released immediately
+// via the existing releaseDuelEscrow — no vote or dispute window,
+// since the game itself is the proof.
+
+export async function submitQuickDuelScore(duelId, clerkId, score, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
+  if (typeof score !== 'number' || score < 0) {
+    return { error: 'A valid score is required' };
+  }
+
+  const duel = await db
+    .prepare(`SELECT * FROM duels WHERE id = ?`)
+    .bind(duelId)
+    .first();
+
+  if (!duel)                       return { error: 'Duel not found' };
+  if (duel.duel_type !== 'quick')  return { error: 'This duel is not a Quick Duel' };
+  if (duel.status !== 'active')    return { error: 'Duel is not active' };
+  if (duel.challenger_id !== userId && duel.target_id !== userId) {
+    return { error: 'You are not a participant in this duel' };
+  }
+
+  const isChallenger = duel.challenger_id === userId;
+  const now          = nowISO();
+
+  let result = await db
+    .prepare(`SELECT * FROM quick_duel_results WHERE duel_id = ?`)
+    .bind(duelId)
+    .first();
+
+  if (!result) {
+    await db.prepare(`
+      INSERT INTO quick_duel_results (id, duel_id, created_at)
+      VALUES (?, ?, ?)
+    `).bind(crypto.randomUUID(), duelId, now).run();
+
+    result = await db
+      .prepare(`SELECT * FROM quick_duel_results WHERE duel_id = ?`)
+      .bind(duelId)
+      .first();
+  }
+
+  const alreadySubmitted = isChallenger
+    ? result.challenger_submitted_at
+    : result.target_submitted_at;
+
+  if (alreadySubmitted) {
+    return { error: 'You have already submitted a score for this duel' };
+  }
+
+  const scoreField     = isChallenger ? 'challenger_score'          : 'target_score';
+  const submittedField = isChallenger ? 'challenger_submitted_at'   : 'target_submitted_at';
+
+  await db.prepare(`
+    UPDATE quick_duel_results SET ${scoreField} = ?, ${submittedField} = ? WHERE duel_id = ?
+  `).bind(score, now, duelId).run();
+
+  const updated = await db
+    .prepare(`SELECT * FROM quick_duel_results WHERE duel_id = ?`)
+    .bind(duelId)
+    .first();
+
+  const bothIn = updated.challenger_submitted_at && updated.target_submitted_at;
+
+  if (!bothIn) {
+    return { submitted: true, duel_id: duelId, waiting_on_opponent: true };
+  }
+
+  // Both scores are in — resolve immediately, no vote/dispute window
+  let winnerId;
+  if (updated.challenger_score > updated.target_score)      winnerId = duel.challenger_id;
+  else if (updated.target_score > updated.challenger_score) winnerId = duel.target_id;
+  else {
+    // True tie — needs admin review, same path as a tied vote duel
+    await db.prepare(`
+      UPDATE duels SET status = 'tied', dispute_status = 'reported', resolved_at = ? WHERE id = ?
+    `).bind(now, duelId).run();
+    return {
+      submitted: true, duel_id: duelId, both_submitted: true, tied: true,
+      needs_admin_review: true,
+    };
+  }
+
+  const payout = await releaseDuelEscrow(duelId, winnerId, duel, db);
+  if (payout.error) return payout;
+
+  await db.prepare(`
+    UPDATE duels
+    SET winner_id = ?, status = 'resolved', resolved_at = ?
+    WHERE id = ?
+  `).bind(winnerId, now, duelId).run();
+
+  return {
+    submitted:        true,
+    duel_id:          duelId,
+    both_submitted:   true,
+    winner_id:        winnerId,
+    challenger_score: updated.challenger_score,
+    target_score:     updated.target_score,
+    payout,
+  };
+}
+
 // ── CLOSE DUEL WINDOW ────────────────────────────────────────
 // Triggered by cron when duel.ends_at has passed and status is
 // still 'active'. Winner = simple majority of duel_votes. Does
