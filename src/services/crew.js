@@ -1103,12 +1103,19 @@ export async function joinCrew(crewId, clerkId, db) {
   if (!userRow) return { error: 'User not found' };
   const userId = userRow.id;
 
-    const crew = await db
+      const crew = await db
     .prepare(`SELECT * FROM crews WHERE id = ?`)
     .bind(crewId)
     .first();
   if (!crew) return { error: 'Crew not found' };
   if (crew.is_locked) return { error: 'This crew is locked and not accepting join requests' };
+
+  const kicked = await db
+    .prepare(`SELECT id FROM crew_kicks WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
+  if (kicked) return { error: 'You were removed from this crew and need an invite from the captain to rejoin' };
+
   // Check user not already in any crew
   const membership = await db
     .prepare(`SELECT id FROM crew_members WHERE user_id = ?`)
@@ -1136,7 +1143,6 @@ export async function joinCrew(crewId, clerkId, db) {
     crew_name: crew.name,
   };
 }
-
 // ── CREATE CREW BATTLE ───────────────────────────────────────
 
 export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
