@@ -77,8 +77,11 @@ window.ArenaPage = {
           <div class="challenge-list" id="challenge-list"></div>
         </div>
 
-        <!-- Duels panel -->
+                <!-- Duels panel -->
         <div id="panel-duels" style="display:none;">
+          <div class="duel-marquee-wrap">
+            <div class="duel-marquee-track">🎮 More game types coming soon: Reaction Time · Typing Speed &nbsp;&nbsp;&nbsp;&nbsp; 🎮 More game types coming soon: Reaction Time · Typing Speed</div>
+          </div>
           <div style="display:flex;justify-content:flex-end;margin-bottom:var(--space-3);">
             <button class="btn btn-outline btn-sm" id="btn-create-duel">+ New Duel</button>
           </div>
