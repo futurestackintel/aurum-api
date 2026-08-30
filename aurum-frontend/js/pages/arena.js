@@ -18,6 +18,15 @@ window.ArenaPage = {
   container:   null,
   initialized: false,
   activeTab:   'challenges',
+  activeQuickDuelId: null,
+
+  TRIVIA_QUESTIONS: [
+    { q: 'What is the capital of France?', options: ['Berlin', 'Madrid', 'Paris', 'Rome'], correct: 2 },
+    { q: 'How many continents are there?', options: ['5', '6', '7', '8'], correct: 2 },
+    { q: '2 + 2 × 2 = ?', options: ['6', '8', '4', '2'], correct: 0 },
+    { q: 'Largest planet in our solar system?', options: ['Earth', 'Jupiter', 'Saturn', 'Mars'], correct: 1 },
+    { q: 'HTML stands for?', options: ['Hyper Trainer Marking Language', 'Hyper Text Markup Language', 'Hyper Text Marketing Language', 'Hyperlink Text Markup Language'], correct: 1 },
+  ],
 
   init(containerId) {
     this.container = document.getElementById(containerId);
@@ -266,6 +275,15 @@ window.ArenaPage = {
         </div>
       </div>
 
+      <!-- Quick Duel Play Modal -->
+      <div class="modal-overlay" id="quick-duel-play-modal" style="display:none;">
+        <div class="modal" style="text-align:center;">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title" id="qd-play-title">Quick Duel</h3>
+          <div id="qd-play-area"></div>
+        </div>
+      </div>
+
       <!-- Create Crew Modal -->
 
       <!-- Create Crew Modal -->
@@ -470,6 +488,11 @@ window.ArenaPage = {
       ?.addEventListener('change', (e) => {
         document.getElementById('duel-quick-game-group').style.display =
           e.target.value === 'quick' ? 'block' : 'none';
+      });
+    document.getElementById('quick-duel-play-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'quick-duel-play-modal')
+          e.target.style.display = 'none';
       });
 
     /* Crew chat modal close */
@@ -1252,6 +1275,15 @@ window.ArenaPage = {
       });
     });
 
+    /* Play Quick Duel */
+    document.querySelectorAll('.btn-play-quick-duel').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        this.openQuickDuelPlay(btn.dataset.duelId, btn.dataset.gameType);
+      });
+    });
+
     /* Announce */
     document.querySelectorAll('.btn-announce-duel').forEach(btn => {
       if (btn.dataset.bound) return;
@@ -1333,6 +1365,151 @@ window.ArenaPage = {
     } finally {
       btn.textContent = 'Challenge';
       btn.disabled    = false;
+    }
+  },
+
+  /* --------------------------------------------------
+     QUICK DUEL — PLAY SCREEN
+  -------------------------------------------------- */
+  openQuickDuelPlay(duelId, gameType) {
+    this.activeQuickDuelId = duelId;
+    document.getElementById('qd-play-title').textContent =
+      gameType === 'trivia' ? 'Trivia Duel' : 'Reflex Tap';
+    document.getElementById('quick-duel-play-modal').style.display = 'flex';
+    this.startQuickDuelCountdown(gameType);
+  },
+
+  startQuickDuelCountdown(gameType) {
+    const area = document.getElementById('qd-play-area');
+    const seq  = ['Ready', '3', '2', '1', 'GO'];
+    let i = 0;
+    area.innerHTML = `<div style="font-size:48px;font-weight:900;color:var(--color-gold);padding:var(--space-8) 0;" id="qd-countdown-num">${seq[0]}</div>`;
+    const numEl = document.getElementById('qd-countdown-num');
+    const iv = setInterval(() => {
+      i++;
+      if (i >= seq.length) {
+        clearInterval(iv);
+        if (gameType === 'trivia') this.runTriviaGame();
+        else this.runReflexTapGame();
+        return;
+      }
+      numEl.textContent = seq[i];
+    }, 550);
+  },
+
+  runReflexTapGame() {
+    const area = document.getElementById('qd-play-area');
+    let taps = 0;
+    let timeLeft = 5;
+    area.innerHTML = `
+      <p style="color:var(--color-text-muted);margin-bottom:var(--space-2);">Tap as fast as you can!</p>
+      <div style="font-size:14px;color:var(--color-danger);margin-bottom:var(--space-3);" id="qd-timer">${timeLeft}s</div>
+      <div style="font-size:40px;font-weight:900;color:var(--color-gold);margin-bottom:var(--space-4);" id="qd-tap-count">0</div>
+      <button class="btn btn-primary btn-full" id="qd-tap-btn" style="padding:var(--space-6);font-size:18px;">TAP</button>
+    `;
+    const tapBtn  = document.getElementById('qd-tap-btn');
+    const countEl = document.getElementById('qd-tap-count');
+    const timerEl = document.getElementById('qd-timer');
+
+    tapBtn.addEventListener('click', () => {
+      taps++;
+      countEl.textContent = taps;
+    });
+
+    const iv = setInterval(() => {
+      timeLeft--;
+      timerEl.textContent = `${timeLeft}s`;
+      if (timeLeft <= 0) {
+        clearInterval(iv);
+        tapBtn.disabled = true;
+        this.finishQuickDuelGame(taps);
+      }
+    }, 1000);
+  },
+
+  runTriviaGame() {
+    this.qdTriviaIndex   = 0;
+    this.qdTriviaCorrect = 0;
+    this.qdTriviaStartTime = Date.now();
+    this.renderTriviaQuestion();
+  },
+
+  renderTriviaQuestion() {
+    const area = document.getElementById('qd-play-area');
+    const q    = this.TRIVIA_QUESTIONS[this.qdTriviaIndex];
+    area.innerHTML = `
+      <p style="color:var(--color-text-muted);font-size:12px;margin-bottom:var(--space-2);">Question ${this.qdTriviaIndex + 1} of ${this.TRIVIA_QUESTIONS.length}</p>
+      <p style="font-weight:700;font-size:15px;margin-bottom:var(--space-4);">${q.q}</p>
+      <div style="display:flex;flex-direction:column;gap:var(--space-2);">
+        ${q.options.map((opt, idx) => `
+          <button class="btn btn-outline btn-full qd-trivia-option" data-idx="${idx}">${opt}</button>
+        `).join('')}
+      </div>
+    `;
+    document.querySelectorAll('.qd-trivia-option').forEach(btn => {
+      btn.addEventListener('click', () => this.answerTriviaQuestion(parseInt(btn.dataset.idx, 10)));
+    });
+  },
+
+  answerTriviaQuestion(idx) {
+    const q = this.TRIVIA_QUESTIONS[this.qdTriviaIndex];
+    if (idx === q.correct) this.qdTriviaCorrect++;
+    this.qdTriviaIndex++;
+
+    if (this.qdTriviaIndex >= this.TRIVIA_QUESTIONS.length) {
+      const elapsedSeconds = (Date.now() - this.qdTriviaStartTime) / 1000;
+      // Speed bonus baked into one score number: each correct answer is
+      // worth 100 points, minus total seconds taken, floored at 0.
+      const rawScore = this.qdTriviaCorrect * 100 - Math.floor(elapsedSeconds);
+      this.finishQuickDuelGame(Math.max(0, rawScore));
+    } else {
+      this.renderTriviaQuestion();
+    }
+  },
+
+  finishQuickDuelGame(score) {
+    const area = document.getElementById('qd-play-area');
+    area.innerHTML = `<p style="color:var(--color-text-muted);">Submitting your score...</p>`;
+    this.submitQuickDuelScore(this.activeQuickDuelId, score);
+  },
+
+  async submitQuickDuelScore(duelId, score) {
+    const area = document.getElementById('qd-play-area');
+    try {
+      const result = await AURUM.DuelAPI.submitScore(duelId, score);
+
+      if (result.waiting_on_opponent) {
+        area.innerHTML = `
+          <div style="font-size:32px;margin-bottom:var(--space-2);">⏳</div>
+          <p style="font-weight:700;">Score submitted: ${score}</p>
+          <p style="color:var(--color-text-muted);font-size:13px;margin-top:var(--space-2);">Waiting on your opponent to finish...</p>
+          <button class="btn btn-ghost btn-full" style="margin-top:var(--space-4);" onclick="document.getElementById('quick-duel-play-modal').style.display='none';">Close</button>
+        `;
+      } else if (result.tied) {
+        area.innerHTML = `
+          <div style="font-size:32px;margin-bottom:var(--space-2);">🤝</div>
+          <p style="font-weight:700;">It's a tie!</p>
+          <p style="color:var(--color-text-muted);font-size:13px;margin-top:var(--space-2);">Sent to admin review to decide the winner.</p>
+          <button class="btn btn-primary btn-full" style="margin-top:var(--space-4);" onclick="document.getElementById('quick-duel-play-modal').style.display='none';">Close</button>
+        `;
+      } else {
+        const myUserId = AURUM.ProfileCache.get()?.id;
+        const won      = result.winner_id === myUserId;
+        area.innerHTML = `
+          <div style="font-size:32px;margin-bottom:var(--space-2);">${won ? '🏆' : '💔'}</div>
+          <p style="font-weight:700;font-size:18px;color:${won ? 'var(--color-gold)' : 'var(--color-text)'};">${won ? 'You Won!' : 'You Lost'}</p>
+          <p style="color:var(--color-text-muted);font-size:13px;margin-top:var(--space-2);">
+            ${result.challenger_score} - ${result.target_score}
+          </p>
+          <button class="btn btn-primary btn-full" style="margin-top:var(--space-4);" onclick="document.getElementById('quick-duel-play-modal').style.display='none';">Close</button>
+        `;
+        this.loadDuels();
+      }
+    } catch (err) {
+      area.innerHTML = `
+        <p style="color:var(--color-danger);">${err.message || 'Could not submit score.'}</p>
+        <button class="btn btn-ghost btn-full" style="margin-top:var(--space-4);" onclick="document.getElementById('quick-duel-play-modal').style.display='none';">Close</button>
+      `;
     }
   },
 
