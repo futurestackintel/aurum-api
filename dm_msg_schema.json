@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE \"dm_messages\" (\r\n  id TEXT PRIMARY KEY,\r\n  channel_id TEXT NOT NULL REFERENCES \"dm_channels\"(id),\r\n  sender_id TEXT NOT NULL REFERENCES users(id),\r\n  content TEXT NOT NULL,\r\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  deleted_at TEXT\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2614
+      },
+      "duration": 0.2614,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 856064,
+      "rows_read": 193,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

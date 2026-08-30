@@ -1,0 +1,88 @@
+
+ ⛅️ wrangler 4.98.0
+───────────────────
+Resource location: remote 
+
+🌀 Executing on remote database aurum-db (6449c87c-f93f-40b7-b758-4fc1bbe8de2c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.19ms
+[
+  {
+    "results": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "crew_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "sender_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "content",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "deleted_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "deleted_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1927
+      },
+      "duration": 0.1927,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 872448,
+      "rows_read": 0,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

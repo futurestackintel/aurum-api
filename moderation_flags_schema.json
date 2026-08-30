@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE moderation_flags (\r\n  id            TEXT PRIMARY KEY,\r\n  reporter_id   TEXT NOT NULL REFERENCES users(id),\r\n  target_type   TEXT NOT NULL CHECK (target_type IN ('post', 'comment', 'user', 'challenge', 'room_post')),\r\n  target_id     TEXT NOT NULL,\r\n  reason        TEXT NOT NULL\r\n                  CHECK (reason IN (\r\n                    'fake_achievement', 'harassment', 'spam', 'inappropriate_content',\r\n                    'fraud', 'impersonation', 'other'\r\n                  )),\r\n  notes         TEXT,\r\n  status        TEXT NOT NULL DEFAULT 'pending'\r\n                  CHECK (status IN ('pending', 'reviewed', 'actioned', 'dismissed')),\r\n  reviewed_by   TEXT REFERENCES users(id),\r\n  reviewed_at   TEXT,\r\n  action_taken  TEXT,\r\n  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1665
+      },
+      "duration": 0.1665,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 729088,
+      "rows_read": 164,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

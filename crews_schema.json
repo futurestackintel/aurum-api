@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE crews (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, creator_id TEXT NOT NULL REFERENCES users(id), description TEXT, member_count INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), open_funding INTEGER NOT NULL DEFAULT 0, is_locked INTEGER NOT NULL DEFAULT 0, rules TEXT, is_frozen INTEGER NOT NULL DEFAULT 0, freeze_reason TEXT, frozen_by TEXT REFERENCES users(id), frozen_at TEXT)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1461
+      },
+      "duration": 0.1461,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 856064,
+      "rows_read": 193,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE duels (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), challenger_id TEXT NOT NULL, target_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, duel_tip_amount INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', winner_id TEXT, challenger_proof TEXT, target_proof TEXT, challenger_proof_value INTEGER DEFAULT 0, target_proof_value INTEGER DEFAULT 0, accepted_at TEXT, ends_at TEXT, resolved_at TEXT, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, announced_at TEXT, is_public_announced INTEGER DEFAULT 0, stream_ready INTEGER DEFAULT 0, stream_url TEXT, audience_tips_challenger REAL DEFAULT 0, audience_tips_target REAL DEFAULT 0, community_vote_challenger INTEGER DEFAULT 0, community_vote_target INTEGER DEFAULT 0, post_id TEXT REFERENCES posts(id), window_hours INTEGER NOT NULL DEFAULT 168, dispute_status TEXT DEFAULT 'none' CHECK (dispute_status IN ('none','window_open','reported','resolved')), dispute_deadline TEXT, dispute_reported_by TEXT REFERENCES users(id), dispute_reason TEXT, payout_released INTEGER DEFAULT 0)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1245
+      },
+      "duration": 0.1245,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 729088,
+      "rows_read": 164,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

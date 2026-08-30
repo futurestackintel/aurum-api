@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE \"tips\" (\r\n  id                       TEXT PRIMARY KEY,\r\n  sender_id                TEXT NOT NULL REFERENCES users(id),\r\n  receiver_id              TEXT NOT NULL REFERENCES users(id),\r\n  post_id                  TEXT REFERENCES posts(id),\r\n  amount_cents             INTEGER NOT NULL CHECK (amount_cents > 0),\r\n  platform_fee_cents       INTEGER NOT NULL,\r\n  receiver_net_cents       INTEGER NOT NULL,\r\n  stripe_payment_intent_id TEXT UNIQUE,\r\n  paystack_reference       TEXT UNIQUE,\r\n  is_wallet_tip            INTEGER NOT NULL DEFAULT 0 CHECK (is_wallet_tip IN (0, 1)),\r\n  status                   TEXT NOT NULL DEFAULT 'pending'\r\n                             CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),\r\n  message                  TEXT,\r\n  created_at               TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  completed_at             TEXT\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1363
+      },
+      "duration": 0.1363,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 729088,
+      "rows_read": 164,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE posts (\r\n  id                  TEXT PRIMARY KEY,\r\n  user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  content             TEXT NOT NULL,\r\n  media_urls          TEXT,\r\n  achievement_category TEXT\r\n                        CHECK (achievement_category IN (\r\n                          'revenue_milestone', 'deal_closed', 'business_launched',\r\n                          'investment', 'lifestyle_win', 'challenge_win', 'other'\r\n                        )),\r\n  tags                TEXT,\r\n  stake_amount_cents  INTEGER NOT NULL DEFAULT 0,\r\n  stake_status        TEXT NOT NULL DEFAULT 'none'\r\n                        CHECK (stake_status IN ('none', 'staked', 'verified', 'disputed', 'forfeited')),\r\n  stake_stripe_payment_intent TEXT,\r\n  stake_verified_at   TEXT,\r\n  stake_forfeited_at  TEXT,\r\n  tips_received_cents INTEGER NOT NULL DEFAULT 0,\r\n  tip_count           INTEGER NOT NULL DEFAULT 0,\r\n  reaction_count      INTEGER NOT NULL DEFAULT 0,\r\n  comment_count       INTEGER NOT NULL DEFAULT 0,\r\n  flag_count          INTEGER NOT NULL DEFAULT 0,\r\n  boosted_until       TEXT,\r\n  boost_amount_cents  INTEGER,\r\n  is_pinned           INTEGER NOT NULL DEFAULT 0,\r\n  visibility          TEXT NOT NULL DEFAULT 'public'\r\n                        CHECK (visibility IN ('public', 'members_only', 'league_only')),\r\n  moderation_status   TEXT NOT NULL DEFAULT 'active'\r\n                        CHECK (moderation_status IN ('active', 'under_review', 'removed')),\r\n  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  deleted_at          TEXT\r\n, appeal_deadline TEXT, appeal_reason TEXT, appeal_status TEXT)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1534
+      },
+      "duration": 0.1534,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 729088,
+      "rows_read": 164,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

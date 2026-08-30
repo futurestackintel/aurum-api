@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE post_reactions (\r\n  id          TEXT PRIMARY KEY,\r\n  post_id     TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,\r\n  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  reaction    TEXT NOT NULL CHECK (reaction IN ('fire', 'crown', 'rocket', 'diamond', 'respect')),\r\n  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  UNIQUE (post_id, user_id)\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1117
+      },
+      "duration": 0.1117,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 729088,
+      "rows_read": 164,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

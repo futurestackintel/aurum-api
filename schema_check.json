@@ -1,0 +1,30 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE crew_wallet_transactions (\r\n  id TEXT PRIMARY KEY,\r\n  crew_id TEXT NOT NULL REFERENCES crews(id),\r\n  crew_wallet_id TEXT NOT NULL REFERENCES crew_wallets(id),\r\n  type TEXT NOT NULL CHECK (type IN ('battle_payout','member_contribution','spend','disband_split')),\r\n  amount_usd REAL NOT NULL,\r\n  balance_after_usd REAL,\r\n  initiated_by TEXT REFERENCES users(id),\r\n  reason TEXT,\r\n  status TEXT NOT NULL DEFAULT 'executed' CHECK (status IN ('pending_cosign','executed','vetoed')),\r\n  cosigned_by TEXT REFERENCES users(id),\r\n  cosigned_at TEXT,\r\n  reference TEXT,\r\n  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n, required_cosigns INTEGER NOT NULL DEFAULT 1)"
+      },
+      {
+        "sql": "CREATE TABLE crew_wallet_cosigns (\r\n  id TEXT PRIMARY KEY,\r\n  transaction_id TEXT NOT NULL REFERENCES crew_wallet_transactions(id),\r\n  moderator_id TEXT NOT NULL REFERENCES users(id),\r\n  signed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  UNIQUE(transaction_id, moderator_id)\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2909
+      },
+      "duration": 0.2909,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 856064,
+      "rows_read": 193,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

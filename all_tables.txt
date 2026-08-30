@@ -1,0 +1,206 @@
+
+ ⛅️ wrangler 4.98.0
+───────────────────
+Resource location: remote 
+
+🌀 Executing on remote database aurum-db (6449c87c-f93f-40b7-b758-4fc1bbe8de2c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.53ms
+[
+  {
+    "results": [
+      {
+        "name": "_cf_KV"
+      },
+      {
+        "name": "aurum_score_events"
+      },
+      {
+        "name": "badge_requests"
+      },
+      {
+        "name": "badges"
+      },
+      {
+        "name": "boost_tokens"
+      },
+      {
+        "name": "challenge_boosts"
+      },
+      {
+        "name": "challenge_entries"
+      },
+      {
+        "name": "challenge_gold_buttons"
+      },
+      {
+        "name": "challenge_payouts"
+      },
+      {
+        "name": "challenger_duels"
+      },
+      {
+        "name": "challenges"
+      },
+      {
+        "name": "crew_battle_votes"
+      },
+      {
+        "name": "crew_battles"
+      },
+      {
+        "name": "crew_join_requests"
+      },
+      {
+        "name": "crew_members"
+      },
+      {
+        "name": "crew_message_mentions"
+      },
+      {
+        "name": "crew_messages"
+      },
+      {
+        "name": "crew_mutes"
+      },
+      {
+        "name": "crew_spend_flags"
+      },
+      {
+        "name": "crew_wallet_cosigns"
+      },
+      {
+        "name": "crew_wallet_transactions"
+      },
+      {
+        "name": "crew_wallets"
+      },
+      {
+        "name": "crews"
+      },
+      {
+        "name": "d1_migrations"
+      },
+      {
+        "name": "dm_channels"
+      },
+      {
+        "name": "dm_messages"
+      },
+      {
+        "name": "duel_votes"
+      },
+      {
+        "name": "duel_watchers"
+      },
+      {
+        "name": "duels"
+      },
+      {
+        "name": "elite_room_members"
+      },
+      {
+        "name": "elite_rooms"
+      },
+      {
+        "name": "exchange_rates"
+      },
+      {
+        "name": "founding_members"
+      },
+      {
+        "name": "free_challenge_entries"
+      },
+      {
+        "name": "leaderboard_snapshots"
+      },
+      {
+        "name": "league_history"
+      },
+      {
+        "name": "message_reactions"
+      },
+      {
+        "name": "moderation_flags"
+      },
+      {
+        "name": "moderation_log"
+      },
+      {
+        "name": "notification_preferences"
+      },
+      {
+        "name": "notifications"
+      },
+      {
+        "name": "platform_config"
+      },
+      {
+        "name": "post_cheers"
+      },
+      {
+        "name": "post_comments"
+      },
+      {
+        "name": "post_flags"
+      },
+      {
+        "name": "post_reactions"
+      },
+      {
+        "name": "post_stakes"
+      },
+      {
+        "name": "posts"
+      },
+      {
+        "name": "room_posts"
+      },
+      {
+        "name": "sqlite_sequence"
+      },
+      {
+        "name": "subscriptions"
+      },
+      {
+        "name": "tips"
+      },
+      {
+        "name": "treasury_ledger"
+      },
+      {
+        "name": "user_bank_details"
+      },
+      {
+        "name": "users"
+      },
+      {
+        "name": "waitlist"
+      },
+      {
+        "name": "wallet_transactions"
+      },
+      {
+        "name": "wallets"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.5283
+      },
+      "duration": 0.5283,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 872448,
+      "rows_read": 255,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

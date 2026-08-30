@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE users (\r\n  id                  TEXT PRIMARY KEY,\r\n  clerk_id            TEXT NOT NULL UNIQUE,\r\n  username            TEXT NOT NULL UNIQUE COLLATE NOCASE,\r\n  display_name        TEXT NOT NULL,\r\n  email               TEXT NOT NULL UNIQUE COLLATE NOCASE,\r\n  avatar_url          TEXT,\r\n  bio                 TEXT,\r\n  tier                TEXT NOT NULL DEFAULT 'explorer'\r\n                        CHECK (tier IN ('explorer', 'contender', 'sovereign')),\r\n  league              TEXT NOT NULL DEFAULT 'bronze'\r\n                        CHECK (league IN ('bronze', 'silver', 'gold', 'sovereign')),\r\n  aurum_score         INTEGER NOT NULL DEFAULT 0,\r\n  score_last_calc_at  TEXT,\r\n  streak_current      INTEGER NOT NULL DEFAULT 0,\r\n  streak_longest      INTEGER NOT NULL DEFAULT 0,\r\n  streak_last_post_at TEXT,\r\n  total_tips_sent_cents     INTEGER NOT NULL DEFAULT 0,\r\n  total_tips_received_cents INTEGER NOT NULL DEFAULT 0,\r\n  total_challenges_won      INTEGER NOT NULL DEFAULT 0,\r\n  stealth_mode        INTEGER NOT NULL DEFAULT 0 CHECK (stealth_mode IN (0, 1)),\r\n  stealth_username    TEXT UNIQUE,\r\n  is_verified         INTEGER NOT NULL DEFAULT 0 CHECK (is_verified IN (0, 1)),\r\n  is_founding_member  INTEGER NOT NULL DEFAULT 0 CHECK (is_founding_member IN (0, 1)),\r\n  is_suspended        INTEGER NOT NULL DEFAULT 0 CHECK (is_suspended IN (0, 1)),\r\n  suspension_reason   TEXT,\r\n  stripe_customer_id  TEXT UNIQUE,\r\n  kyc_status          TEXT NOT NULL DEFAULT 'none'\r\n                        CHECK (kyc_status IN ('none', 'pending', 'approved', 'rejected')),\r\n  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  deleted_at          TEXT\r\n, paystack_customer_code TEXT, profile_visibility TEXT DEFAULT 'public', hide_aurum_score INTEGER DEFAULT 0, hide_league INTEGER DEFAULT 0, account_deleted INTEGER DEFAULT 0, is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)))"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2008
+      },
+      "duration": 0.2008,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 856064,
+      "rows_read": 193,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

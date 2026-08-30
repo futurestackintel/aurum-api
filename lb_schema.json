@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE leaderboard_snapshots (\r\n  id          TEXT PRIMARY KEY,\r\n  board_type  TEXT NOT NULL\r\n                CHECK (board_type IN ('most_generous', 'highest_earner', 'most_wins', 'aurum_score')),\r\n  league      TEXT CHECK (league IN ('bronze', 'silver', 'gold', 'sovereign', 'all')),\r\n  period      TEXT NOT NULL\r\n                CHECK (period IN ('daily', 'weekly', 'monthly', 'alltime')),\r\n  period_key  TEXT NOT NULL,\r\n  user_id     TEXT NOT NULL REFERENCES users(id),\r\n  rank        INTEGER NOT NULL,\r\n  score       INTEGER NOT NULL,\r\n  display_name TEXT NOT NULL,\r\n  avatar_url  TEXT,\r\n  league_at_snapshot TEXT,\r\n  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2329
+      },
+      "duration": 0.2329,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 856064,
+      "rows_read": 193,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

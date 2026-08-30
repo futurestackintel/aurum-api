@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE badge_requests (\r\n  id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),\r\n  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  badge_type   TEXT NOT NULL\r\n                 CHECK (badge_type IN (\r\n                   'verified_builder', 'verified_founder',\r\n                   'verified_millionaire', 'sovereign_elite'\r\n                 )),\r\n  evidence_url TEXT NOT NULL,\r\n  notes        TEXT,\r\n  status       TEXT NOT NULL DEFAULT 'pending'\r\n                 CHECK (status IN ('pending', 'approved', 'rejected')),\r\n  admin_id     TEXT,\r\n  reason       TEXT,\r\n  submitted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  decided_at   TEXT\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1858
+      },
+      "duration": 0.1858,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 729088,
+      "rows_read": 164,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

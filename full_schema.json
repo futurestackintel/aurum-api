@@ -1,0 +1,162 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE _cf_KV (\n        key TEXT PRIMARY KEY,\n        value BLOB\n      ) WITHOUT ROWID"
+      },
+      {
+        "sql": "CREATE TABLE users (\r\n  id                  TEXT PRIMARY KEY,\r\n  clerk_id            TEXT NOT NULL UNIQUE,\r\n  username            TEXT NOT NULL UNIQUE COLLATE NOCASE,\r\n  display_name        TEXT NOT NULL,\r\n  email               TEXT NOT NULL UNIQUE COLLATE NOCASE,\r\n  avatar_url          TEXT,\r\n  bio                 TEXT,\r\n  tier                TEXT NOT NULL DEFAULT 'explorer'\r\n                        CHECK (tier IN ('explorer', 'contender', 'sovereign')),\r\n  league              TEXT NOT NULL DEFAULT 'bronze'\r\n                        CHECK (league IN ('bronze', 'silver', 'gold', 'sovereign')),\r\n  aurum_score         INTEGER NOT NULL DEFAULT 0,\r\n  score_last_calc_at  TEXT,\r\n  streak_current      INTEGER NOT NULL DEFAULT 0,\r\n  streak_longest      INTEGER NOT NULL DEFAULT 0,\r\n  streak_last_post_at TEXT,\r\n  total_tips_sent_cents     INTEGER NOT NULL DEFAULT 0,\r\n  total_tips_received_cents INTEGER NOT NULL DEFAULT 0,\r\n  total_challenges_won      INTEGER NOT NULL DEFAULT 0,\r\n  stealth_mode        INTEGER NOT NULL DEFAULT 0 CHECK (stealth_mode IN (0, 1)),\r\n  stealth_username    TEXT UNIQUE,\r\n  is_verified         INTEGER NOT NULL DEFAULT 0 CHECK (is_verified IN (0, 1)),\r\n  is_founding_member  INTEGER NOT NULL DEFAULT 0 CHECK (is_founding_member IN (0, 1)),\r\n  is_suspended        INTEGER NOT NULL DEFAULT 0 CHECK (is_suspended IN (0, 1)),\r\n  suspension_reason   TEXT,\r\n  stripe_customer_id  TEXT UNIQUE,\r\n  kyc_status          TEXT NOT NULL DEFAULT 'none'\r\n                        CHECK (kyc_status IN ('none', 'pending', 'approved', 'rejected')),\r\n  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  deleted_at          TEXT\r\n, paystack_customer_code TEXT, profile_visibility TEXT DEFAULT 'public', hide_aurum_score INTEGER DEFAULT 0, hide_league INTEGER DEFAULT 0, account_deleted INTEGER DEFAULT 0)"
+      },
+      {
+        "sql": "CREATE TABLE posts (\r\n  id                  TEXT PRIMARY KEY,\r\n  user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  content             TEXT NOT NULL,\r\n  media_urls          TEXT,\r\n  achievement_category TEXT\r\n                        CHECK (achievement_category IN (\r\n                          'revenue_milestone', 'deal_closed', 'business_launched',\r\n                          'investment', 'lifestyle_win', 'challenge_win', 'other'\r\n                        )),\r\n  tags                TEXT,\r\n  stake_amount_cents  INTEGER NOT NULL DEFAULT 0,\r\n  stake_status        TEXT NOT NULL DEFAULT 'none'\r\n                        CHECK (stake_status IN ('none', 'staked', 'verified', 'disputed', 'forfeited')),\r\n  stake_stripe_payment_intent TEXT,\r\n  stake_verified_at   TEXT,\r\n  stake_forfeited_at  TEXT,\r\n  tips_received_cents INTEGER NOT NULL DEFAULT 0,\r\n  tip_count           INTEGER NOT NULL DEFAULT 0,\r\n  reaction_count      INTEGER NOT NULL DEFAULT 0,\r\n  comment_count       INTEGER NOT NULL DEFAULT 0,\r\n  flag_count          INTEGER NOT NULL DEFAULT 0,\r\n  boosted_until       TEXT,\r\n  boost_amount_cents  INTEGER,\r\n  is_pinned           INTEGER NOT NULL DEFAULT 0,\r\n  visibility          TEXT NOT NULL DEFAULT 'public'\r\n                        CHECK (visibility IN ('public', 'members_only', 'league_only')),\r\n  moderation_status   TEXT NOT NULL DEFAULT 'active'\r\n                        CHECK (moderation_status IN ('active', 'under_review', 'removed')),\r\n  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  deleted_at          TEXT\r\n, appeal_deadline TEXT, appeal_reason TEXT, appeal_status TEXT)"
+      },
+      {
+        "sql": "CREATE TABLE challenges (\r\n  id                    TEXT PRIMARY KEY,\r\n  creator_id            TEXT NOT NULL REFERENCES users(id),\r\n  title                 TEXT NOT NULL,\r\n  description           TEXT NOT NULL,\r\n  rules                 TEXT,\r\n  challenge_type        TEXT NOT NULL\r\n                          CHECK (challenge_type IN (\r\n                            'revenue', 'deals_closed', 'growth', 'savings',\r\n                            'custom', 'charity_brawl'\r\n                          )),\r\n  verification_method   TEXT NOT NULL\r\n                          CHECK (verification_method IN ('proof_upload', 'honor_system', 'admin_verified')),\r\n  entry_fee_cents       INTEGER NOT NULL DEFAULT 0,\r\n  pool_total_cents      INTEGER NOT NULL DEFAULT 0,\r\n  platform_fee_cents    INTEGER NOT NULL DEFAULT 0,\r\n  charity_amount_cents  INTEGER NOT NULL DEFAULT 0,\r\n  charity_name          TEXT,\r\n  winner_id             TEXT REFERENCES users(id),\r\n  min_tier              TEXT DEFAULT 'explorer'\r\n                          CHECK (min_tier IN ('explorer', 'contender', 'sovereign')),\r\n  max_participants      INTEGER,\r\n  participant_count     INTEGER NOT NULL DEFAULT 0,\r\n  status                TEXT NOT NULL DEFAULT 'draft'\r\n                          CHECK (status IN ('draft', 'open', 'active', 'voting', 'completed', 'cancelled')),\r\n  starts_at             TEXT NOT NULL,\r\n  ends_at               TEXT NOT NULL,\r\n  winner_announced_at   TEXT,\r\n  is_featured           INTEGER NOT NULL DEFAULT 0,\r\n  moderation_status     TEXT NOT NULL DEFAULT 'pending'\r\n                          CHECK (moderation_status IN ('pending', 'approved', 'rejected')),\r\n  created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  deleted_at            TEXT\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE challenge_entries (\r\n  id                    TEXT PRIMARY KEY,\r\n  challenge_id          TEXT NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,\r\n  user_id               TEXT NOT NULL REFERENCES users(id),\r\n  entry_fee_paid_cents  INTEGER NOT NULL DEFAULT 0,\r\n  stripe_payment_intent TEXT,\r\n  achievement_value     INTEGER,\r\n  achievement_proof_urls TEXT,\r\n  proof_description     TEXT,\r\n  submitted_at          TEXT,\r\n  score                 INTEGER,\r\n  rank                  INTEGER,\r\n  is_winner             INTEGER NOT NULL DEFAULT 0,\r\n  upvotes               INTEGER NOT NULL DEFAULT 0,\r\n  downvotes             INTEGER NOT NULL DEFAULT 0,\r\n  status                TEXT NOT NULL DEFAULT 'entered'\r\n                          CHECK (status IN ('entered', 'submitted', 'verified', 'disqualified', 'won')),\r\n  created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), proof_value INTEGER DEFAULT 0, paystack_reference TEXT,\r\n  UNIQUE (challenge_id, user_id)\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE post_reactions (\r\n  id          TEXT PRIMARY KEY,\r\n  post_id     TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,\r\n  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  reaction    TEXT NOT NULL CHECK (reaction IN ('fire', 'crown', 'rocket', 'diamond', 'respect')),\r\n  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  UNIQUE (post_id, user_id)\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE post_comments (\r\n  id                TEXT PRIMARY KEY,\r\n  post_id           TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,\r\n  user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  parent_comment_id TEXT REFERENCES post_comments(id) ON DELETE CASCADE,\r\n  content           TEXT NOT NULL,\r\n  moderation_status TEXT NOT NULL DEFAULT 'active'\r\n                      CHECK (moderation_status IN ('active', 'under_review', 'removed')),\r\n  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  deleted_at        TEXT\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE notifications (\r\n  id          TEXT PRIMARY KEY,\r\n  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  type        TEXT NOT NULL\r\n                CHECK (type IN (\r\n                  'tip_received', 'challenge_won', 'challenge_joined', 'challenge_ending_soon',\r\n                  'duel_received', 'duel_accepted', 'duel_result',\r\n                  'post_reacted', 'post_tipped', 'post_commented',\r\n                  'badge_awarded', 'league_promoted', 'league_demoted',\r\n                  'stake_verified', 'stake_disputed', 'stake_forfeited',\r\n                  'room_invited', 'subscription_renewal', 'system_alert'\r\n                )),\r\n  title       TEXT NOT NULL,\r\n  body        TEXT NOT NULL,\r\n  action_url  TEXT,\r\n  metadata    TEXT,\r\n  is_read     INTEGER NOT NULL DEFAULT 0,\r\n  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  read_at     TEXT\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE moderation_flags (\r\n  id            TEXT PRIMARY KEY,\r\n  reporter_id   TEXT NOT NULL REFERENCES users(id),\r\n  target_type   TEXT NOT NULL CHECK (target_type IN ('post', 'comment', 'user', 'challenge', 'room_post')),\r\n  target_id     TEXT NOT NULL,\r\n  reason        TEXT NOT NULL\r\n                  CHECK (reason IN (\r\n                    'fake_achievement', 'harassment', 'spam', 'inappropriate_content',\r\n                    'fraud', 'impersonation', 'other'\r\n                  )),\r\n  notes         TEXT,\r\n  status        TEXT NOT NULL DEFAULT 'pending'\r\n                  CHECK (status IN ('pending', 'reviewed', 'actioned', 'dismissed')),\r\n  reviewed_by   TEXT REFERENCES users(id),\r\n  reviewed_at   TEXT,\r\n  action_taken  TEXT,\r\n  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE badges (\r\n  id            TEXT PRIMARY KEY,\r\n  user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  badge_type    TEXT NOT NULL\r\n                  CHECK (badge_type IN (\r\n                    'verified_builder', 'verified_founder', 'verified_millionaire',\r\n                    'sovereign_elite', 'founding_member', 'streak_30', 'streak_90',\r\n                    'top_donor', 'challenge_champion', 'first_win'\r\n                  )),\r\n  awarded_by    TEXT CHECK (awarded_by IN ('system', 'admin', 'verification')),\r\n  evidence_url  TEXT,\r\n  is_public     INTEGER NOT NULL DEFAULT 1,\r\n  verified_at   TEXT,\r\n  revoked_at    TEXT,\r\n  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  UNIQUE (user_id, badge_type)\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE elite_rooms (\r\n  id            TEXT PRIMARY KEY,\r\n  name          TEXT NOT NULL,\r\n  description   TEXT,\r\n  category      TEXT NOT NULL\r\n                  CHECK (category IN (\r\n                    'saas_founders', 'investors', 'crypto_builders',\r\n                    'ecommerce_operators', 'real_estate', 'general'\r\n                  )),\r\n  created_by    TEXT NOT NULL REFERENCES users(id),\r\n  invite_only   INTEGER NOT NULL DEFAULT 1,\r\n  member_count  INTEGER NOT NULL DEFAULT 0,\r\n  max_members   INTEGER DEFAULT 500,\r\n  avatar_url    TEXT,\r\n  banner_url    TEXT,\r\n  is_active     INTEGER NOT NULL DEFAULT 1,\r\n  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE elite_room_members (\r\n  id          TEXT PRIMARY KEY,\r\n  room_id     TEXT NOT NULL REFERENCES elite_rooms(id) ON DELETE CASCADE,\r\n  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  role        TEXT NOT NULL DEFAULT 'member'\r\n                CHECK (role IN ('owner', 'moderator', 'member')),\r\n  invited_by  TEXT REFERENCES users(id),\r\n  joined_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  UNIQUE (room_id, user_id)\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE room_posts (\r\n  id                TEXT PRIMARY KEY,\r\n  room_id           TEXT NOT NULL REFERENCES elite_rooms(id) ON DELETE CASCADE,\r\n  user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  content           TEXT NOT NULL,\r\n  media_urls        TEXT,\r\n  tips_received_cents INTEGER NOT NULL DEFAULT 0,\r\n  reaction_count    INTEGER NOT NULL DEFAULT 0,\r\n  moderation_status TEXT NOT NULL DEFAULT 'active'\r\n                      CHECK (moderation_status IN ('active', 'under_review', 'removed')),\r\n  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  deleted_at        TEXT\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE leaderboard_snapshots (\r\n  id          TEXT PRIMARY KEY,\r\n  board_type  TEXT NOT NULL\r\n                CHECK (board_type IN ('most_generous', 'highest_earner', 'most_wins', 'aurum_score')),\r\n  league      TEXT CHECK (league IN ('bronze', 'silver', 'gold', 'sovereign', 'all')),\r\n  period      TEXT NOT NULL\r\n                CHECK (period IN ('daily', 'weekly', 'monthly', 'alltime')),\r\n  period_key  TEXT NOT NULL,\r\n  user_id     TEXT NOT NULL REFERENCES users(id),\r\n  rank        INTEGER NOT NULL,\r\n  score       INTEGER NOT NULL,\r\n  display_name TEXT NOT NULL,\r\n  avatar_url  TEXT,\r\n  league_at_snapshot TEXT,\r\n  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE waitlist (\r\n  id          TEXT PRIMARY KEY,\r\n  email       TEXT NOT NULL UNIQUE COLLATE NOCASE,\r\n  referrer    TEXT,\r\n  position    INTEGER,\r\n  is_invited  INTEGER NOT NULL DEFAULT 0,\r\n  invited_at  TEXT,\r\n  source      TEXT CHECK (source IN ('landing', 'twitter', 'reddit', 'referral', 'direct')),\r\n  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE platform_config (\r\n  key         TEXT PRIMARY KEY,\r\n  value       TEXT NOT NULL,\r\n  description TEXT,\r\n  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE league_history (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), user_id TEXT NOT NULL, previous_league TEXT NOT NULL, new_league TEXT NOT NULL, score_at_change INTEGER NOT NULL, changed_at TEXT NOT NULL)"
+      },
+      {
+        "sql": "CREATE TABLE post_flags (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), post_id TEXT NOT NULL, flagged_by TEXT NOT NULL, reason TEXT, created_at TEXT NOT NULL)"
+      },
+      {
+        "sql": "CREATE TABLE moderation_log (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), post_id TEXT NOT NULL, moderator_id TEXT NOT NULL, verdict TEXT NOT NULL, created_at TEXT NOT NULL)"
+      },
+      {
+        "sql": "CREATE TABLE challenge_payouts (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), challenge_id TEXT NOT NULL, winner_id TEXT NOT NULL, pool_amount INTEGER NOT NULL, platform_fee INTEGER NOT NULL, winner_payout INTEGER NOT NULL, resolved_at TEXT NOT NULL, moderator_id TEXT NOT NULL)"
+      },
+      {
+        "sql": "CREATE TABLE duels (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), challenger_id TEXT NOT NULL, target_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, duel_tip_amount INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', winner_id TEXT, challenger_proof TEXT, target_proof TEXT, challenger_proof_value INTEGER DEFAULT 0, target_proof_value INTEGER DEFAULT 0, accepted_at TEXT, ends_at TEXT, resolved_at TEXT, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, announced_at TEXT, is_public_announced INTEGER DEFAULT 0, stream_ready INTEGER DEFAULT 0, stream_url TEXT, audience_tips_challenger REAL DEFAULT 0, audience_tips_target REAL DEFAULT 0, community_vote_challenger INTEGER DEFAULT 0, community_vote_target INTEGER DEFAULT 0)"
+      },
+      {
+        "sql": "CREATE TABLE badge_requests (\r\n  id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),\r\n  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  badge_type   TEXT NOT NULL\r\n                 CHECK (badge_type IN (\r\n                   'verified_builder', 'verified_founder',\r\n                   'verified_millionaire', 'sovereign_elite'\r\n                 )),\r\n  evidence_url TEXT NOT NULL,\r\n  notes        TEXT,\r\n  status       TEXT NOT NULL DEFAULT 'pending'\r\n                 CHECK (status IN ('pending', 'approved', 'rejected')),\r\n  admin_id     TEXT,\r\n  reason       TEXT,\r\n  submitted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  decided_at   TEXT\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE wallets (\r\n  id                      TEXT PRIMARY KEY,\r\n  user_id                 TEXT NOT NULL UNIQUE REFERENCES users(id),\r\n  balance_usd             REAL NOT NULL DEFAULT 0,\r\n  total_deposited_usd     REAL NOT NULL DEFAULT 0,\r\n  total_withdrawn_usd     REAL NOT NULL DEFAULT 0,\r\n  total_tips_sent_usd     REAL NOT NULL DEFAULT 0,\r\n  total_tips_received_usd REAL NOT NULL DEFAULT 0,\r\n  currency_preference     TEXT NOT NULL DEFAULT 'USD'\r\n                            CHECK (currency_preference IN ('USD','NGN','GHS','KES','ZAR')),\r\n  created_at              TEXT NOT NULL,\r\n  updated_at              TEXT NOT NULL\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE wallet_transactions (\r\n  id                TEXT PRIMARY KEY,\r\n  wallet_id         TEXT NOT NULL REFERENCES wallets(id),\r\n  user_id           TEXT NOT NULL REFERENCES users(id),\r\n  type              TEXT NOT NULL CHECK (type IN (\r\n                      'deposit', 'withdrawal', 'tip_sent', 'tip_received',\r\n                      'challenge_entry', 'challenge_payout', 'stake_lock',\r\n                      'stake_return', 'stake_slash', 'fee'\r\n                    )),\r\n  amount_usd        REAL NOT NULL,\r\n  balance_after_usd REAL NOT NULL,\r\n  reference         TEXT,\r\n  description       TEXT,\r\n  created_at        TEXT NOT NULL\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE exchange_rates (\r\n  id          TEXT PRIMARY KEY,\r\n  currency    TEXT NOT NULL UNIQUE,\r\n  rate_to_usd REAL NOT NULL,\r\n  updated_at  TEXT NOT NULL\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE aurum_score_events (\r\n  id           TEXT PRIMARY KEY,\r\n  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  event_type   TEXT NOT NULL\r\n                 CHECK (event_type IN (\r\n                   'verified_achievement_post',\r\n                   'challenge_win',\r\n                   'tip_sent',\r\n                   'tip_received_reaction',\r\n                   'streak_day',\r\n                   'account_age_week',\r\n                   'badge_earned',\r\n                   'post_flagged_fake',\r\n                   'challenge_forfeit',\r\n                   'founding_member',\r\n                   'gold_button_given',\r\n                   'crew_battle_win',\r\n                   'challenge_boost_purchased',\r\n                   'audience_tip_sent'\r\n                 )),\r\n  delta        INTEGER NOT NULL,\r\n  post_id      TEXT REFERENCES posts(id),\r\n  challenge_id TEXT REFERENCES challenges(id),\r\n  tip_id       TEXT,\r\n  note         TEXT,\r\n  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE subscriptions (\r\n  id                TEXT PRIMARY KEY,\r\n  user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  tier              TEXT NOT NULL CHECK (tier IN ('contender', 'sovereign')),\r\n  status            TEXT NOT NULL DEFAULT 'pending'\r\n                      CHECK (status IN ('pending', 'active', 'past_due', 'canceled')),\r\n  payment_reference TEXT,\r\n  activated_at      TEXT,\r\n  expires_at        TEXT,\r\n  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE \"tips\" (\r\n  id                       TEXT PRIMARY KEY,\r\n  sender_id                TEXT NOT NULL REFERENCES users(id),\r\n  receiver_id              TEXT NOT NULL REFERENCES users(id),\r\n  post_id                  TEXT REFERENCES posts(id),\r\n  amount_cents             INTEGER NOT NULL CHECK (amount_cents > 0),\r\n  platform_fee_cents       INTEGER NOT NULL,\r\n  receiver_net_cents       INTEGER NOT NULL,\r\n  stripe_payment_intent_id TEXT UNIQUE,\r\n  paystack_reference       TEXT UNIQUE,\r\n  is_wallet_tip            INTEGER NOT NULL DEFAULT 0 CHECK (is_wallet_tip IN (0, 1)),\r\n  status                   TEXT NOT NULL DEFAULT 'pending'\r\n                             CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),\r\n  message                  TEXT,\r\n  created_at               TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  completed_at             TEXT\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE founding_members (\r\n  id                TEXT PRIMARY KEY,\r\n  user_id           TEXT NOT NULL UNIQUE,\r\n  payment_reference TEXT NOT NULL,\r\n  amount_usd        REAL NOT NULL DEFAULT 20,\r\n  joined_at         TEXT NOT NULL,\r\n  FOREIGN KEY (user_id) REFERENCES users(id)\r\n)"
+      },
+      {
+        "sql": "CREATE TABLE \"boost_tokens\" (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), post_id TEXT NOT NULL REFERENCES posts(id), amount_paid_cents INTEGER NOT NULL, paystack_reference TEXT NOT NULL UNIQUE, boost_duration_hours INTEGER NOT NULL DEFAULT 24, boosted_from TEXT NOT NULL, boosted_until TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'cancelled')), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))"
+      },
+      {
+        "sql": "CREATE TABLE \"treasury_ledger\" (id TEXT PRIMARY KEY, challenge_id TEXT NOT NULL REFERENCES challenges(id), total_held_cents INTEGER NOT NULL DEFAULT 0, platform_fee_cents INTEGER NOT NULL DEFAULT 0, winner_payout_cents INTEGER NOT NULL DEFAULT 0, charity_payout_cents INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'holding' CHECK (status IN ('holding', 'releasing', 'released', 'refunded')), paystack_transfer_id TEXT, released_at TEXT, refunded_at TEXT, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))"
+      },
+      {
+        "sql": "CREATE TABLE \"challenger_duels\" (id TEXT PRIMARY KEY, challenger_id TEXT NOT NULL REFERENCES users(id), challenged_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL, description TEXT, duel_type TEXT NOT NULL CHECK (duel_type IN ('revenue','deals','growth','savings','custom')), wager_amount_cents INTEGER NOT NULL DEFAULT 0, winner_tip_paystack_reference TEXT, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined','active','completed','cancelled')), winner_id TEXT REFERENCES users(id), ends_at TEXT, challenger_proof_url TEXT, challenged_proof_url TEXT, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))"
+      },
+      {
+        "sql": "CREATE TABLE notification_preferences (id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE REFERENCES users(id), tips_received INTEGER NOT NULL DEFAULT 1, challenge_updates INTEGER NOT NULL DEFAULT 1, duel_challenges INTEGER NOT NULL DEFAULT 1, league_promotions INTEGER NOT NULL DEFAULT 1, badge_awards INTEGER NOT NULL DEFAULT 1, weekly_summary INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))"
+      },
+      {
+        "sql": "CREATE TABLE challenge_gold_buttons (id TEXT PRIMARY KEY, challenge_id TEXT NOT NULL REFERENCES challenges(id), user_id TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), UNIQUE(challenge_id, user_id))"
+      },
+      {
+        "sql": "CREATE TABLE challenge_boosts (id TEXT PRIMARY KEY, challenge_id TEXT NOT NULL REFERENCES challenges(id), user_id TEXT NOT NULL REFERENCES users(id), amount_usd REAL NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))"
+      },
+      {
+        "sql": "CREATE TABLE duel_watchers (id TEXT PRIMARY KEY, duel_id TEXT NOT NULL REFERENCES duels(id), user_id TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), UNIQUE(duel_id, user_id))"
+      },
+      {
+        "sql": "CREATE TABLE duel_votes (id TEXT PRIMARY KEY, duel_id TEXT NOT NULL REFERENCES duels(id), voter_id TEXT NOT NULL REFERENCES users(id), voted_for_id TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), UNIQUE(duel_id, voter_id))"
+      },
+      {
+        "sql": "CREATE TABLE crews (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, creator_id TEXT NOT NULL REFERENCES users(id), description TEXT, member_count INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))"
+      },
+      {
+        "sql": "CREATE TABLE crew_members (id TEXT PRIMARY KEY, crew_id TEXT NOT NULL REFERENCES crews(id), user_id TEXT NOT NULL REFERENCES users(id), role TEXT NOT NULL DEFAULT 'member', joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), UNIQUE(crew_id, user_id))"
+      },
+      {
+        "sql": "CREATE TABLE crew_battles (id TEXT PRIMARY KEY, challenger_crew_id TEXT NOT NULL REFERENCES crews(id), target_crew_id TEXT NOT NULL REFERENCES crews(id), title TEXT NOT NULL, prize_pool_usd REAL NOT NULL DEFAULT 0, entry_contribution_usd REAL NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','resolved','cancelled')), winner_crew_id TEXT REFERENCES crews(id), ends_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))"
+      },
+      {
+        "sql": "CREATE TABLE free_challenge_entries (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), month_key TEXT NOT NULL, challenge_id TEXT NOT NULL REFERENCES challenges(id), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), UNIQUE(user_id, month_key))"
+      },
+      {
+        "sql": "CREATE TABLE post_cheers (id TEXT PRIMARY KEY, post_id TEXT NOT NULL REFERENCES posts(id), user_id TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), UNIQUE(post_id, user_id))"
+      },
+      {
+        "sql": "CREATE TABLE post_stakes (id TEXT PRIMARY KEY, post_id TEXT NOT NULL UNIQUE, user_id TEXT NOT NULL, amount_usd REAL NOT NULL, status TEXT NOT NULL DEFAULT 'locked', appeal_deadline TEXT, appeal_reason TEXT, appeal_status TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY (post_id) REFERENCES posts(id), FOREIGN KEY (user_id) REFERENCES users(id))"
+      },
+      {
+        "sql": "CREATE TABLE d1_migrations(\n\t\tid         INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\tname       TEXT UNIQUE,\n\t\tapplied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL\n)"
+      },
+      {
+        "sql": "CREATE TABLE sqlite_sequence(name,seq)"
+      },
+      {
+        "sql": "CREATE TABLE user_bank_details (\r\n  id TEXT PRIMARY KEY,\r\n  user_id TEXT NOT NULL UNIQUE,\r\n  bank_name TEXT NOT NULL,\r\n  account_number TEXT NOT NULL,\r\n  account_name TEXT NOT NULL,\r\n  bank_code TEXT,\r\n  created_at TEXT NOT NULL,\r\n  updated_at TEXT NOT NULL,\r\n  FOREIGN KEY (user_id) REFERENCES users(id)\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2132
+      },
+      "duration": 0.2132,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 737280,
+      "rows_read": 166,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

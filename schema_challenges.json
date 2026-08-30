@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE challenges (\r\n  id                    TEXT PRIMARY KEY,\r\n  creator_id            TEXT NOT NULL REFERENCES users(id),\r\n  title                 TEXT NOT NULL,\r\n  description           TEXT NOT NULL,\r\n  rules                 TEXT,\r\n  challenge_type        TEXT NOT NULL\r\n                          CHECK (challenge_type IN (\r\n                            'revenue', 'deals_closed', 'growth', 'savings',\r\n                            'custom', 'charity_brawl'\r\n                          )),\r\n  verification_method   TEXT NOT NULL\r\n                          CHECK (verification_method IN ('proof_upload', 'honor_system', 'admin_verified')),\r\n  entry_fee_cents       INTEGER NOT NULL DEFAULT 0,\r\n  pool_total_cents      INTEGER NOT NULL DEFAULT 0,\r\n  platform_fee_cents    INTEGER NOT NULL DEFAULT 0,\r\n  charity_amount_cents  INTEGER NOT NULL DEFAULT 0,\r\n  charity_name          TEXT,\r\n  winner_id             TEXT REFERENCES users(id),\r\n  min_tier              TEXT DEFAULT 'explorer'\r\n                          CHECK (min_tier IN ('explorer', 'contender', 'sovereign')),\r\n  max_participants      INTEGER,\r\n  participant_count     INTEGER NOT NULL DEFAULT 0,\r\n  status                TEXT NOT NULL DEFAULT 'draft'\r\n                          CHECK (status IN ('draft', 'open', 'active', 'voting', 'completed', 'cancelled')),\r\n  starts_at             TEXT NOT NULL,\r\n  ends_at               TEXT NOT NULL,\r\n  winner_announced_at   TEXT,\r\n  is_featured           INTEGER NOT NULL DEFAULT 0,\r\n  moderation_status     TEXT NOT NULL DEFAULT 'pending'\r\n                          CHECK (moderation_status IN ('pending', 'approved', 'rejected')),\r\n  created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  updated_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  deleted_at            TEXT\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1547
+      },
+      "duration": 0.1547,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 729088,
+      "rows_read": 164,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

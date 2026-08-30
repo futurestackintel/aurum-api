@@ -1,0 +1,27 @@
+[
+  {
+    "results": [
+      {
+        "sql": "CREATE TABLE notifications (\r\n  id          TEXT PRIMARY KEY,\r\n  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\r\n  type        TEXT NOT NULL\r\n                CHECK (type IN (\r\n                  'tip_received', 'challenge_won', 'challenge_joined', 'challenge_ending_soon',\r\n                  'duel_received', 'duel_accepted', 'duel_result',\r\n                  'post_reacted', 'post_tipped', 'post_commented',\r\n                  'badge_awarded', 'league_promoted', 'league_demoted',\r\n                  'stake_verified', 'stake_disputed', 'stake_forfeited',\r\n                  'room_invited', 'subscription_renewal', 'system_alert'\r\n                )),\r\n  title       TEXT NOT NULL,\r\n  body        TEXT NOT NULL,\r\n  action_url  TEXT,\r\n  metadata    TEXT,\r\n  is_read     INTEGER NOT NULL DEFAULT 0,\r\n  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\r\n  read_at     TEXT\r\n)"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.3817
+      },
+      "duration": 0.3817,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 737280,
+      "rows_read": 166,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]
