@@ -244,6 +244,20 @@ window.ArenaPage = {
                 placeholder="What are you proving with this duel?" rows="2"
                 style="resize:none;font-family:var(--font-body);"></textarea>
             </div>
+            <div class="input-group">
+              <label class="input-label">Duel Format</label>
+              <select class="input" id="duel-format">
+                <option value="proof">Proof Duel (submit evidence, community votes)</option>
+                <option value="quick">Quick Duel (instant mini-game, no voting)</option>
+              </select>
+            </div>
+            <div class="input-group" id="duel-quick-game-group" style="display:none;">
+              <label class="input-label">Game</label>
+              <select class="input" id="duel-quick-game">
+                <option value="reflex_tap">Reflex Tap</option>
+                <option value="trivia">Trivia Duel</option>
+              </select>
+            </div>
             <div style="display:flex;gap:var(--space-3);">
               <button class="btn btn-ghost btn-full" id="btn-cancel-duel">Cancel</button>
               <button class="btn btn-primary btn-full" id="btn-submit-duel">Challenge</button>
@@ -251,6 +265,8 @@ window.ArenaPage = {
           </div>
         </div>
       </div>
+
+      <!-- Create Crew Modal -->
 
       <!-- Create Crew Modal -->
       <div class="modal-overlay" id="create-crew-modal" style="display:none;">
@@ -450,6 +466,11 @@ window.ArenaPage = {
       });
     document.getElementById('btn-submit-duel')
       ?.addEventListener('click', () => this.submitDuel());
+    document.getElementById('duel-format')
+      ?.addEventListener('change', (e) => {
+        document.getElementById('duel-quick-game-group').style.display =
+          e.target.value === 'quick' ? 'block' : 'none';
+      });
 
     /* Crew chat modal close */
     document.getElementById('crew-chat-modal')
@@ -1267,6 +1288,8 @@ window.ArenaPage = {
     const opponent    = document.getElementById('duel-opponent')?.value.trim();
     const stake       = document.getElementById('duel-stake')?.value;
     const description = document.getElementById('duel-description')?.value.trim();
+    const duelFormat  = document.getElementById('duel-format')?.value || 'proof';
+    const quickGame   = document.getElementById('duel-quick-game')?.value;
     const btn         = document.getElementById('btn-submit-duel');
 
     if (!title) {
@@ -1285,11 +1308,15 @@ window.ArenaPage = {
         title,
         description:     description || null,
         duel_tip_amount: parseFloat(stake),
+        duel_type:       duelFormat,
+        quick_game_type: duelFormat === 'quick' ? quickGame : null,
       });
       document.getElementById('create-duel-modal').style.display = 'none';
       document.getElementById('duel-title').value       = '';
       document.getElementById('duel-opponent').value    = '';
       document.getElementById('duel-description').value = '';
+      document.getElementById('duel-format').value       = 'proof';
+      document.getElementById('duel-quick-game-group').style.display = 'none';
       AURUM.showToast('Duel challenge sent!', 'gold');
       this.loadDuels();
     } catch (err) {
