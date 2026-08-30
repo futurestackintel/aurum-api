@@ -913,6 +913,7 @@ export async function getActiveDuels(limit, offset, viewerId, db) {
         d.community_vote_challenger, d.community_vote_target,
         d.winner_id, d.dispute_status, d.dispute_deadline,
         d.challenger_id, d.target_id, d.resolved_at,
+        d.duel_type, d.quick_game_type,
         CASE
           WHEN d.winner_id = d.challenger_id THEN uc.username
           WHEN d.winner_id = d.target_id     THEN ut.username
