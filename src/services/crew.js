@@ -443,9 +443,15 @@ export async function kickMember(crewId, clerkId, targetUserId, db) {
 
   const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
 
+    const kickedAt = nowISO();
+
   await db.batch([
     db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(target.id),
     db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`).bind(crewId),
+    db.prepare(`
+      INSERT INTO crew_kicks (id, crew_id, user_id, kicked_at)
+      VALUES (?, ?, ?, ?)
+    `).bind(crypto.randomUUID(), crewId, targetUserId, kickedAt),
   ]);
 
   await db.prepare(`
