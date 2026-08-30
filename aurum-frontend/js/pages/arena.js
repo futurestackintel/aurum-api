@@ -1125,7 +1125,7 @@ window.ArenaPage = {
             </button>
           ` : ''}
 
-          ${isActive && duel.duel_type !== 'quick' ? `
+          ${isActive ? `
             <!-- Audience tip buttons — held in escrow, not paid out instantly -->
             <button class="btn btn-ghost btn-sm btn-tip-challenger"
               data-duel-id="${duel.id}"
