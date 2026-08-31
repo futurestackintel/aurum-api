@@ -80,21 +80,36 @@ export async function createDuel(clerkId, body, db) {
     .bind(challengerId, target.id, target.id, challengerId)
     .first();
 
-  if (existing) return { error: 'You already have an active duel with this user' };
+    if (existing) return { error: 'You already have an active duel with this user' };
+
+  // Escrow the challenger's stake right now — money must actually be
+  // there before a duel can be created, not just checked later at payout.
+  const challengerWallet = await db
+    .prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`)
+    .bind(challengerId)
+    .first();
+
+  if (!challengerWallet || challengerWallet.balance_usd < duel_tip_amount) {
+    return { error: 'Insufficient wallet balance to stake this duel' };
+  }
 
   const now       = new Date();
   const expiresAt = new Date(now.getTime() + DUEL_EXPIRY_HOURS * 60 * 60 * 1000);
   const duelId    = crypto.randomUUID();
 
-    await db
-    .prepare(`
+  await db.batch([
+    db.prepare(`
+      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
+      WHERE user_id = ?
+    `).bind(duel_tip_amount, now.toISOString(), challengerId),
+
+    db.prepare(`
       INSERT INTO duels
         (id, challenger_id, target_id, title, description,
          duel_tip_amount, status, expires_at, created_at,
          duel_type, quick_game_type)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-    `)
-    .bind(
+    `).bind(
       duelId,
       challengerId,
       target.id,
@@ -105,9 +120,8 @@ export async function createDuel(clerkId, body, db) {
       now.toISOString(),
       duelType,
       quickGameType,
-    )
-    .run();
-
+    ),
+  ]);
   const challenger = await db
     .prepare(`SELECT username FROM users WHERE id = ?`)
     .bind(challengerId)
@@ -141,15 +155,31 @@ export async function acceptDuel(duelId, clerkId, db) {
     .bind(duelId)
     .first();
 
-  if (!duel)                      return { error: 'Duel not found' };
+    if (!duel)                      return { error: 'Duel not found' };
   if (duel.target_id !== userId)  return { error: 'Only the challenged user can accept' };
   if (duel.status !== 'pending')  return { error: `Duel is already ${duel.status}` };
   if (new Date(duel.expires_at) <= new Date()) {
-    await db
-      .prepare(`UPDATE duels SET status = 'expired' WHERE id = ?`)
-      .bind(duelId)
-      .run();
+    // Refund the challenger's escrowed stake — the duel never happened.
+    await db.batch([
+      db.prepare(`UPDATE duels SET status = 'expired' WHERE id = ?`).bind(duelId),
+      db.prepare(`
+        UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
+        WHERE user_id = ?
+      `).bind(duel.duel_tip_amount, nowISO(), duel.challenger_id),
+    ]);
     return { error: 'Duel invitation has expired' };
+  }
+
+  // Escrow the target's stake now, matching the challenger's stake
+  // already escrowed at creation. Both stakes must be collected before
+  // the duel can go active.
+  const targetWallet = await db
+    .prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`)
+    .bind(userId)
+    .first();
+
+  if (!targetWallet || targetWallet.balance_usd < duel.duel_tip_amount) {
+    return { error: 'Insufficient wallet balance to accept this stake' };
   }
 
   const now       = new Date();
@@ -167,6 +197,11 @@ export async function acceptDuel(duelId, clerkId, db) {
     (duel.description ? duel.description : '');
 
   await db.batch([
+    db.prepare(`
+      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
+      WHERE user_id = ?
+    `).bind(duel.duel_tip_amount, now.toISOString(), userId),
+
     db.prepare(`
       INSERT INTO posts
         (id, user_id, content, achievement_category, stake_amount_cents, duel_id, created_at, updated_at)
@@ -187,7 +222,7 @@ export async function acceptDuel(duelId, clerkId, db) {
       WHERE id = ?
     `).bind(now.toISOString(), endsAt.toISOString(), postId, duelId),
   ]);
-
+	
   return {
     accepted: true,
     duel_id:  duelId,
@@ -207,14 +242,17 @@ export async function declineDuel(duelId, clerkId, db) {
     .bind(duelId)
     .first();
 
-  if (!duel)                      return { error: 'Duel not found' };
+    if (!duel)                      return { error: 'Duel not found' };
   if (duel.target_id !== userId)  return { error: 'Only the challenged user can decline' };
   if (duel.status !== 'pending')  return { error: `Duel is already ${duel.status}` };
 
-  await db
-    .prepare(`UPDATE duels SET status = 'declined' WHERE id = ?`)
-    .bind(duelId)
-    .run();
+  await db.batch([
+    db.prepare(`UPDATE duels SET status = 'declined' WHERE id = ?`).bind(duelId),
+    db.prepare(`
+      UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
+      WHERE user_id = ?
+    `).bind(duel.duel_tip_amount, nowISO(), duel.challenger_id),
+  ]);
 
   return { declined: true, duel_id: duelId };
 }
@@ -797,11 +835,15 @@ export async function decideDuelDispute(duelId, decision, adminId, db, winnerId 
 export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
   if (duel.payout_released) return { error: 'Payout already released for this duel' };
 
-  const loserId = winnerId === duel.challenger_id ? duel.target_id : duel.challenger_id;
+    const loserId = winnerId === duel.challenger_id ? duel.target_id : duel.challenger_id;
   const now     = nowISO();
 
+  // Both stakes were already escrowed out of both wallets at creation
+  // (challenger) and acceptance (target) — see createDuel/acceptDuel.
+  // Nothing needs debiting from anyone here; the full pot just needs
+  // to be paid out to the winner.
   const totalEscrow =
-    duel.duel_tip_amount +
+    (duel.duel_tip_amount * 2) +
     (duel.audience_tips_challenger ?? 0) +
     (duel.audience_tips_target ?? 0);
 
@@ -809,21 +851,10 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
   const netPayout    = totalEscrow - platformFee;
 
   await db.batch([
-    // Loser's own stake moves to winner (challenger/target each staked
-    // duel_tip_amount at creation — only the loser's stake actually
-    // needs debiting from their wallet here; the winner's own stake
-    // was never debited from them, it's already "theirs" conceptually,
-    // so only the loser's stake + all escrowed audience tips move).
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(duel.duel_tip_amount, now, loserId),
-
     db.prepare(`
       UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
       WHERE user_id = ?
     `).bind(netPayout, now, winnerId),
-
     db.prepare(`
       UPDATE tips
       SET platform_fee_cents = ROUND(amount_cents * ?),
@@ -857,6 +888,26 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
 
 export async function processDuelCron(db) {
   const now = nowISO();
+
+  // Job 0 — refund and expire pending duels nobody ever accepted/declined
+  const { results: toExpire } = await db
+    .prepare(`SELECT id, challenger_id, duel_tip_amount FROM duels WHERE status = 'pending' AND expires_at <= ?`)
+    .bind(now)
+    .all();
+
+  for (const row of toExpire) {
+    try {
+      await db.batch([
+        db.prepare(`UPDATE duels SET status = 'expired' WHERE id = ?`).bind(row.id),
+        db.prepare(`
+          UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
+          WHERE user_id = ?
+        `).bind(row.duel_tip_amount, now, row.challenger_id),
+      ]);
+    } catch (err) {
+      console.error(`processDuelCron: expire+refund failed for ${row.id}:`, err);
+    }
+  }
 
   // Job 1 — close windows that have ended
   const { results: toClose } = await db
