@@ -275,6 +275,14 @@ window.ArenaPage = {
         </div>
       </div>
 
+      <!-- Duel Win Badge Modal -->
+      <div class="modal-overlay" id="duel-win-badge-modal" style="display:none;">
+        <div class="modal" style="text-align:center;">
+          <div class="modal-handle"></div>
+          <div id="win-badge-area"></div>
+        </div>
+      </div>
+
       <!-- Quick Duel Play Modal -->
       <div class="modal-overlay" id="quick-duel-play-modal" style="display:none;">
         <div class="modal" style="text-align:center;">
@@ -1069,6 +1077,10 @@ window.ArenaPage = {
     const challenger = duel.challenger_username || 'Challenger';
     const opponent   = duel.target_username     || 'Opponent';
     const winnerId   = duel.winner_id;
+    const isResolved2 = duel.status === 'resolved';
+    const amIWinner  = isResolved2 && winnerId &&
+      ((duel.is_challenger && winnerId === duel.challenger_id) ||
+       (duel.is_opponent   && winnerId === duel.target_id));
 
     const statusLabel = duel.status === 'tied' ? 'tied — under review' : (duel.status || 'pending');
 
@@ -1207,9 +1219,14 @@ window.ArenaPage = {
               data-duel-id="${duel.id}" title="Report Cheating">🚩</button>
           ` : ''}
 
-          ${isActive && duel.is_challenger ? `
+                    ${isActive && duel.is_challenger ? `
             <button class="duel-icon-btn duel-icon-btn-gold btn-announce-duel"
               data-duel-id="${duel.id}" title="Announce to platform">📣</button>
+          ` : ''}
+
+          ${amIWinner ? `
+            <button class="btn btn-primary btn-full btn-sm btn-share-win"
+              data-duel-id="${duel.id}">🏆 Share Your Win</button>
           ` : ''}
 
         </div>
@@ -1306,7 +1323,14 @@ window.ArenaPage = {
       });
     });
 
-        /* Share duel */
+            /* Share win badge */
+    document.querySelectorAll('.btn-share-win').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => this.openWinBadge(btn.dataset.duelId));
+    });
+
+    /* Share duel */
     document.querySelectorAll('.btn-share-duel').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
@@ -1413,7 +1437,84 @@ window.ArenaPage = {
     }
   },
 
-    /* --------------------------------------------------
+      /* --------------------------------------------------
+     WIN BADGE
+  -------------------------------------------------- */
+  async openWinBadge(duelId) {
+    document.getElementById('duel-win-badge-modal').style.display = 'flex';
+    const area = document.getElementById('win-badge-area');
+    area.innerHTML = `<p style="color:var(--color-text-muted);padding:var(--space-8) 0;">Loading...</p>`;
+
+    try {
+      const data = await AURUM.DuelAPI.getDuel(duelId);
+      const duel = data.duel || data;
+      this.activeWinBadgeDuel = duel;
+
+      const winnerIsChallenger = duel.winner_id === duel.challenger_id;
+      const winnerName   = winnerIsChallenger ? duel.challenger_username : duel.target_username;
+      const winnerAvatar = winnerIsChallenger ? duel.challenger_avatar_url : duel.target_avatar_url;
+      const loserName    = winnerIsChallenger ? duel.target_username : duel.challenger_username;
+      const audiencePot  = (duel.audience_tips_challenger || 0) + (duel.audience_tips_target || 0);
+      const totalWon     = (duel.duel_tip_amount || 0) * 2 + audiencePot;
+
+      area.innerHTML = `
+        <div class="win-badge-card">
+          <div class="win-badge-bg-grid"></div>
+          <div class="win-badge-content">
+            <div class="win-badge-top">
+              <span class="win-badge-logo">AURUM</span>
+              <span class="win-badge-tag">DUEL WIN</span>
+            </div>
+            <div class="win-badge-trophy">🏆</div>
+            <div class="avatar win-badge-avatar avatar-gold">${AURUM.avatarInnerHTML(winnerAvatar, winnerName.charAt(0).toUpperCase())}</div>
+            <p class="win-badge-name">${winnerName}</p>
+            <p class="win-badge-sub">defeated @${loserName}</p>
+            <p class="win-badge-title">"${duel.title}"</p>
+            <div class="win-badge-divider"></div>
+            <div class="win-badge-stat-row">
+              <div class="win-badge-stat">
+                <span class="win-badge-stat-value">${AURUM.formatAmount(totalWon)}</span>
+                <span class="win-badge-stat-label">Won</span>
+              </div>
+            </div>
+            <div class="win-badge-footer">
+              <span style="font-size:9px;letter-spacing:0.1em;color:rgba(201,168,76,0.5);">tryaurum.store</span>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:var(--space-4);" id="btn-share-win-badge">Share This Win</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:var(--space-2);" onclick="document.getElementById('duel-win-badge-modal').style.display='none';">Close</button>
+      `;
+
+      document.getElementById('btn-share-win-badge')
+        ?.addEventListener('click', () => this.shareWinBadge(duel, winnerName, loserName));
+    } catch (err) {
+      area.innerHTML = `<p style="color:var(--color-danger);padding:var(--space-8) 0;">Could not load duel.</p>`;
+    }
+  },
+
+  async shareWinBadge(duel, winnerName, loserName) {
+    const url  = `https://tryaurum.store/duel/${duel.id}`;
+    const text = `🏆 ${winnerName} just won a duel against @${loserName} on AURUM — "${duel.title}". Check it out: ${url}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'AURUM Duel Win', text, url });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      AURUM.showToast('Win copied — paste it anywhere!', 'gold');
+    } catch (err) {
+      AURUM.showToast(url, 'default', 5000);
+    }
+  },
+
+  /* --------------------------------------------------
      SHARE DUEL
   -------------------------------------------------- */
   async shareDuel(duelId) {
@@ -2900,7 +3001,120 @@ window.ArenaPage = {
         color: var(--color-gold);
       }
 
-            .duel-card-header {
+      .win-badge-card {
+        position: relative;
+        background: linear-gradient(135deg, #0F0F0F, #1A1500);
+        border: 1px solid var(--color-gold-dim);
+        border-radius: var(--radius-xl);
+        padding: var(--space-6);
+        overflow: hidden;
+        box-shadow: 0 0 48px rgba(201,168,76,0.25);
+      }
+
+      .win-badge-bg-grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(201,168,76,0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(201,168,76,0.04) 1px, transparent 1px);
+        background-size: 24px 24px;
+        pointer-events: none;
+      }
+
+      .win-badge-content {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      .win-badge-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+      }
+
+      .win-badge-logo {
+        font-family: var(--font-display);
+        font-size: var(--text-lg);
+        letter-spacing: 0.2em;
+        color: var(--color-gold);
+      }
+
+      .win-badge-tag {
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--color-gold-dim);
+        border: 1px solid var(--color-border-gold);
+        padding: 2px var(--space-2);
+        border-radius: var(--radius-full);
+      }
+
+      .win-badge-trophy {
+        font-size: 2.5rem;
+        margin-top: var(--space-2);
+      }
+
+      .win-badge-avatar {
+        width: 64px;
+        height: 64px;
+        font-size: 24px;
+      }
+
+      .win-badge-name {
+        font-family: var(--font-display);
+        font-size: var(--text-2xl);
+        font-weight: var(--weight-light);
+        color: var(--color-text);
+      }
+
+      .win-badge-sub {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+      }
+
+      .win-badge-title {
+        font-size: var(--text-sm);
+        color: var(--color-gold);
+        font-style: italic;
+      }
+
+      .win-badge-divider {
+        width: 100%;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(201,168,76,0.3), transparent);
+        margin: var(--space-2) 0;
+      }
+
+      .win-badge-stat-row {
+        display: flex;
+        justify-content: center;
+      }
+
+      .win-badge-stat-value {
+        font-family: var(--font-mono);
+        font-size: var(--text-2xl);
+        color: var(--color-gold);
+      }
+
+      .win-badge-stat-label {
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(201,168,76,0.5);
+        display: block;
+        text-align: center;
+      }
+
+      .win-badge-footer {
+        margin-top: var(--space-2);
+      }
+
+      .duel-card-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
