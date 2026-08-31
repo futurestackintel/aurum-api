@@ -1575,36 +1575,9 @@ export async function getCrews(limit, offset, clerkId, db) {
 
 // ── GET ACTIVE CREW BATTLE (with live vote tally) ─────────────
 
-export async function getActiveCrewBattle(crewId, clerkId, db) {
-  const battle = await db
-    .prepare(`
-      SELECT * FROM crew_battles
-      WHERE (challenger_crew_id = ? OR target_crew_id = ?)
-        AND status IN ('pending','active')
-      ORDER BY created_at DESC LIMIT 1
-    `)
-    .bind(crewId, crewId)
-    .first();
-  if (!battle) return { battle: null };
-
-  const [challengerCrew, targetCrew] = await Promise.all([
-    db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(battle.challenger_crew_id).first(),
-    db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(battle.target_crew_id).first(),
-  ]);
-
-  const [challengerVotes, targetVotes] = await Promise.all([
-    db.prepare(`SELECT COUNT(*) as c FROM crew_battle_votes WHERE battle_id = ? AND voted_crew_id = ?`)
-      .bind(battle.id, battle.challenger_crew_id).first(),
-    db.prepare(`SELECT COUNT(*) as c FROM crew_battle_votes WHERE battle_id = ? AND voted_crew_id = ?`)
-      .bind(battle.id, battle.target_crew_id).first(),
-  ]);
-
-  const totalVotes    = challengerVotes.c + targetVotes.c;
-  const challengerPct = totalVotes ? Math.round((challengerVotes.c / totalVotes) * 100) : 50;
-  const targetPct     = totalVotes ? 100 - challengerPct : 50;
-
-  let myVote  = null;
-  let canVote = true;
+  let myVote    = null;
+  let canVote   = true;
+  let canAccept = false;
   if (clerkId) {
     const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
     if (userRow) {
@@ -1618,6 +1591,14 @@ export async function getActiveCrewBattle(crewId, clerkId, db) {
         .bind(battle.id, userRow.id)
         .first();
       if (existingVote) myVote = existingVote.voted_crew_id;
+
+      if (battle.status === 'pending' && !battle.target_accepted_at) {
+        const targetMembership = await db
+          .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+          .bind(battle.target_crew_id, userRow.id)
+          .first();
+        canAccept = targetMembership?.role === 'captain';
+      }
     }
   }
 
@@ -1636,8 +1617,9 @@ export async function getActiveCrewBattle(crewId, clerkId, db) {
       challenger_pct:   challengerPct,
       target_pct:       targetPct,
       total_votes:      totalVotes,
-      my_vote:  myVote,
-      can_vote: canVote,
+      my_vote:    myVote,
+      can_vote:   canVote,
+      can_accept: canAccept,
     },
   };
 }
