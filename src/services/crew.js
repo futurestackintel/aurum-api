@@ -878,7 +878,7 @@ export async function reportCrewBattleDispute(battleId, clerkId, reason, db) {
 
   if (!reason || reason.trim().length === 0) return { error: 'A reason is required to report a dispute' };
 
-  await db
+    await db
     .prepare(`
       UPDATE crew_battles
       SET dispute_status = 'disputed', dispute_reported_by = ?, dispute_reason = ?
@@ -888,6 +888,56 @@ export async function reportCrewBattleDispute(battleId, clerkId, reason, db) {
     .run();
 
   return { battle_id: battleId, dispute_status: 'disputed' };
+}
+
+// ── ADMIN: DECIDE CREW BATTLE DISPUTE ─────────────────────────
+// Mirrors decideDuelDispute. Two paths: a tied battle sitting in
+// dispute_status='admin_review' needs an explicit winnerCrewId
+// (no 'upheld'/'rejected' applies); a reported-cheating battle
+// sitting in dispute_status='disputed' takes a decision instead.
+
+export async function decideCrewBattleDispute(battleId, decision, adminId, db, winnerCrewId = null) {
+  const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
+  if (!battle) return { error: 'Crew battle not found' };
+
+  // Tied battle: admin must supply an explicit winner
+  if (battle.dispute_status === 'admin_review') {
+    if (!winnerCrewId) {
+      return { error: 'winner_crew_id is required to resolve a tied battle' };
+    }
+    if (winnerCrewId !== battle.challenger_crew_id && winnerCrewId !== battle.target_crew_id) {
+      return { error: 'winner_crew_id must be one of the two battling crews' };
+    }
+    const result = await resolveCrewBattle(battleId, winnerCrewId, adminId, db);
+    if (result.error) return result;
+
+    return { resolved: true, battle_id: battleId, winner_crew_id: winnerCrewId, decision: 'tie_resolved' };
+  }
+
+  // Reported-cheating dispute path (not a tie)
+  if (!['upheld', 'rejected'].includes(decision)) {
+    return { error: 'decision must be upheld or rejected' };
+  }
+  if (battle.dispute_status !== 'disputed') {
+    return { error: 'This battle has no pending dispute' };
+  }
+  if (!battle.winner_crew_id) {
+    return { error: 'Battle has no winner yet' };
+  }
+
+  let finalWinnerCrewId = battle.winner_crew_id;
+
+  if (decision === 'upheld') {
+    // Report was valid — flip winner to whichever crew was NOT the original winner
+    finalWinnerCrewId = battle.winner_crew_id === battle.challenger_crew_id
+      ? battle.target_crew_id
+      : battle.challenger_crew_id;
+  }
+
+  const result = await resolveCrewBattle(battleId, finalWinnerCrewId, adminId, db);
+  if (result.error) return result;
+
+  return { resolved: true, battle_id: battleId, winner_crew_id: finalWinnerCrewId, decision };
 }
 
 // ── PROCESS CREW BATTLE CRON (close windows, auto-release uncontested) ──
