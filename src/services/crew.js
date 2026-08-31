@@ -777,7 +777,7 @@ export async function castCrewBattleVote(battleId, clerkId, votedCrewId, db) {
 
   const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
   if (!battle) return { error: 'Crew battle not found' };
-  if (battle.status !== 'pending' && battle.status !== 'active') return { error: 'This battle is no longer open for voting' };
+  if (battle.status !== 'active') return { error: 'This battle is not open for voting yet' };
   if (new Date(battle.ends_at) <= new Date()) return { error: 'Voting has closed for this battle' };
 
   if (votedCrewId !== battle.challenger_crew_id && votedCrewId !== battle.target_crew_id) {
@@ -815,7 +815,7 @@ export async function castCrewBattleVote(battleId, clerkId, votedCrewId, db) {
 export async function closeCrewBattleWindow(battleId, db) {
   const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
   if (!battle) return { error: 'Crew battle not found' };
-  if (battle.status !== 'pending' && battle.status !== 'active') return { error: 'Battle is already closed' };
+  if (battle.status !== 'active') return { error: 'Battle is not active' };
   if (new Date(battle.ends_at) > new Date()) return { error: 'Battle voting window has not ended yet' };
 
   const challengerVotes = await db
@@ -945,11 +945,31 @@ export async function decideCrewBattleDispute(battleId, decision, adminId, db, w
 export async function processCrewBattleCron(db) {
   const now = nowISO();
 
-  // Close any battles whose voting window has ended
+  // Job 0 — refund and cancel stale pending battles nobody ever accepted/declined
+  const { results: toExpire } = await db
+    .prepare(`SELECT id, challenger_paid_by, entry_contribution_usd FROM crew_battles WHERE status = 'pending' AND ends_at <= ?`)
+    .bind(now)
+    .all();
+
+  for (const row of toExpire) {
+    try {
+      await db.batch([
+        db.prepare(`UPDATE crew_battles SET status = 'cancelled' WHERE id = ?`).bind(row.id),
+        db.prepare(`
+          UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
+          WHERE user_id = ?
+        `).bind(row.entry_contribution_usd, now, row.challenger_paid_by),
+      ]);
+    } catch (err) {
+      console.error(`processCrewBattleCron: expire+refund failed for ${row.id}:`, err);
+    }
+  }
+
+  // Job 1 — close any active battles whose voting window has ended
   const { results: toClose } = await db
     .prepare(`
       SELECT id FROM crew_battles
-      WHERE status IN ('pending','active') AND dispute_status = 'none' AND ends_at <= ?
+      WHERE status = 'active' AND dispute_status = 'none' AND ends_at <= ?
     `)
     .bind(now)
     .all();
