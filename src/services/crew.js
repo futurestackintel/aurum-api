@@ -1215,15 +1215,16 @@ export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
     return { error: `Insufficient wallet balance. Entry contribution is $${entry_contribution_usd}` };
   }
 
-  const now      = nowISO();
+    const now      = nowISO();
   const battleId = crypto.randomUUID();
 
   await db.batch([
     db.prepare(`
       INSERT INTO crew_battles
         (id, challenger_crew_id, target_crew_id, title,
-         prize_pool_usd, entry_contribution_usd, status, ends_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+         prize_pool_usd, entry_contribution_usd, status, ends_at, created_at,
+         challenger_paid_by)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
     `).bind(
       battleId,
       challengerCrewId,
@@ -1233,6 +1234,7 @@ export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
       entry_contribution_usd,
       endsAtDate.toISOString(),
       now,
+      userId,
     ),
 
     // Deduct entry from captain wallet
