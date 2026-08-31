@@ -7,6 +7,7 @@
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
+import { calcNetPayout } from './battleShared.js';
 
 function nowISO() {
   return new Date().toISOString();
@@ -1360,29 +1361,31 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
     .bind(battleId)
     .first();
 
-  if (!battle)                        return { error: 'Crew battle not found' };
+    if (!battle)                        return { error: 'Crew battle not found' };
   if (battle.status === 'resolved')   return { error: 'Battle already resolved' };
   if (battle.status === 'cancelled')  return { error: 'Battle was cancelled' };
+  if (battle.payout_released)         return { error: 'Payout already released for this battle' };
 
   if (winnerCrewId !== battle.challenger_crew_id && winnerCrewId !== battle.target_crew_id) {
     return { error: 'Winner must be one of the battling crews' };
   }
 
-  const now          = nowISO();
-  const prizePool    = battle.prize_pool_usd ?? 0;
+  const now       = nowISO();
+  const prizePool = battle.prize_pool_usd ?? 0;
+  const { platformFee, netPayout } = calcNetPayout(prizePool);
 
   await db
     .prepare(`
       UPDATE crew_battles
-      SET status = 'resolved', winner_crew_id = ?, dispute_status = 'none'
+      SET status = 'resolved', winner_crew_id = ?, dispute_status = 'none', payout_released = 1
       WHERE id = ?
     `)
     .bind(winnerCrewId, battleId)
     .run();
 
-  // Credit prize pool into the winning crew's shared wallet
+  // Credit net prize pool (after platform fee) into the winning crew's shared wallet
   const crewWallet = await getOrCreateCrewWallet(winnerCrewId, db);
-  const newBalance = crewWallet.balance_usd + prizePool;
+  const newBalance = crewWallet.balance_usd + netPayout;
 
   await db
     .prepare(`
@@ -1390,7 +1393,7 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
       SET balance_usd = ?, total_funded_usd = total_funded_usd + ?, updated_at = ?
       WHERE id = ?
     `)
-    .bind(newBalance, prizePool, now, crewWallet.id)
+    .bind(newBalance, netPayout, now, crewWallet.id)
     .run();
 
   await db
@@ -1403,10 +1406,10 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
       crypto.randomUUID(),
       winnerCrewId,
       crewWallet.id,
-      prizePool,
+      netPayout,
       newBalance,
       moderatorId ?? null,
-      `Prize payout for battle: ${battle.title}`,
+      `Prize payout for battle: ${battle.title} (5% platform fee: $${platformFee})`,
       battleId,
       now,
     )
