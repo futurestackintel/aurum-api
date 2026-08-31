@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>AURUM Duel</title>
+  <meta name="description"
+    content="Watch this AURUM duel live — tip or vote for who you think will win." />
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"   content="AURUM" />
+  <meta property="og:type"        content="website" />
+  <meta property="og:title"       id="og-title"
+    content="AURUM Duel" />
+  <meta property="og:description" id="og-desc"
+    content="Two competitors. Real stakes. Tip or vote for who wins." />
+  <meta property="og:url"         id="og-url"
+    content="https://tryaurum.store/duel/" />
+  <meta property="og:image"       id="og-image"
+    content="https://tryaurum.store/og-duel.png" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:site"        content="@tryaurum" />
+  <meta name="twitter:title"       id="tw-title"
+    content="AURUM Duel" />
+  <meta name="twitter:description" id="tw-desc"
+    content="Two competitors. Real stakes. Tip or vote for who wins." />
+  <meta name="twitter:image"       id="tw-image"
+    content="https://tryaurum.store/og-duel.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/components.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .dp-topbar {
+      width: 100%;
+      max-width: var(--max-width);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .dp-logo {
+      font-family: var(--font-display);
+      font-size: var(--text-xl);
+      letter-spacing: 0.2em;
+      color: var(--color-gold);
+    }
+
+    .dp-wrap {
+      width: 100%;
+      max-width: var(--max-width);
+      padding: var(--space-6) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-5);
+    }
+
+    .duel-card {
+      position: relative;
+      width: 100%;
+      background: linear-gradient(135deg, #0F0F0F, #1A1500);
+      border: 1px solid var(--color-gold-dim);
+      border-radius: var(--radius-xl);
+      padding: var(--space-6);
+      overflow: hidden;
+      box-shadow: 0 0 48px rgba(201,168,76,0.2);
+    }
+
+    .dp-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-4);
+    }
+
+    .dp-title {
+      font-family: var(--font-display);
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-light);
+      color: var(--color-text);
+    }
+
+    .dp-status-badge {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px var(--space-3);
+      border-radius: var(--radius-full);
+      border: 1px solid var(--color-border-gold);
+      color: var(--color-gold);
+      flex-shrink: 0;
+    }
+
+    .dp-vs-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      background: rgba(255,255,255,0.02);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+    }
+
+    .dp-combatant {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2);
+      flex: 1;
+      text-align: center;
+    }
+
+    .dp-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--color-surface-3);
+      border: 2px solid var(--color-gold-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: var(--text-2xl);
+      color: var(--color-gold);
+    }
+
+    .dp-vs-mid {
+      font-family: var(--font-display);
+      font-size: var(--text-lg);
+      color: var(--color-gold-dim);
+      flex-shrink: 0;
+    }
+
+    .dp-winner-banner {
+      text-align: center;
+      padding: var(--space-3);
+      color: var(--color-gold);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-4);
+    }
+
+    .dp-stat-row {
+      display: flex;
+      justify-content: space-around;
+      padding: var(--space-3) 0;
+      border-top: 1px solid rgba(201,168,76,0.15);
+      border-bottom: 1px solid rgba(201,168,76,0.15);
+      margin-bottom: var(--space-4);
+    }
+
+    .dp-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .dp-stat-value {
+      font-family: var(--font-mono);
+      font-size: var(--text-lg);
+      color: var(--color-gold);
+    }
+
+    .dp-stat-label {
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(201,168,76,0.5);
+    }
+
+    .dp-action-row {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    .dp-action-row .btn { flex: 1; min-width: 130px; }
+
+    .share-section {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .share-title {
+      font-size: var(--text-xs);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+      text-align: center;
+    }
+
+    .share-buttons {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    .share-buttons .btn { flex: 1; min-width: 120px; }
+
+    .join-cta {
+      width: 100%;
+      padding: var(--space-5);
+      background: linear-gradient(135deg,
+        var(--color-surface), rgba(201,168,76,0.05));
+      border: 1px solid var(--color-border-gold);
+      border-radius: var(--radius-xl);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .join-cta-title {
+      font-family: var(--font-display);
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-light);
+      color: var(--color-gold);
+    }
+
+    .join-cta-sub {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      line-height: 1.6;
+    }
+
+    .dp-loading, .dp-error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-16) var(--space-4);
+      width: 100%;
+      text-align: center;
+    }
+
+    .dp-loading-logo {
+      font-family: var(--font-display);
+      font-size: var(--text-3xl);
+      letter-spacing: 0.2em;
+      color: var(--color-gold);
+      animation: goldShimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes goldShimmer {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.6; }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-in { animation: fadeIn 0.5s ease forwards; }
+  </style>
+</head>
+<body>
+
+  <div class="dp-topbar">
+    <a href="/" style="text-decoration:none;">
+      <span class="dp-logo">AURUM</span>
+    </a>
+    <a href="app.html#signup" class="btn btn-primary btn-sm">Join AURUM</a>
+  </div>
+
+  <div class="dp-wrap" id="dp-wrap">
+    <div class="dp-loading" id="dp-loading">
+      <p class="dp-loading-logo">AURUM</p>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+  /* ============================================
+     AURUM — Public Duel Page
+     Reads /duel/:id from URL. Fetches public duel
+     data (GET /api/duels/:id is public — no auth
+     required). Tip/Vote check for a logged-in
+     session; if none, the person is sent to sign up
+     first (AURUM wallet funding is required for
+     every tip regardless of who's tipping).
+  ============================================ */
+
+  function getDuelIdFromURL() {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const idx = parts.indexOf('duel');
+    if (idx !== -1 && parts[idx + 1]) return decodeURIComponent(parts[idx + 1]);
+    const params = new URLSearchParams(window.location.search);
+    return params.get('id') || null;
+  }
+
+  function initials(name) {
+    return (name || '?').charAt(0).toUpperCase();
+  }
+
+  function capitalize(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  function getDuelURL(id) {
+    return `https://tryaurum.store/duel/${id}`;
+  }
+
+  function updateMeta(duel) {
+    const title = `${duel.challenger_username} vs ${duel.target_username} — AURUM Duel`;
+    const desc  = `${duel.title} · ${AURUM.formatAmount(duel.duel_tip_amount || 0)} stake · Tip or vote for who wins.`;
+    document.title = title;
+    const setMeta = (id, attr, val) => {
+      const el = document.getElementById(id);
+      if (el) el.setAttribute(attr, val);
+    };
+    setMeta('og-title', 'content', title);
+    setMeta('og-desc',  'content', desc);
+    setMeta('og-url',   'content', getDuelURL(duel.id));
+    setMeta('tw-title', 'content', title);
+    setMeta('tw-desc',  'content', desc);
+  }
+
+  /* --------------------------------------------------
+     Share
+  -------------------------------------------------- */
+  function getShareText(duel) {
+    const url = getDuelURL(duel.id);
+    return {
+      text: `⚔️ ${duel.challenger_username} vs ${duel.target_username} on AURUM — "${duel.title}". Tip or vote for who you think wins: ${url}`,
+      url,
+    };
+  }
+
+  async function handleShare(duel) {
+    const { text, url } = getShareText(duel);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'AURUM Duel', text, url });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    const btnsEl = document.getElementById('share-desktop-buttons');
+    if (btnsEl) btnsEl.style.display = btnsEl.style.display === 'none' ? 'flex' : 'none';
+  }
+
+  function shareTwitter(duel) {
+    const { text } = getShareText(duel);
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  }
+  function shareLinkedIn(duel) {
+    const { url } = getShareText(duel);
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer');
+  }
+  function shareFacebook(duel) {
+    const { url } = getShareText(duel);
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer');
+  }
+  async function copyLink(duel) {
+    const { url } = getShareText(duel);
+    try {
+      await navigator.clipboard.writeText(url);
+      AURUM.showToast('Link copied!', 'gold');
+    } catch (err) {
+      AURUM.showToast(url, 'default', 5000);
+    }
+  }
+
+  /* --------------------------------------------------
+     Tip / Vote — gated by login.
+     Not logged in: stash the intended action in
+     localStorage and send them to sign up. (Actually
+     resuming the tip automatically after signup is a
+     follow-up piece, not built yet — for now this
+     just gets them into the signup flow.)
+  -------------------------------------------------- */
+  function requireLoginOrRedirect(duel, action, participantId) {
+    if (AURUM.Auth.isLoggedIn()) return true;
+    try {
+      localStorage.setItem('aurum_pending_duel_action', JSON.stringify({
+        duelId: duel.id, action, participantId, ts: Date.now(),
+      }));
+    } catch (e) { /* ignore */ }
+    AURUM.showToast('Create an account to tip or vote.', 'default');
+    setTimeout(() => { window.location.href = 'app.html#signup'; }, 900);
+    return false;
+  }
+
+  async function handleTip(duel, participantId, btn) {
+    if (!requireLoginOrRedirect(duel, 'tip', participantId)) return;
+    btn.disabled = true;
+    try {
+      await AURUM.DuelAPI.tip(duel.id, participantId, { amount_usd: 1 });
+      AURUM.showToast('Tip sent! ₳1', 'gold');
+    } catch (err) {
+      AURUM.showToast(err.message || 'Tip failed.', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function handleVote(duel, participantId, btn) {
+    if (!requireLoginOrRedirect(duel, 'vote', participantId)) return;
+    btn.textContent = 'Voting...';
+    btn.disabled = true;
+    try {
+      await AURUM.DuelAPI.vote(duel.id, participantId);
+      AURUM.showToast('Vote cast.', 'gold');
+      document.querySelectorAll('.dp-vote-btn').forEach(b => b.disabled = true);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Vote failed.', 'error');
+      btn.disabled = false;
+    }
+  }
+
+  /* --------------------------------------------------
+     Render
+  -------------------------------------------------- */
+  function renderDuel(duel) {
+    const wrap = document.getElementById('dp-wrap');
+    const loading = document.getElementById('dp-loading');
+    if (loading) loading.remove();
+
+    const isActive   = duel.status === 'active';
+    const isResolved = duel.status === 'resolved' || duel.status === 'tied';
+    const winnerName = duel.winner_id === duel.challenger_id ? duel.challenger_username
+                      : duel.winner_id === duel.target_id ? duel.target_username
+                      : null;
+
+    const audiencePot = (duel.audience_tips_challenger || 0) +
