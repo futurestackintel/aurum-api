@@ -964,7 +964,9 @@ export async function getDuelById(duelId, db) {
           ELSE NULL
         END AS time_remaining_seconds,
         uc.username AS challenger_username, uc.league AS challenger_league,
-        ut.username AS target_username,     ut.league AS target_league
+        uc.avatar_url AS challenger_avatar_url,
+        ut.username AS target_username,     ut.league AS target_league,
+        ut.avatar_url AS target_avatar_url
       FROM duels d
       JOIN users uc ON uc.id = d.challenger_id
       JOIN users ut ON ut.id = d.target_id
