@@ -1244,7 +1244,7 @@ export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
     `).bind(entry_contribution_usd, now, userId),
   ]);
 
-  return {
+    return {
     battle: {
       id:                    battleId,
       title:                 title.trim(),
@@ -1258,6 +1258,97 @@ export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
       created_at:            now,
     },
   };
+}
+
+// ── ACCEPT CREW BATTLE (target crew's captain only) ───────────
+// Mirrors acceptDuel: the target crew must match the challenger's
+// stake before the battle goes active. Until this is called, the
+// battle sits in 'pending' with only the challenger's money at risk.
+
+export async function acceptCrewBattle(battleId, clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
+  if (!battle)                          return { error: 'Crew battle not found' };
+  if (battle.status !== 'pending')      return { error: `Battle is already ${battle.status}` };
+  if (battle.target_accepted_at)        return { error: 'Battle has already been accepted' };
+  if (new Date(battle.ends_at) <= new Date()) {
+    return { error: 'Battle voting window has already ended' };
+  }
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(battle.target_crew_id, userId)
+    .first();
+  if (!membership)                   return { error: 'You are not a member of the target crew' };
+  if (membership.role !== 'captain') return { error: 'Only the target crew\'s captain can accept a battle' };
+
+  const muteStatus = await isMemberMuted(battle.target_crew_id, userId, db);
+  if (muteStatus.muted) {
+    return { error: `You are muted until ${muteStatus.muted_until}`, reason: muteStatus.reason };
+  }
+
+  const wallet = await db.prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`).bind(userId).first();
+  if (!wallet || wallet.balance_usd < battle.entry_contribution_usd) {
+    return { error: `Insufficient wallet balance. Entry contribution is $${battle.entry_contribution_usd}` };
+  }
+
+  const now         = nowISO();
+  const newPrizePool = battle.entry_contribution_usd * 2;
+
+  await db.batch([
+    db.prepare(`
+      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
+      WHERE user_id = ?
+    `).bind(battle.entry_contribution_usd, now, userId),
+
+    db.prepare(`
+      UPDATE crew_battles
+      SET status = 'active', target_accepted_at = ?, target_contribution_usd = ?,
+          target_paid_by = ?, prize_pool_usd = ?
+      WHERE id = ?
+    `).bind(now, battle.entry_contribution_usd, userId, newPrizePool, battleId),
+  ]);
+
+  return {
+    accepted:       true,
+    battle_id:      battleId,
+    prize_pool_usd: newPrizePool,
+  };
+}
+
+// ── DECLINE CREW BATTLE (target crew's captain only) ──────────
+// Refunds the challenger's escrowed stake — the battle never happened.
+
+export async function declineCrewBattle(battleId, clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
+  if (!battle)                     return { error: 'Crew battle not found' };
+  if (battle.status !== 'pending') return { error: `Battle is already ${battle.status}` };
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(battle.target_crew_id, userId)
+    .first();
+  if (!membership)                   return { error: 'You are not a member of the target crew' };
+  if (membership.role !== 'captain') return { error: 'Only the target crew\'s captain can decline a battle' };
+
+  const now = nowISO();
+
+  await db.batch([
+    db.prepare(`UPDATE crew_battles SET status = 'cancelled' WHERE id = ?`).bind(battleId),
+    db.prepare(`
+      UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
+      WHERE user_id = ?
+    `).bind(battle.entry_contribution_usd, now, battle.challenger_paid_by),
+  ]);
+
+  return { declined: true, battle_id: battleId };
 }
 
 // ── RESOLVE CREW BATTLE (admin — moderatorId not clerk-resolved,
