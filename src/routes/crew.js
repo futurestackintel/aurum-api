@@ -12,7 +12,10 @@ import {
   createCrew,
   joinCrew,
   createCrewBattle,
+  acceptCrewBattle,
+  declineCrewBattle,
   resolveCrewBattle,
+  decideCrewBattleDispute,
   getCrewById,
   getCrews,
   initiateCrewSpend,
@@ -131,6 +134,38 @@ export async function handleCrewRoutes(path, method, request, env) {
     }
   }
 
+    // ── POST /api/crew-battles/:id/accept — target crew's captain ──
+  const battleAcceptMatch = path.match(/^\/api\/crew-battles\/([^/]+)\/accept$/);
+  if (battleAcceptMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await acceptCrewBattle(battleAcceptMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Accept crew battle error:', err);
+      return jsonResponse({ error: 'Unable to accept crew battle. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crew-battles/:id/decline — target crew's captain ──
+  const battleDeclineMatch = path.match(/^\/api\/crew-battles\/([^/]+)\/decline$/);
+  if (battleDeclineMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await declineCrewBattle(battleDeclineMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Decline crew battle error:', err);
+      return jsonResponse({ error: 'Unable to decline crew battle. Please try again.' }, 500);
+    }
+  }
+
   // ── GET /api/crews/:id/battle/active — current battle + live tally ──
   const activeBattleMatch = path.match(/^\/api\/crews\/([^/]+)\/battle\/active$/);
   if (activeBattleMatch && method === 'GET') {
@@ -144,7 +179,30 @@ export async function handleCrewRoutes(path, method, request, env) {
     }
   }
 
-  // ── POST /api/crew-battles/:id/resolve — admin ──────────
+    // ── POST /api/crew-battles/:id/decide-dispute — admin only ──
+  const battleDecideMatch = path.match(/^\/api\/crew-battles\/([^/]+)\/decide-dispute$/);
+  if (battleDecideMatch && method === 'POST') {
+    const admin = await requireAdmin(request, env);
+    if (admin.error) return jsonResponse({ error: admin.error }, 403);
+
+    try {
+      const body = await request.json();
+      const result = await decideCrewBattleDispute(
+        battleDecideMatch[1],
+        body.decision ?? null,
+        admin.id,
+        db,
+        body.winner_crew_id ?? null,
+      );
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Decide crew battle dispute error:', err);
+      return jsonResponse({ error: 'Unable to decide dispute. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crews/:id/freeze — admin only ─────────────
   const resolveMatch = path.match(/^\/api\/crew-battles\/([^/]+)\/resolve$/);
   if (resolveMatch && method === 'POST') {
     const admin = await requireAdmin(request, env);
