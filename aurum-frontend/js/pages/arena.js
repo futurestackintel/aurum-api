@@ -1055,12 +1055,12 @@ window.ArenaPage = {
     }
   },
 
-  duelHTML(duel, index) {
+    duelHTML(duel, index) {
     const isActive     = duel.status === 'active';
     const isPending     = duel.status === 'pending';
     const isResolved    = duel.status === 'resolved' || duel.status === 'tied';
-    const disputeOpen   = duel.dispute_status === 'window_open';
-    const isLoser = !!duel.is_loser;
+    const isLoser       = !!duel.is_loser;
+    const isQuick       = duel.duel_type === 'quick';
 
     const secondsLeft = duel.ends_at
       ? Math.max(0, Math.floor((new Date(duel.ends_at) - new Date()) / 1000))
@@ -1068,45 +1068,75 @@ window.ArenaPage = {
 
     const challenger = duel.challenger_username || 'Challenger';
     const opponent   = duel.target_username     || 'Opponent';
+    const winnerId   = duel.winner_id;
 
     const statusLabel = duel.status === 'tied' ? 'tied — under review' : (duel.status || 'pending');
 
     return `
-      <div class="challenge-card card fade-in" style="animation-delay:${index * 80}ms;">
+      <div class="challenge-card duel-card-v2 card fade-in" style="animation-delay:${index * 80}ms;">
 
         <!-- Duel header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="duel-card-header">
           <span class="badge badge-muted" style="font-size:9px;">
-            duel
+            ${isQuick ? 'quick duel' : 'duel'}
           </span>
-          <span style="font-size:10px;letter-spacing:0.06em;text-transform:uppercase;
-            color:${isActive ? 'var(--color-success)' : isResolved
-              ? 'var(--color-text-muted)' : 'var(--color-gold)'};">
-            ${statusLabel}
-          </span>
+          <div style="display:flex;align-items:center;gap:var(--space-3);">
+            <button class="duel-icon-btn btn-share-duel" data-duel-id="${duel.id}" title="Share this duel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                <line x1="8.6" y1="10.6" x2="15.4" y2="6.4"/><line x1="8.6" y1="13.4" x2="15.4" y2="17.6"/>
+              </svg>
+            </button>
+            <span style="font-size:10px;letter-spacing:0.06em;text-transform:uppercase;
+              color:${isActive ? 'var(--color-success)' : isResolved
+                ? 'var(--color-text-muted)' : 'var(--color-gold)'};">
+              ${statusLabel}
+            </span>
+          </div>
         </div>
 
         <p class="challenge-title" style="margin: 0;">${duel.title || 'Untitled Duel'}</p>
 
         <!-- Combatants -->
-        <div style="display:flex;align-items:center;justify-content:space-between;
-          padding:var(--space-3);background:var(--color-surface-2);
-          border-radius:var(--radius-md);">
-          <div style="text-align:center;flex:1;">
-            <div class="avatar avatar-sm avatar-gold" style="margin:0 auto var(--space-1);">
-              ${challenger.charAt(0).toUpperCase()}
-            </div>
-            <p style="font-size:var(--text-xs);color:var(--color-text);">${challenger}</p>
+        <div class="duel-vs-row-v2">
+          <div class="duel-combatant ${winnerId === duel.challenger_id ? 'duel-combatant-winner' : ''}">
+            <div class="avatar duel-avatar avatar-gold">${AURUM.avatarInnerHTML(duel.challenger_avatar_url, challenger.charAt(0).toUpperCase())}</div>
+            <p class="duel-combatant-name">${challenger}</p>
+            ${isActive ? `
+              <div class="duel-mini-actions">
+                <button class="duel-icon-btn duel-icon-btn-gold btn-tip-challenger"
+                  data-duel-id="${duel.id}" data-participant-id="${duel.challenger_id}"
+                  title="Tip ${challenger} ₳1">₳</button>
+                <button class="duel-icon-btn btn-vote-duel"
+                  data-duel-id="${duel.id}" data-participant-id="${duel.challenger_id}"
+                  title="Vote ${challenger}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/>
+                  </svg>
+                </button>
+              </div>
+            ` : ''}
           </div>
           <div class="duel-vs-badge">VS</div>
-          <div style="text-align:center;flex:1;">
-            <div class="avatar avatar-sm" style="margin:0 auto var(--space-1);">
-              ${opponent.charAt(0).toUpperCase()}
-            </div>
-            <p style="font-size:var(--text-xs);color:var(--color-text);">${opponent}</p>
+          <div class="duel-combatant ${winnerId === duel.target_id ? 'duel-combatant-winner' : ''}">
+            <div class="avatar duel-avatar">${AURUM.avatarInnerHTML(duel.target_avatar_url, opponent.charAt(0).toUpperCase())}</div>
+            <p class="duel-combatant-name">${opponent}</p>
+            ${isActive ? `
+              <div class="duel-mini-actions">
+                <button class="duel-icon-btn duel-icon-btn-gold btn-tip-opponent"
+                  data-duel-id="${duel.id}" data-participant-id="${duel.target_id}"
+                  title="Tip ${opponent} ₳1">₳</button>
+                <button class="duel-icon-btn btn-vote-duel"
+                  data-duel-id="${duel.id}" data-participant-id="${duel.target_id}"
+                  title="Vote ${opponent}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/>
+                  </svg>
+                </button>
+              </div>
+            ` : ''}
           </div>
         </div>
-
         ${isResolved && duel.winner_username ? `
           <div style="text-align:center;padding:var(--space-2);color:var(--color-gold);
             font-size:var(--text-sm);">
@@ -1129,65 +1159,57 @@ window.ArenaPage = {
           ` : ''}
         </div>
 
-        <!-- Action buttons -->
-        <div style="display:flex;flex-wrap:wrap;gap:var(--space-2);">
+                ${isResolved && duel.winner_username ? `
+          <div style="text-align:center;padding:var(--space-2);color:var(--color-gold);
+            font-size:var(--text-sm);">
+            🏆 Winner: @${duel.winner_username}
+          </div>
+        ` : ''}
+
+        <!-- Stake + countdown -->
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);
+            color:var(--color-gold);">
+            ${AURUM.formatAmount(duel.duel_tip_amount || 0)} stake
+          </span>
+          ${isActive ? `
+            <span class="duel-countdown mono" style="font-size:var(--text-xs);
+              color:var(--color-danger);"
+              data-ends="${duel.ends_at}">
+              ${AURUM.formatCountdown(secondsLeft)}
+            </span>
+          ` : ''}
+        </div>
+
+        <!-- Bottom row: primary action + small icon actions -->
+        <div class="duel-bottom-row">
 
           ${isPending && duel.is_opponent ? `
             <button class="btn btn-primary btn-full btn-sm btn-accept-duel"
               data-duel-id="${duel.id}">Accept</button>
-            <button class="btn btn-ghost btn-sm btn-decline-duel"
-              data-duel-id="${duel.id}">Decline</button>
+            <button class="duel-icon-btn btn-decline-duel" data-duel-id="${duel.id}" title="Decline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
           ` : ''}
 
-          ${isActive && duel.duel_type === 'quick' && (duel.is_challenger || duel.is_opponent) ? `
+          ${isActive && isQuick && (duel.is_challenger || duel.is_opponent) ? `
             <button class="btn btn-primary btn-full btn-sm btn-play-quick-duel"
               data-duel-id="${duel.id}"
-              data-game-type="${duel.quick_game_type}"
-              style="flex:1;">
+              data-game-type="${duel.quick_game_type}">
               ▶ Play Now
             </button>
           ` : ''}
 
-          ${isActive ? `
-            <!-- Audience tip buttons — held in escrow, not paid out instantly -->
-            <button class="btn btn-ghost btn-sm btn-tip-challenger"
-              data-duel-id="${duel.id}"
-              data-participant-id="${duel.challenger_id}"
-              style="flex:1;">
-              Tip ${challenger.split(' ')[0]} ₳1
-            </button>
-            <button class="btn btn-ghost btn-sm btn-tip-opponent"
-              data-duel-id="${duel.id}"
-              data-participant-id="${duel.target_id}"
-              style="flex:1;">
-              Tip ${opponent.split(' ')[0]} ₳1
-            </button>
-
-            <!-- Vote buttons — available for the full active window -->
-            <button class="btn btn-outline btn-sm btn-vote-duel"
-              data-duel-id="${duel.id}"
-              data-participant-id="${duel.challenger_id}"
-              style="flex:1;">
-              Vote ${challenger.split(' ')[0]}
-            </button>
-            <button class="btn btn-outline btn-sm btn-vote-duel"
-              data-duel-id="${duel.id}"
-              data-participant-id="${duel.target_id}"
-              style="flex:1;">
-              Vote ${opponent.split(' ')[0]}
-            </button>
-          ` : ''}
-
           ${isLoser ? `
-            <button class="btn btn-danger btn-full btn-sm btn-report-duel"
-              data-duel-id="${duel.id}"
-              style="flex:1;">🚩 Report Cheating</button>
+            <button class="duel-icon-btn duel-icon-btn-danger btn-report-duel"
+              data-duel-id="${duel.id}" title="Report Cheating">🚩</button>
           ` : ''}
 
           ${isActive && duel.is_challenger ? `
-            <button class="btn btn-primary btn-sm btn-announce-duel"
-              data-duel-id="${duel.id}"
-              style="flex-shrink:0;">📣 Announce</button>
+            <button class="duel-icon-btn duel-icon-btn-gold btn-announce-duel"
+              data-duel-id="${duel.id}" title="Announce to platform">📣</button>
           ` : ''}
 
         </div>
@@ -1284,6 +1306,29 @@ window.ArenaPage = {
       });
     });
 
+        /* Share duel */
+    document.querySelectorAll('.btn-share-duel').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => this.shareDuel(btn.dataset.duelId));
+    });
+
+    /* Report cheating — was previously unwired */
+    document.querySelectorAll('.btn-report-duel').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', async () => {
+        const reason = prompt('Why are you reporting this duel result?');
+        if (!reason || !reason.trim()) return;
+        try {
+          await AURUM.DuelAPI.report(btn.dataset.duelId, reason.trim());
+          AURUM.showToast('Report submitted for review.', 'default');
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not submit report.', 'error');
+        }
+      });
+    });
+
     /* Announce */
     document.querySelectorAll('.btn-announce-duel').forEach(btn => {
       if (btn.dataset.bound) return;
@@ -1365,6 +1410,30 @@ window.ArenaPage = {
     } finally {
       btn.textContent = 'Challenge';
       btn.disabled    = false;
+    }
+  },
+
+    /* --------------------------------------------------
+     SHARE DUEL
+  -------------------------------------------------- */
+  async shareDuel(duelId) {
+    const url  = `https://tryaurum.store/duel/${duelId}`;
+    const text = `⚔️ Check out this duel on AURUM — tip or vote for who you think wins: ${url}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'AURUM Duel', text, url });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      AURUM.showToast('Duel link copied!', 'gold');
+    } catch (err) {
+      AURUM.showToast(url, 'default', 5000);
     }
   },
 
@@ -2829,6 +2898,103 @@ window.ArenaPage = {
         font-family: var(--font-mono);
         font-size: var(--text-xs);
         color: var(--color-gold);
+      }
+
+            .duel-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .duel-vs-row-v2 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+        padding: var(--space-4) var(--space-3);
+        background: var(--color-surface-2);
+        border-radius: var(--radius-md);
+      }
+
+      .duel-combatant {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--space-1);
+        flex: 1;
+        min-width: 0;
+      }
+
+      .duel-avatar {
+        width: 52px;
+        height: 52px;
+        font-size: 18px;
+        margin: 0 auto;
+      }
+
+      .duel-combatant-winner .duel-avatar {
+        box-shadow: 0 0 14px rgba(201,168,76,0.6);
+        border-color: var(--color-gold);
+      }
+
+      .duel-combatant-name {
+        font-size: var(--text-xs);
+        color: var(--color-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+      }
+
+      .duel-mini-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 2px;
+      }
+
+      .duel-icon-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--color-surface-2);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-muted);
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        transition: all var(--transition-base);
+        flex-shrink: 0;
+        padding: 0;
+      }
+
+      .duel-icon-btn:hover {
+        background: var(--color-gold-glow);
+        border-color: var(--color-border-gold);
+        color: var(--color-gold);
+      }
+
+      .duel-icon-btn-gold {
+        border-color: var(--color-border-gold);
+        color: var(--color-gold);
+      }
+
+      .duel-icon-btn-danger {
+        border-color: rgba(201,75,75,0.4);
+        color: var(--color-danger);
+      }
+
+      .duel-bottom-row {
+        display: flex;
+        gap: var(--space-2);
+        align-items: center;
+      }
+
+      .duel-bottom-row .btn-play-quick-duel,
+      .duel-bottom-row .btn-accept-duel {
+        flex: 1;
       }
 
       .duel-vs-badge {
