@@ -105,6 +105,20 @@ window.ProfilePage = {
           </div>
         </div>
 
+                <!-- Future Ecosystem -->
+        <div class="card">
+          <p class="profile-section-title">Future Ecosystem</p>
+          <div class="eco-scroll" id="eco-scroll">
+            <div class="eco-chip"><span class="eco-chip-name">AURUM Play</span><span class="badge badge-muted eco-chip-live">Live</span></div>
+            <div class="eco-chip"><span class="eco-chip-name">AURUM Social</span><span class="badge badge-muted eco-chip-live">Live</span></div>
+            <div class="eco-chip eco-chip-soon" data-eco="AURUM Live"><span class="eco-chip-name">AURUM Live</span><span class="badge badge-muted">Coming to AURUM</span></div>
+            <div class="eco-chip eco-chip-soon" data-eco="AURUM Club"><span class="eco-chip-name">AURUM Club</span><span class="badge badge-muted">Coming to AURUM</span></div>
+            <div class="eco-chip eco-chip-soon" data-eco="AURUM Missions"><span class="eco-chip-name">AURUM Missions</span><span class="badge badge-muted">Coming to AURUM</span></div>
+            <div class="eco-chip eco-chip-soon" data-eco="AURUM Business"><span class="eco-chip-name">AURUM Business</span><span class="badge badge-muted">Coming to AURUM</span></div>
+            <div class="eco-chip eco-chip-soon" data-eco="AURUM Bridge"><span class="eco-chip-name">AURUM Bridge</span><span class="badge badge-muted">Coming to AURUM</span></div>
+          </div>
+        </div>
+
         <!-- Wealth Passport -->
         <div class="card">
           <p class="profile-section-title">Wealth Passport</p>
@@ -405,8 +419,15 @@ window.ProfilePage = {
       ?.addEventListener('click', () => this.shareViaFacebook());
         document.getElementById('share-copy')
       ?.addEventListener('click', () => this.copyPassportLink());
-    document.getElementById('btn-copy-referral')
+        document.getElementById('btn-copy-referral')
       ?.addEventListener('click', () => this.copyReferralLink());
+
+    /* Future ecosystem teasers */
+    document.querySelectorAll('.eco-chip-soon').forEach(chip => {
+      chip.addEventListener('click', () => {
+        AURUM.showToast(`${chip.dataset.eco} is coming to AURUM.`, 'default');
+      });
+    });
   },
 
   /* --------------------------------------------------
@@ -781,9 +802,52 @@ window.ProfilePage = {
         color: var(--color-text-muted);
       }
 
-      .upgrade-card {
+            .upgrade-card {
         background: linear-gradient(135deg,
           var(--color-surface), rgba(201,168,76,0.06));
+      }
+
+      .eco-scroll {
+        display: flex;
+        gap: var(--space-3);
+        overflow-x: auto;
+        padding-bottom: var(--space-1);
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .eco-scroll::-webkit-scrollbar { display: none; }
+
+      .eco-chip {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        min-width: 120px;
+        padding: var(--space-3) var(--space-4);
+        background: var(--color-surface-2);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+      }
+
+      .eco-chip-soon {
+        cursor: pointer;
+        transition: border-color var(--transition-base);
+      }
+      .eco-chip-soon:hover {
+        border-color: var(--color-border-gold);
+      }
+
+      .eco-chip-name {
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--color-text);
+      }
+
+      .eco-chip-live {
+        color: var(--color-success);
+        border-color: rgba(63,174,106,0.35);
+        background: rgba(63,174,106,0.1);
+        width: fit-content;
       }
     `;
     document.head.appendChild(style);
