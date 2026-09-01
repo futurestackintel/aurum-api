@@ -111,11 +111,11 @@ window.ProfilePage = {
           <div class="eco-scroll" id="eco-scroll">
             <div class="eco-chip"><span class="eco-chip-name">AURUM Play</span><span class="badge badge-muted eco-chip-live">Live</span></div>
             <div class="eco-chip"><span class="eco-chip-name">AURUM Social</span><span class="badge badge-muted eco-chip-live">Live</span></div>
+			   <div class="eco-chip"><span class="eco-chip-name">AURUM Bridge</span><span class="badge badge-muted eco-chip-live">Live</span></div>
             <div class="eco-chip eco-chip-soon" data-eco="AURUM Live"><span class="eco-chip-name">AURUM Live</span><span class="badge badge-muted">Coming to AURUM</span></div>
             <div class="eco-chip eco-chip-soon" data-eco="AURUM Club"><span class="eco-chip-name">AURUM Club</span><span class="badge badge-muted">Coming to AURUM</span></div>
             <div class="eco-chip eco-chip-soon" data-eco="AURUM Missions"><span class="eco-chip-name">AURUM Missions</span><span class="badge badge-muted">Coming to AURUM</span></div>
             <div class="eco-chip eco-chip-soon" data-eco="AURUM Business"><span class="eco-chip-name">AURUM Business</span><span class="badge badge-muted">Coming to AURUM</span></div>
-            <div class="eco-chip eco-chip-soon" data-eco="AURUM Bridge"><span class="eco-chip-name">AURUM Bridge</span><span class="badge badge-muted">Coming to AURUM</span></div>
           </div>
         </div>
 
