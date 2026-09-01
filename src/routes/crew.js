@@ -379,7 +379,7 @@ export async function handleCrewRoutes(path, method, request, env) {
     }
   }
 
-  // ── POST /api/crews/:id/invite — captain invites a user ────
+    // ── POST /api/crews/:id/invite — captain invites a user ────
   const inviteMatch = path.match(/^\/api\/crews\/([^/]+)\/invite$/);
   if (inviteMatch && method === 'POST') {
     const user = await requireAuth(request, env);
@@ -387,8 +387,8 @@ export async function handleCrewRoutes(path, method, request, env) {
 
     try {
       const body = await request.json();
-      if (!body.target_user_id) return jsonResponse({ error: 'target_user_id is required' }, 400);
-      const result = await inviteToCrew(inviteMatch[1], user.id, body.target_user_id, db);
+      if (!body.target_username) return jsonResponse({ error: 'target_username is required' }, 400);
+      const result = await inviteToCrew(inviteMatch[1], user.id, body.target_username, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result, 201);
     } catch (err) {
