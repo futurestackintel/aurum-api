@@ -339,11 +339,17 @@ const CrewAPI = {
     startBattle: (id, data) =>
     apiRequest('POST', `/api/crews/${id}/battle`, data),
 
-  getActiveBattle: (id) =>
+    getActiveBattle: (id) =>
     apiRequest('GET', `/api/crews/${id}/battle/active`, null, 'optional'),
 
   voteBattle: (battleId, votedCrewId) =>
     apiRequest('POST', `/api/crew-battles/${battleId}/vote`, { voted_crew_id: votedCrewId }),
+
+  acceptBattle: (battleId) =>
+    apiRequest('POST', `/api/crew-battles/${battleId}/accept`),
+
+  declineBattle: (battleId) =>
+    apiRequest('POST', `/api/crew-battles/${battleId}/decline`),
 
   getMessages: (id, before) => {
     let path = `/api/crews/${id}/messages?limit=50`;
