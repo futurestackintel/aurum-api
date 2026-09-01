@@ -390,8 +390,18 @@ const CrewAPI = {
     apiRequest('POST', `/api/crews/${crewId}/rules`, { rules }),
   muteMember: (crewId, targetUserId, durationHours, reason) =>
     apiRequest('POST', `/api/crews/${crewId}/mute`, { target_user_id: targetUserId, duration_hours: durationHours, reason }),
-  disbandCrew: (crewId) =>
+    disbandCrew: (crewId) =>
     apiRequest('POST', `/api/crews/${crewId}/disband`),
+  inviteToCrew: (crewId, targetUserId) =>
+    apiRequest('POST', `/api/crews/${crewId}/invite`, { target_user_id: targetUserId }),
+  requestToJoin: (crewId) =>
+    apiRequest('POST', `/api/crews/${crewId}/request-join`),
+  respondToJoinRequest: (requestId, accept) =>
+    apiRequest('POST', `/api/crew-join-requests/${requestId}/respond`, { accept }),
+  getMyPendingInvites: () =>
+    apiRequest('GET', '/api/crews/invites/pending'),
+  getPendingJoinRequests: (crewId) =>
+    apiRequest('GET', `/api/crews/${crewId}/requests/pending`),
 };
 
 const DmAPI = {
