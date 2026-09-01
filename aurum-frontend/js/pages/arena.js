@@ -97,9 +97,10 @@ window.ArenaPage = {
           <div class="challenge-list" id="duel-list"></div>
         </div>
 
-        <!-- Crews panel -->
+                <!-- Crews panel -->
         <div id="panel-crews" style="display:none;">
-          <div style="display:flex;justify-content:flex-end;margin-bottom:var(--space-3);">
+          <div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-bottom:var(--space-3);">
+            <button class="btn btn-ghost btn-sm" id="btn-my-crew-invites">📨 My Invites</button>
             <button class="btn btn-outline btn-sm" id="btn-create-crew">+ New Crew</button>
           </div>
           <div class="challenge-list" id="crew-list"></div>
@@ -315,6 +316,15 @@ window.ArenaPage = {
               <button class="btn btn-primary btn-full" id="btn-submit-crew">Create Crew</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- My Crew Invites Modal -->
+      <div class="modal-overlay" id="my-crew-invites-modal" style="display:none;">
+        <div class="modal">
+          <div class="modal-handle"></div>
+          <h3 class="modal-title">Your Crew Invites</h3>
+          <div id="my-crew-invites-list"></div>
         </div>
       </div>
 
@@ -1733,12 +1743,16 @@ window.ArenaPage = {
           <p style="font-size:var(--text-sm);color:var(--color-text-muted);
             line-height:1.6;">${crew.description}</p>
         ` : ''}
-        <div style="display:flex;gap:var(--space-2);">
-          <button class="btn btn-outline btn-full btn-sm btn-join-crew"
-            data-crew-id="${crew.id}"
-            ${crew.user_member ? 'disabled' : ''}>
-            ${crew.user_member ? 'Member ✦' : 'Join Crew'}
-          </button>
+                <div style="display:flex;gap:var(--space-2);">
+          ${crew.user_member ? `
+            <button class="btn btn-outline btn-full btn-sm" disabled>Member ✦</button>
+          ` : crew.is_locked ? `
+            <button class="btn btn-outline btn-full btn-sm btn-request-join-crew"
+              data-crew-id="${crew.id}">Request to Join</button>
+          ` : `
+            <button class="btn btn-outline btn-full btn-sm btn-join-crew"
+              data-crew-id="${crew.id}">Join Crew</button>
+          `}
           ${crew.user_member ? `
             <button class="btn btn-ghost btn-sm btn-chat-crew"
               data-crew-id="${crew.id}"
@@ -1753,7 +1767,7 @@ window.ArenaPage = {
     `;
   },
 
-  bindCrewEvents() {
+    bindCrewEvents() {
     document.querySelectorAll('.btn-join-crew').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
@@ -1768,6 +1782,25 @@ window.ArenaPage = {
         } catch (err) {
           AURUM.showToast(err.message || 'Could not join.', 'error');
           btn.textContent = 'Join Crew';
+          btn.disabled    = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.btn-request-join-crew').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.crewId;
+        btn.textContent = 'Sending...';
+        btn.disabled    = true;
+        try {
+          await AURUM.CrewAPI.requestToJoin(id);
+          AURUM.showToast('Join request sent to the captain.', 'gold');
+          btn.textContent = 'Requested';
+        } catch (err) {
+          AURUM.showToast(err.message || 'Could not send request.', 'error');
+          btn.textContent = 'Request to Join';
           btn.disabled    = false;
         }
       });
