@@ -280,14 +280,29 @@ export async function inviteToCrew(crewId, clerkId, targetUserId, db) {
     .first();
   if (existing) return { error: 'There is already a pending invite or request for this user' };
 
-  const id = crypto.randomUUID();
-  await db
-    .prepare(`
+    const id = crypto.randomUUID();
+  const now = nowISO();
+  const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
+
+  await db.batch([
+    db.prepare(`
       INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
       VALUES (?, ?, ?, 'invite', 'pending', ?)
-    `)
-    .bind(id, crewId, targetUserId, nowISO())
-    .run();
+    `).bind(id, crewId, targetUserId, now),
+
+    db.prepare(`
+      INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
+      VALUES (?, ?, 'crew_invite', 'Crew Invite', ?, '/crews', ?)
+    `).bind(
+      crypto.randomUUID(),
+      targetUserId,
+      `You've been invited to join ${crewRow?.name || 'a crew'}.`,
+      now,
+    ),
+  ]);
+
+  return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
+}
 
   return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
 }
@@ -318,14 +333,36 @@ export async function requestToJoinCrew(crewId, clerkId, db) {
     .first();
   if (existing) return { error: 'You already have a pending invite or request for this crew' };
 
-  const id = crypto.randomUUID();
-  await db
-    .prepare(`
+    const id = crypto.randomUUID();
+  const now = nowISO();
+
+  const captainRow = await db
+    .prepare(`SELECT user_id FROM crew_members WHERE crew_id = ? AND role = 'captain'`)
+    .bind(crewId)
+    .first();
+
+  const statements = [
+    db.prepare(`
       INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
       VALUES (?, ?, ?, 'request', 'pending', ?)
-    `)
-    .bind(id, crewId, userId, nowISO())
-    .run();
+    `).bind(id, crewId, userId, now),
+  ];
+
+  if (captainRow) {
+    statements.push(
+      db.prepare(`
+        INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
+        VALUES (?, ?, 'crew_join_request', 'Join Request', ?, '/crews', ?)
+      `).bind(
+        crypto.randomUUID(),
+        captainRow.user_id,
+        `Someone requested to join ${crew.name}.`,
+        now,
+      )
+    );
+  }
+
+  await db.batch(statements);
 
   return { request: { id, crew_id: crewId, status: 'pending' } };
 }
@@ -1560,16 +1597,16 @@ export async function getCrews(limit, offset, clerkId, db) {
     }
   }
 
-  const { results } = await db
+    const { results } = await db
     .prepare(`
-      SELECT id, name, description, member_count, created_at
+      SELECT id, name, description, member_count, created_at, is_locked
       FROM crews
       ORDER BY member_count DESC, created_at DESC
       LIMIT ? OFFSET ?
     `)
     .bind(limit ?? 20, offset ?? 0)
     .all();
-
+	
   return results.map(c => ({ ...c, user_member: c.id === myCrewId }));
 }
 
