@@ -392,8 +392,8 @@ const CrewAPI = {
     apiRequest('POST', `/api/crews/${crewId}/mute`, { target_user_id: targetUserId, duration_hours: durationHours, reason }),
     disbandCrew: (crewId) =>
     apiRequest('POST', `/api/crews/${crewId}/disband`),
-  inviteToCrew: (crewId, targetUserId) =>
-    apiRequest('POST', `/api/crews/${crewId}/invite`, { target_user_id: targetUserId }),
+    inviteToCrew: (crewId, targetUsername) =>
+    apiRequest('POST', `/api/crews/${crewId}/invite`, { target_username: targetUsername }),
   requestToJoin: (crewId) =>
     apiRequest('POST', `/api/crews/${crewId}/request-join`),
   respondToJoinRequest: (requestId, accept) =>
