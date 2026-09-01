@@ -413,6 +413,54 @@ export async function respondToJoinRequest(requestId, clerkId, accept, db) {
   return { request: { id: requestId, status: 'accepted', crew_id: jr.crew_id } };
 }
 
+// ── GET MY PENDING CREW INVITES (invites sent to me) ──────────
+
+export async function getMyPendingCrewInvites(clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+
+  const { results } = await db
+    .prepare(`
+      SELECT jr.id, jr.crew_id, jr.created_at, c.name AS crew_name, c.description AS crew_description
+      FROM crew_join_requests jr
+      JOIN crews c ON c.id = jr.crew_id
+      WHERE jr.user_id = ? AND jr.type = 'invite' AND jr.status = 'pending'
+      ORDER BY jr.created_at DESC
+    `)
+    .bind(userRow.id)
+    .all();
+
+  return { invites: results };
+}
+
+// ── GET PENDING JOIN REQUESTS FOR MY CREW (captain only) ───────
+
+export async function getPendingJoinRequestsForCrew(crewId, clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userRow.id)
+    .first();
+  if (!membership || membership.role !== 'captain') {
+    return { error: 'Only the crew captain can view join requests' };
+  }
+
+  const { results } = await db
+    .prepare(`
+      SELECT jr.id, jr.user_id, jr.created_at, u.username, u.league, u.avatar_url
+      FROM crew_join_requests jr
+      JOIN users u ON u.id = jr.user_id
+      WHERE jr.crew_id = ? AND jr.type = 'request' AND jr.status = 'pending'
+      ORDER BY jr.created_at DESC
+    `)
+    .bind(crewId)
+    .all();
+
+  return { requests: results };
+}
+
 // ── LEAVE CREW (with captaincy succession) ───────────────────
 
 export async function leaveCrew(clerkId, db) {
