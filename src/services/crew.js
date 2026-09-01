@@ -301,10 +301,7 @@ export async function inviteToCrew(crewId, clerkId, targetUserId, db) {
     ),
   ]);
 
-  return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
-}
-
-  return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
+    return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
 }
 
 // ── REQUEST TO JOIN CREW (any user) ──────────────────────────
