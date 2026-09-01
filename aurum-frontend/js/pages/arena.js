@@ -143,7 +143,7 @@ window.ArenaPage = {
               </select>
             </div>
             <p style="font-size:var(--text-xs);color:var(--color-text-muted);line-height:1.5;">
-              This starts immediately — the target crew is not asked to accept. Non-participant members vote on a winner once the window ends.
+              The target crew's captain must accept and match your stake before this battle goes live. Non-participant members vote on a winner once the window ends.
             </p>
             <div style="display:flex;gap:var(--space-3);">
               <button class="btn btn-ghost btn-full" id="btn-cancel-crew-battle">Cancel</button>
@@ -2074,7 +2074,7 @@ window.ArenaPage = {
     }
   },
 
-  async loadCrewBattleSection(crewId, myUserId) {
+    async loadCrewBattleSection(crewId, myUserId) {
     const container = document.getElementById('crew-detail-battle-section');
     if (!container) return;
     try {
@@ -2086,6 +2086,58 @@ window.ArenaPage = {
       const themName = isChallengerSide ? battle.target_crew_name     : battle.challenger_crew_name;
       const usPct    = isChallengerSide ? battle.challenger_pct       : battle.target_pct;
       const themPct  = isChallengerSide ? battle.target_pct           : battle.challenger_pct;
+
+      // Pending battles need Accept/Decline, not a vote panel — voting
+      // only opens once the target crew has matched the stake.
+      if (battle.status === 'pending') {
+        container.innerHTML = `
+          <div style="margin-bottom:var(--space-3);">
+            <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+              text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Crew Battle</p>
+            <div class="card card-sm">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">
+                <span style="font-weight:700;">${this.escapeHTML(usName)} <span style="color:var(--color-text-muted);">vs</span> ${this.escapeHTML(themName)}</span>
+                <span class="badge badge-muted" style="font-size:9px;">Awaiting Response</span>
+              </div>
+              <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3);">${this.escapeHTML(battle.title)}</p>
+              ${battle.can_accept ? `
+                <div style="display:flex;gap:var(--space-2);">
+                  <button class="btn btn-ghost btn-full btn-sm" id="btn-decline-crew-battle">Decline</button>
+                  <button class="btn btn-primary btn-full btn-sm" id="btn-accept-crew-battle">Accept & Stake</button>
+                </div>
+              ` : `<p style="font-size:11px;color:var(--color-text-muted);">Waiting for ${this.escapeHTML(themName)}'s captain to accept or decline.</p>`}
+            </div>
+          </div>
+        `;
+        document.getElementById('btn-accept-crew-battle')
+          ?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            btn.textContent = 'Staking...';
+            btn.disabled = true;
+            try {
+              await AURUM.CrewAPI.acceptBattle(battle.id);
+              AURUM.showToast('Battle accepted — prize pool is live!', 'gold');
+              this.loadCrewBattleSection(crewId, myUserId);
+            } catch (err) {
+              AURUM.showToast(err.message || 'Could not accept battle.', 'error');
+              btn.textContent = 'Accept & Stake';
+              btn.disabled = false;
+            }
+          });
+        document.getElementById('btn-decline-crew-battle')
+          ?.addEventListener('click', async () => {
+            if (!confirm('Decline this battle? The challenger will be refunded.')) return;
+            try {
+              await AURUM.CrewAPI.declineBattle(battle.id);
+              AURUM.showToast('Battle declined.', 'default');
+              this.loadCrewBattleSection(crewId, myUserId);
+            } catch (err) {
+              AURUM.showToast(err.message || 'Could not decline battle.', 'error');
+            }
+          });
+        return;
+      }
+
       container.innerHTML = `
         <div style="margin-bottom:var(--space-3);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
@@ -2093,7 +2145,7 @@ window.ArenaPage = {
           <div class="card card-sm">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">
               <span style="font-weight:700;">${this.escapeHTML(usName)} <span style="color:var(--color-text-muted);">vs</span> ${this.escapeHTML(themName)}</span>
-              <span class="badge badge-muted" style="font-size:9px;">${battle.status === 'pending' ? 'Voting Open' : battle.status}</span>
+              <span class="badge badge-muted" style="font-size:9px;">${battle.status === 'active' ? 'Voting Open' : battle.status}</span>
             </div>
             <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-2);">${this.escapeHTML(battle.title)} · ${battle.total_votes} vote(s)</p>
             <div style="display:flex;gap:2px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:var(--space-2);">
