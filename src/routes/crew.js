@@ -24,6 +24,8 @@ import {
   inviteToCrew,
   requestToJoinCrew,
   respondToJoinRequest,
+  getMyPendingCrewInvites,
+  getPendingJoinRequestsForCrew,
   leaveCrew,
   kickMember,
   setCrewLocked,
@@ -343,6 +345,37 @@ export async function handleCrewRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Veto crew spend error:', err);
       return jsonResponse({ error: 'Unable to veto spend. Please try again.' }, 500);
+    }
+  }
+
+    // ── GET /api/crews/invites/pending — my pending invites ────
+  if (path === '/api/crews/invites/pending' && method === 'GET') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await getMyPendingCrewInvites(user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Get pending crew invites error:', err);
+      return jsonResponse({ error: 'Unable to load invites. Please try again.' }, 500);
+    }
+  }
+
+  // ── GET /api/crews/:id/requests/pending — captain views requests ──
+  const pendingRequestsMatch = path.match(/^\/api\/crews\/([^/]+)\/requests\/pending$/);
+  if (pendingRequestsMatch && method === 'GET') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await getPendingJoinRequestsForCrew(pendingRequestsMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Get pending join requests error:', err);
+      return jsonResponse({ error: 'Unable to load join requests. Please try again.' }, 500);
     }
   }
 
