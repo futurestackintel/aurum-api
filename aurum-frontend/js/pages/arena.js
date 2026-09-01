@@ -1922,6 +1922,17 @@ window.ArenaPage = {
             <button class="btn btn-danger btn-sm btn-full" id="btn-detail-disband">Disband Crew</button>
           </div>
         ` : ''}
+        ${isCaptain ? `
+          <div style="margin-bottom:var(--space-3);">
+            <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+              text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Invite by Username</p>
+            <div style="display:flex;gap:var(--space-2);">
+              <input class="input" id="crew-invite-username-input" placeholder="@username" style="flex:1;" />
+              <button class="btn btn-outline btn-sm" id="btn-send-crew-invite">Invite</button>
+            </div>
+          </div>
+          <div id="crew-detail-requests-section" style="margin-bottom:var(--space-3);"></div>
+        ` : ''}
         <div style="margin-bottom:var(--space-3);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
             text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Crew Wallet</p>
@@ -1981,6 +1992,22 @@ window.ArenaPage = {
       });
       this.loadCrewWalletTransactions(crewId, myMembership?.role);
       this.loadCrewBattleSection(crewId, me?.id);
+      if (isCaptain) {
+        this.loadCrewRequestsSection(crewId);
+        document.getElementById('btn-send-crew-invite')
+          ?.addEventListener('click', async () => {
+            const input = document.getElementById('crew-invite-username-input');
+            const username = input?.value.trim().replace(/^@/, '');
+            if (!username) return AURUM.showToast('Enter a username.', 'error');
+            try {
+              await AURUM.CrewAPI.inviteToCrew(crewId, username);
+              AURUM.showToast(`Invite sent to @${username}.`, 'gold');
+              input.value = '';
+            } catch (err) {
+              AURUM.showToast(err.message || 'Could not send invite.', 'error');
+            }
+          });
+      }
       document.getElementById('btn-detail-new-spend')
         ?.addEventListener('click', () => {
           this.activeSpendCrewId = crewId;
@@ -2115,7 +2142,61 @@ window.ArenaPage = {
     }
   },
 
-    async loadCrewBattleSection(crewId, myUserId) {
+      async loadCrewRequestsSection(crewId) {
+    const container = document.getElementById('crew-detail-requests-section');
+    if (!container) return;
+    try {
+      const { requests } = await AURUM.CrewAPI.getPendingJoinRequests(crewId);
+      if (!requests || !requests.length) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = `
+        <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+          text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Pending Join Requests</p>
+        ${requests.map(r => `
+          <div class="card card-sm" style="margin-bottom:var(--space-2);display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:var(--space-2);">
+              <div class="avatar avatar-sm" style="width:24px;height:24px;font-size:11px;">${AURUM.avatarInnerHTML(r.avatar_url, this.escapeHTML(r.username).charAt(0).toUpperCase())}</div>
+              <span>${this.escapeHTML(r.username)}</span>
+            </div>
+            <div style="display:flex;gap:var(--space-2);">
+              <button class="duel-icon-btn btn-decline-join-request" data-request-id="${r.id}" data-crew-id="${crewId}" title="Decline">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+              <button class="duel-icon-btn duel-icon-btn-gold btn-accept-join-request" data-request-id="${r.id}" data-crew-id="${crewId}" title="Accept">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        `).join('')}
+      `;
+      container.querySelectorAll('.btn-accept-join-request').forEach(btn => {
+        btn.addEventListener('click', () => this.respondToPendingRequest(btn.dataset.requestId, true, btn.dataset.crewId));
+      });
+      container.querySelectorAll('.btn-decline-join-request').forEach(btn => {
+        btn.addEventListener('click', () => this.respondToPendingRequest(btn.dataset.requestId, false, btn.dataset.crewId));
+      });
+    } catch (err) {
+      container.innerHTML = '';
+    }
+  },
+
+  async respondToPendingRequest(requestId, accept, crewId) {
+    try {
+      await AURUM.CrewAPI.respondToJoinRequest(requestId, accept);
+      AURUM.showToast(accept ? 'Member added to crew.' : 'Request declined.', accept ? 'gold' : 'default');
+      this.openCrewDetail(crewId);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not respond to request.', 'error');
+    }
+  },
+
+  async loadCrewBattleSection(crewId, myUserId) {
     const container = document.getElementById('crew-detail-battle-section');
     if (!container) return;
     try {
