@@ -550,6 +550,14 @@ window.ArenaPage = {
     document.getElementById('btn-submit-crew')
       ?.addEventListener('click', () => this.submitCrew());
 
+    document.getElementById('btn-my-crew-invites')
+      ?.addEventListener('click', () => this.openMyCrewInvites());
+    document.getElementById('my-crew-invites-modal')
+      ?.addEventListener('click', e => {
+        if (e.target.id === 'my-crew-invites-modal')
+          e.target.style.display = 'none';
+      });
+
     /* Create crew battle modal */
     document.getElementById('btn-cancel-crew-battle')
       ?.addEventListener('click', () => {
@@ -2552,6 +2560,50 @@ window.ArenaPage = {
     }
   },
 	
+    async openMyCrewInvites() {
+    document.getElementById('my-crew-invites-modal').style.display = 'flex';
+    const list = document.getElementById('my-crew-invites-list');
+    list.innerHTML = '<p style="color:var(--color-text-muted);font-size:var(--text-sm);">Loading...</p>';
+
+    try {
+      const { invites } = await AURUM.CrewAPI.getMyPendingInvites();
+      if (!invites || !invites.length) {
+        list.innerHTML = '<p style="color:var(--color-text-muted);font-size:var(--text-sm);">No pending invites.</p>';
+        return;
+      }
+      list.innerHTML = invites.map(inv => `
+        <div class="card card-sm" style="margin-bottom:var(--space-2);">
+          <p style="font-weight:700;margin-bottom:2px;">${this.escapeHTML(inv.crew_name)}</p>
+          ${inv.crew_description ? `<p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-2);">${this.escapeHTML(inv.crew_description)}</p>` : ''}
+          <div style="display:flex;gap:var(--space-2);">
+            <button class="btn btn-ghost btn-full btn-sm btn-decline-crew-invite" data-request-id="${inv.id}">Decline</button>
+            <button class="btn btn-primary btn-full btn-sm btn-accept-crew-invite" data-request-id="${inv.id}">Accept</button>
+          </div>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.btn-accept-crew-invite').forEach(btn => {
+        btn.addEventListener('click', () => this.respondToCrewInvite(btn.dataset.requestId, true));
+      });
+      list.querySelectorAll('.btn-decline-crew-invite').forEach(btn => {
+        btn.addEventListener('click', () => this.respondToCrewInvite(btn.dataset.requestId, false));
+      });
+    } catch (err) {
+      list.innerHTML = '<p style="color:var(--color-danger);font-size:var(--text-sm);">Could not load invites.</p>';
+    }
+  },
+
+  async respondToCrewInvite(requestId, accept) {
+    try {
+      await AURUM.CrewAPI.respondToJoinRequest(requestId, accept);
+      AURUM.showToast(accept ? 'Crew joined!' : 'Invite declined.', accept ? 'gold' : 'default');
+      document.getElementById('my-crew-invites-modal').style.display = 'none';
+      this.loadCrews();
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not respond to invite.', 'error');
+    }
+  },
+
   async submitCrew() {
     const name = document.getElementById('crew-name')?.value.trim();
     const desc = document.getElementById('crew-desc')?.value.trim();
