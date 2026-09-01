@@ -257,7 +257,7 @@ export async function vetoCrewSpend(transactionId, clerkId, reasonBody, db) {
 
 // ── INVITE TO CREW (captain only) ────────────────────────────
 
-export async function inviteToCrew(crewId, clerkId, targetUserId, db) {
+export async function inviteToCrew(crewId, clerkId, targetUsername, db) {
   const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
   if (!userRow) return { error: 'User not found' };
   const userId = userRow.id;
@@ -267,6 +267,19 @@ export async function inviteToCrew(crewId, clerkId, targetUserId, db) {
     .bind(crewId, userId)
     .first();
   if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can send invites' };
+
+  if (!targetUsername || targetUsername.trim().length === 0) {
+    return { error: 'target_username is required' };
+  }
+
+  const targetUser = await db
+    .prepare(`SELECT id FROM users WHERE username = ?`)
+    .bind(targetUsername.trim())
+    .first();
+  if (!targetUser) return { error: `User @${targetUsername} not found` };
+  const targetUserId = targetUser.id;
+
+  if (targetUserId === userId) return { error: 'You cannot invite yourself' };
 
   const targetMembership = await db
     .prepare(`SELECT id FROM crew_members WHERE user_id = ?`)
