@@ -1572,11 +1572,29 @@
         return;
       }
 
-      const duelMatch = url.match(/^\/duels\/([^/]+)/);
+            const duelMatch = url.match(/^\/duels\/([^/]+)/);
       if (duelMatch) {
         App.navigate('arena');
         setTimeout(() => {
           document.querySelector('.arena-section-tab[data-section="duels"]')?.click();
+        }, 50);
+        return;
+      }
+
+      const crewMatch = url.match(/^\/crews\/([^/]+)/);
+      if (crewMatch) {
+        App.navigate('arena');
+        setTimeout(() => {
+          document.querySelector('.arena-section-tab[data-section="crews"]')?.click();
+          setTimeout(() => window.ArenaPage?.openCrewDetail(crewMatch[1]), 50);
+        }, 50);
+        return;
+      }
+
+      if (url === '/crews') {
+        App.navigate('arena');
+        setTimeout(() => {
+          document.querySelector('.arena-section-tab[data-section="crews"]')?.click();
         }, 50);
         return;
       }
