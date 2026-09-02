@@ -1931,6 +1931,11 @@ window.ArenaPage = {
               <button class="btn btn-outline btn-sm" id="btn-send-crew-invite">Invite</button>
             </div>
           </div>
+          <div style="margin-bottom:var(--space-3);">
+            <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+              text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">Invite Link</p>
+            <button class="btn btn-outline btn-sm btn-full" id="btn-copy-crew-invite-link" data-invite-code="${crew.invite_code || ''}">🔗 Copy Invite Link</button>
+          </div>
           <div id="crew-detail-requests-section" style="margin-bottom:var(--space-3);"></div>
         ` : ''}
         <div style="margin-bottom:var(--space-3);">
@@ -1994,7 +1999,7 @@ window.ArenaPage = {
       this.loadCrewBattleSection(crewId, me?.id);
       if (isCaptain) {
         this.loadCrewRequestsSection(crewId);
-        document.getElementById('btn-send-crew-invite')
+                document.getElementById('btn-send-crew-invite')
           ?.addEventListener('click', async () => {
             const input = document.getElementById('crew-invite-username-input');
             const username = input?.value.trim().replace(/^@/, '');
@@ -2005,6 +2010,18 @@ window.ArenaPage = {
               input.value = '';
             } catch (err) {
               AURUM.showToast(err.message || 'Could not send invite.', 'error');
+            }
+          });
+        document.getElementById('btn-copy-crew-invite-link')
+          ?.addEventListener('click', async (e) => {
+            const code = e.currentTarget.dataset.inviteCode;
+            if (!code) return AURUM.showToast('No invite link available for this crew.', 'error');
+            const url = `https://tryaurum.store/?crew=${code}`;
+            try {
+              await navigator.clipboard.writeText(url);
+              AURUM.showToast('Invite link copied!', 'gold');
+            } catch (err) {
+              AURUM.showToast(url, 'default', 5000);
             }
           });
       }
