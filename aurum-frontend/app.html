@@ -798,7 +798,7 @@
   // the signup -> OTP-verify flow, since the URL may not carry it
   // through both steps. sessionStorage survives page reloads within
   // the same tab but clears when the tab closes.
-  (function captureReferralCode() {
+    (function captureReferralCode() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
     if (ref) {
@@ -806,6 +806,18 @@
     }
   })();
 
+  // Capture crew invite-link code from URL (?crew=CODE), same
+  // sessionStorage approach as the referral code above. Unlike
+  // the referral code, this isn't a one-time signup event — it's
+  // consumed by App.tryJoinCrewFromLink() the next time showApp()
+  // runs, whether that's an existing session or a fresh signup.
+  (function captureCrewInviteCode() {
+    const params = new URLSearchParams(window.location.search);
+    const crew = params.get('crew');
+    if (crew) {
+      sessionStorage.setItem('aurum_crew_invite_code', crew);
+    }
+  })();
   const App = {
     user:        null,
     currentView: 'ledger',
@@ -988,10 +1000,28 @@
       }
     },
 
-    showApp() {
+        showApp() {
       document.getElementById('auth-screen').style.display = 'none';
       document.getElementById('app-shell').style.display   = 'flex';
       this.navigate('ledger');
+      this.tryJoinCrewFromLink();
+    },
+
+    /* Consumes a crew invite code stashed by captureCrewInviteCode()
+       above, if one is waiting. Clears it either way so a stale or
+       already-used code never fires again on a later showApp() call
+       (e.g. signing out and back in). */
+    async tryJoinCrewFromLink() {
+      const code = sessionStorage.getItem('aurum_crew_invite_code');
+      if (!code) return;
+      sessionStorage.removeItem('aurum_crew_invite_code');
+      try {
+        const result = await AURUM.CrewAPI.joinCrewByCode(code);
+        AURUM.showToast(`Joined ${result.crew_name}!`, 'gold');
+        history.replaceState({}, '', window.location.pathname);
+      } catch (err) {
+        AURUM.showToast(err.message || 'Could not join crew from that link.', 'error');
+      }
     },
 
     /* -----------------------------------------
