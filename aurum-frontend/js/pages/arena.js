@@ -337,7 +337,8 @@ window.ArenaPage = {
             <button class="btn btn-ghost btn-sm" id="btn-open-crew-profile-from-chat">Crew Profile ›</button>
           </div>
           <div id="crew-chat-messages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2) 0;"></div>
-          <div id="crew-chat-reply-bar-container"></div>
+                    <div id="crew-chat-reply-bar-container"></div>
+          <div id="crew-mention-autocomplete"></div>
           <div style="display:flex;gap:var(--space-2);padding-top:var(--space-3);">
             <input class="input" id="crew-chat-input" placeholder="Message your crew..." style="flex:1;" />
             <button class="btn btn-primary btn-sm" id="btn-send-crew-message">Send</button>
@@ -527,12 +528,22 @@ window.ArenaPage = {
           e.target.style.display = 'none';
       });
     /* Crew chat send */
-    document.getElementById('btn-send-crew-message')
+        document.getElementById('btn-send-crew-message')
       ?.addEventListener('click', () => this.sendCrewMessage());
     document.getElementById('crew-chat-input')
       ?.addEventListener('keydown', e => {
+        const dropdown = document.getElementById('crew-mention-autocomplete');
+        const dropdownOpen = dropdown && dropdown.style.display === 'block';
+        if (e.key === 'Enter' && dropdownOpen) {
+          e.preventDefault();
+          const first = dropdown.querySelector('.mention-option');
+          if (first) this.insertCrewMention(first.dataset.username);
+          return;
+        }
         if (e.key === 'Enter') this.sendCrewMessage();
       });
+    document.getElementById('crew-chat-input')
+      ?.addEventListener('input', (e) => this.handleCrewMentionInput(e.target));
 
     document.getElementById('btn-create-crew')
       ?.addEventListener('click', () => {
@@ -2469,10 +2480,61 @@ window.ArenaPage = {
         <button class="reply-preview-cancel" id="btn-cancel-crew-reply">&times;</button>
       </div>
     `;
-    document.getElementById('btn-cancel-crew-reply')?.addEventListener('click', () => {
+        document.getElementById('btn-cancel-crew-reply')?.addEventListener('click', () => {
       this.replyingToCrewMessage = null;
       this.renderCrewReplyBar();
     });
+  },
+
+  /* --------------------------------------------------
+     @MENTION AUTOCOMPLETE (crew chat)
+  -------------------------------------------------- */
+  handleCrewMentionInput(input) {
+    const value = input.value;
+    const cursorPos = input.selectionStart;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const match = textBeforeCursor.match(/@(\w*)$/);
+    if (!match) return this.hideCrewMentionDropdown();
+
+    const partial = match[1].toLowerCase();
+    const usernames = Object.values(this.crewMemberNames || {});
+    const matches = usernames.filter(u => u.toLowerCase().startsWith(partial));
+    if (!matches.length) return this.hideCrewMentionDropdown();
+
+    this.showCrewMentionDropdown(matches, match[0].length);
+  },
+
+  showCrewMentionDropdown(matches, matchLength) {
+    const dropdown = document.getElementById('crew-mention-autocomplete');
+    if (!dropdown) return;
+    this.activeMentionMatchLength = matchLength;
+    dropdown.innerHTML = matches.slice(0, 5).map(u => `
+      <div class="mention-option" data-username="${this.escapeHTML(u)}">${this.escapeHTML(u)}</div>
+    `).join('');
+    dropdown.style.display = 'block';
+    dropdown.querySelectorAll('.mention-option').forEach(opt => {
+      opt.addEventListener('click', () => this.insertCrewMention(opt.dataset.username));
+    });
+  },
+
+  hideCrewMentionDropdown() {
+    const dropdown = document.getElementById('crew-mention-autocomplete');
+    if (dropdown) dropdown.style.display = 'none';
+  },
+
+  insertCrewMention(username) {
+    const input = document.getElementById('crew-chat-input');
+    if (!input) return;
+    const cursorPos = input.selectionStart;
+    const value = input.value;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const textAfterCursor  = value.slice(cursorPos);
+    const newTextBefore = textBeforeCursor.slice(0, textBeforeCursor.length - this.activeMentionMatchLength) + '@' + username + ' ';
+    input.value = newTextBefore + textAfterCursor;
+    const newCursorPos = newTextBefore.length;
+    input.focus();
+    input.setSelectionRange(newCursorPos, newCursorPos);
+    this.hideCrewMentionDropdown();
   },
 
   openCrewEmojiPicker(anchorEl, messageId) {
@@ -2572,8 +2634,8 @@ window.ArenaPage = {
     list.scrollTop = list.scrollHeight;
   },
 
-  crewMessageHTML(m) {
-    const text = m.deleted ? '<em>Message removed</em>' : this.escapeHTML(m.content);
+    crewMessageHTML(m) {
+    const text = m.deleted ? '<em>Message removed</em>' : this.highlightMentions(this.escapeHTML(m.content));
     const isMe = m.sender_id === AURUM.ProfileCache.get()?.id;
     const senderLabel = isMe ? 'You' : (this.crewMemberNames[m.sender_id] || m.sender_id);
     const senderAvatar = this.crewMemberAvatars?.[m.sender_id];
@@ -2636,10 +2698,19 @@ window.ArenaPage = {
     list.scrollTop = list.scrollHeight;
   },
 
-  escapeHTML(str) {
+    escapeHTML(str) {
     const div = document.createElement('div');
     div.textContent = str || '';
     return div.innerHTML;
+  },
+
+  highlightMentions(escapedText) {
+    const usernames = Object.values(this.crewMemberNames || {});
+    if (!usernames.length) return escapedText;
+    return escapedText.replace(/@(\w+)/g, (full, name) => {
+      const isMember = usernames.some(u => u.toLowerCase() === name.toLowerCase());
+      return isMember ? `<span class="mention-highlight">@${name}</span>` : full;
+    });
   },
 
   async sendCrewMessage() {
@@ -3598,7 +3669,7 @@ window.ArenaPage = {
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .reply-preview-cancel {
+            .reply-preview-cancel {
         background: none;
         border: none;
         color: var(--color-text-muted);
@@ -3606,6 +3677,33 @@ window.ArenaPage = {
         cursor: pointer;
         flex-shrink: 0;
       }
+
+      .mention-highlight {
+        color: var(--color-gold);
+        font-weight: 600;
+        background: var(--color-gold-glow);
+        padding: 0 2px;
+        border-radius: 3px;
+      }
+
+      #crew-mention-autocomplete {
+        display: none;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-2);
+        overflow: hidden;
+      }
+
+      .mention-option {
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--text-sm);
+        cursor: pointer;
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .mention-option:last-child { border-bottom: none; }
+      .mention-option:hover { background: var(--color-surface-2); color: var(--color-gold); }
     `;
     document.head.appendChild(style);
   },
