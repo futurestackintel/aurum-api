@@ -1326,12 +1326,66 @@ export async function joinCrew(crewId, clerkId, db) {
     `).bind(crewId),
   ]);
 
-  return {
+    return {
     joined:   true,
     crew_id:  crewId,
     crew_name: crew.name,
   };
 }
+
+// ── JOIN CREW BY INVITE CODE (instant join, bypasses lock, still blocks kicked users) ──
+
+export async function joinCrewByCode(inviteCode, clerkId, db) {
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  if (!inviteCode || inviteCode.trim().length === 0) return { error: 'invite_code is required' };
+
+  const crew = await db
+    .prepare(`SELECT * FROM crews WHERE invite_code = ?`)
+    .bind(inviteCode.trim().toUpperCase())
+    .first();
+  if (!crew) return { error: 'Invalid invite link' };
+
+  const kicked = await db
+    .prepare(`SELECT id FROM crew_kicks WHERE crew_id = ? AND user_id = ?`)
+    .bind(crew.id, userId)
+    .first();
+  if (kicked) return { error: 'You were removed from this crew and need an invite from the captain to rejoin' };
+
+  const membership = await db
+    .prepare(`SELECT id FROM crew_members WHERE user_id = ?`)
+    .bind(userId)
+    .first();
+  if (membership) {
+    if (membership.crew_id === crew.id) return { error: 'You are already a member of this crew' };
+    return { error: 'You are already a member of a crew' };
+  }
+
+  const now = nowISO();
+
+  await db.batch([
+    db.prepare(`
+      INSERT INTO crew_members (id, crew_id, user_id, role, joined_at)
+      VALUES (?, ?, ?, 'member', ?)
+    `).bind(crypto.randomUUID(), crew.id, userId, now),
+
+    db.prepare(`
+      UPDATE crews SET member_count = member_count + 1 WHERE id = ?
+    `).bind(crew.id),
+  ]);
+
+  return {
+    joined:    true,
+    crew_id:   crew.id,
+    crew_name: crew.name,
+  };
+}
+
 // ── CREATE CREW BATTLE ───────────────────────────────────────
 
 export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
