@@ -11,6 +11,7 @@
 import {
   createCrew,
   joinCrew,
+  joinCrewByCode,
   createCrewBattle,
   acceptCrewBattle,
   declineCrewBattle,
@@ -115,6 +116,23 @@ export async function handleCrewRoutes(path, method, request, env) {
       return jsonResponse(result);
     } catch (err) {
       console.error('Join crew error:', err);
+      return jsonResponse({ error: 'Unable to join crew. Please try again.' }, 500);
+    }
+  }
+
+    // ── POST /api/crews/join-by-code — instant join via invite link ──
+  if (path === '/api/crews/join-by-code' && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      if (!body.invite_code) return jsonResponse({ error: 'invite_code is required' }, 400);
+      const result = await joinCrewByCode(body.invite_code, user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Join crew by code error:', err);
       return jsonResponse({ error: 'Unable to join crew. Please try again.' }, 500);
     }
   }
