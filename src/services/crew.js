@@ -1239,30 +1239,47 @@ export async function createCrew(clerkId, body, db) {
 
   if (membership) return { error: 'You are already a member of a crew' };
 
-  const now    = nowISO();
+    const now    = nowISO();
   const crewId = crypto.randomUUID();
+  const inviteCode = await generateUniqueCrewInviteCode(db);
 
   await db.batch([
     db.prepare(`
-      INSERT INTO crews (id, name, creator_id, description, member_count, created_at)
-      VALUES (?, ?, ?, ?, 1, ?)
-    `).bind(crewId, name.trim(), userId, description ?? null, now),
-
+      INSERT INTO crews (id, name, creator_id, description, member_count, created_at, invite_code)
+      VALUES (?, ?, ?, ?, 1, ?, ?)
+    `).bind(crewId, name.trim(), userId, description ?? null, now, inviteCode),
     db.prepare(`
       INSERT INTO crew_members (id, crew_id, user_id, role, joined_at)
       VALUES (?, ?, ?, 'captain', ?)
     `).bind(crypto.randomUUID(), crewId, userId, now),
   ]);
 
-  return {
+    return {
     crew: {
       id:          crewId,
       name:        name.trim(),
       description: description ?? null,
       member_count: 1,
       created_at:  now,
+      invite_code: inviteCode,
     },
   };
+}
+
+// ── GENERATE UNIQUE CREW INVITE CODE (helper) ─────────────────
+
+async function generateUniqueCrewInviteCode(db) {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L — avoids look-alike confusion
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    const existing = await db.prepare(`SELECT id FROM crews WHERE invite_code = ?`).bind(code).first();
+    if (!existing) return code;
+  }
+  // Astronomically unlikely fallback
+  return crypto.randomUUID().slice(0, 8).toUpperCase();
 }
 
 // ── JOIN CREW ────────────────────────────────────────────────
