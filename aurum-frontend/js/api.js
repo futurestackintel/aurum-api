@@ -333,8 +333,11 @@ const CrewAPI = {
   createCrew: (data) =>
     apiRequest('POST', '/api/crews', data),
 
-  joinCrew: (id) =>
+ joinCrew: (id) =>
     apiRequest('POST', `/api/crews/${id}/join`),
+
+  joinCrewByCode: (inviteCode) =>
+    apiRequest('POST', '/api/crews/join-by-code', { invite_code: inviteCode }),
 
     startBattle: (id, data) =>
     apiRequest('POST', `/api/crews/${id}/battle`, data),
