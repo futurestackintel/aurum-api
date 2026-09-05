@@ -336,6 +336,7 @@ window.ArenaPage = {
             <h3 class="modal-title" id="crew-chat-title" style="margin:0;">Crew Chat</h3>
             <button class="btn btn-ghost btn-sm" id="btn-open-crew-profile-from-chat">Crew Profile ›</button>
           </div>
+          <div id="crew-chat-pinned-bar"></div>
           <div id="crew-chat-messages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2) 0;"></div>
                     <div id="crew-chat-reply-bar-container"></div>
           <div id="crew-mention-autocomplete"></div>
@@ -2367,12 +2368,15 @@ window.ArenaPage = {
     /* Build id -> username lookup so messages can show real names */
     this.crewMemberNames = {};
     this.crewMemberAvatars = {};
+    this.activeChatMyRole = null;
     try {
       const crewData = await AURUM.CrewAPI.getCrew(crewId);
       const members = crewData.crew?.members || [];
+      const myId = AURUM.ProfileCache.get()?.id;
       members.forEach(m => {
         if (m.user_id && m.username) this.crewMemberNames[m.user_id] = m.username;
         if (m.user_id) this.crewMemberAvatars[m.user_id] = m.avatar_url;
+        if (m.user_id === myId) this.activeChatMyRole = m.role;
       });
     } catch (err) {
       /* Non-fatal — chat still works, just shows raw IDs if this fails */
@@ -2396,6 +2400,8 @@ window.ArenaPage = {
     this.connectCrewChatSocket(crewId);
     this.wireCrewReactionHandlers();
     this.wireCrewSwipeToReply();
+    this.wireCrewPinHandlers();
+    this.loadPinnedMessages(crewId);
   },
   wireCrewReactionHandlers() {
     const list = document.getElementById('crew-chat-messages');
@@ -2537,6 +2543,68 @@ window.ArenaPage = {
     this.hideCrewMentionDropdown();
   },
 
+  /* --------------------------------------------------
+     PINNED MESSAGES (crew chat, captain only)
+  -------------------------------------------------- */
+  async loadPinnedMessages(crewId) {
+    try {
+      const { pinned } = await AURUM.CrewAPI.getPinnedMessages(crewId);
+      this.renderPinnedBar(pinned || []);
+    } catch (err) {
+      this.renderPinnedBar([]);
+    }
+  },
+
+  renderPinnedBar(pinned) {
+    const bar = document.getElementById('crew-chat-pinned-bar');
+    if (!bar) return;
+    if (!pinned.length) { bar.innerHTML = ''; return; }
+    const canUnpin = this.activeChatMyRole === 'captain';
+    bar.innerHTML = `
+      <div class="pinned-bar">
+        <p class="pinned-bar-label">📌 Pinned</p>
+        ${pinned.map(p => `
+          <div class="pinned-bar-item">
+            <div class="pinned-bar-content">
+              <span class="pinned-bar-sender">${this.escapeHTML(p.sender_username)}</span>
+              <span class="pinned-bar-text">${this.escapeHTML((p.content || '').slice(0, 80))}</span>
+            </div>
+            ${canUnpin ? `<button class="pinned-bar-unpin" data-message-id="${p.id}">Unpin</button>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+    bar.querySelectorAll('.pinned-bar-unpin').forEach(btn => {
+      btn.addEventListener('click', () => this.togglePinMessage(btn.dataset.messageId, false));
+    });
+  },
+
+  wireCrewPinHandlers() {
+    const list = document.getElementById('crew-chat-messages');
+    if (!list || list.dataset.pinWired) return;
+    list.dataset.pinWired = '1';
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-pin-message');
+      if (!btn) return;
+      this.togglePinMessage(btn.dataset.messageId, true);
+    });
+  },
+
+  async togglePinMessage(messageId, pin) {
+    try {
+      if (pin) {
+        await AURUM.CrewAPI.pinMessage(messageId);
+        AURUM.showToast('Message pinned.', 'gold');
+      } else {
+        await AURUM.CrewAPI.unpinMessage(messageId);
+        AURUM.showToast('Message unpinned.', 'default');
+      }
+      this.loadPinnedMessages(this.activeChatCrewId);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not update pin.', 'error');
+    }
+  },
+
   openCrewEmojiPicker(anchorEl, messageId) {
     document.querySelectorAll('.reaction-picker-popup').forEach(p => p.remove());
     const emojiList = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
@@ -2651,7 +2719,10 @@ window.ArenaPage = {
         <div class="avatar avatar-sm" style="width:22px;height:22px;font-size:10px;flex-shrink:0;">${AURUM.avatarInnerHTML(senderAvatar, senderLabel.charAt(0).toUpperCase())}</div>
         <div class="chat-message-body">
           ${replyHTML}
-          <span class="chat-message-sender mono">${senderLabel}</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="chat-message-sender mono">${senderLabel}</span>
+            ${this.activeChatMyRole === 'captain' && !m.deleted ? `<button class="btn-pin-message" data-message-id="${m.id}" title="Pin message">📌</button>` : ''}
+          </div>
           <span class="chat-message-text">${text}</span>
           ${this.reactionBarHTML(m.id, reactions)}
         </div>
@@ -3704,6 +3775,76 @@ window.ArenaPage = {
 
       .mention-option:last-child { border-bottom: none; }
       .mention-option:hover { background: var(--color-surface-2); color: var(--color-gold); }
+
+      .pinned-bar {
+        background: var(--color-gold-glow);
+        border: 1px solid var(--color-border-gold);
+        border-radius: var(--radius-md);
+        padding: var(--space-2) var(--space-3);
+        margin-bottom: var(--space-2);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .pinned-bar-label {
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-gold);
+        margin-bottom: 2px;
+      }
+
+      .pinned-bar-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+      }
+
+      .pinned-bar-content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .pinned-bar-sender {
+        font-size: 10px;
+        color: var(--color-gold);
+        font-weight: 600;
+      }
+
+      .pinned-bar-text {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pinned-bar-unpin {
+        background: none;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-full);
+        color: var(--color-text-muted);
+        font-size: 10px;
+        padding: 2px 8px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+
+      .pinned-bar-unpin:hover { color: var(--color-gold); border-color: var(--color-border-gold); }
+
+      .btn-pin-message {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 11px;
+        padding: 0;
+        opacity: 0.6;
+      }
+
+      .btn-pin-message:hover { opacity: 1; }
     `;
     document.head.appendChild(style);
   },
