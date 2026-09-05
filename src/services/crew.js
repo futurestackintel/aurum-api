@@ -817,12 +817,101 @@ export async function deleteCrewMessage(messageId, clerkId, db) {
     return { error: 'Only the Captain or a Moderator can delete crew messages' };
   }
 
-  await db
+    await db
     .prepare(`UPDATE crew_messages SET deleted_at = ?, deleted_by = ? WHERE id = ?`)
     .bind(new Date().toISOString(), userId, messageId)
     .run();
 
   return { deleted: true, message_id: messageId };
+}
+
+// ── PIN CREW MESSAGE (captain only, max 3 pinned — oldest auto-unpins) ──
+
+export async function pinCrewMessage(messageId, clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const message = await db
+    .prepare(`SELECT crew_id, deleted_at, pinned_at FROM crew_messages WHERE id = ?`)
+    .bind(messageId)
+    .first();
+  if (!message) return { error: 'Message not found' };
+  if (message.deleted_at) return { error: 'Cannot pin a deleted message' };
+  if (message.pinned_at) return { error: 'Message is already pinned' };
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(message.crew_id, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') {
+    return { error: 'Only the crew captain can pin messages' };
+  }
+
+  const { results: pinned } = await db
+    .prepare(`SELECT id FROM crew_messages WHERE crew_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at ASC`)
+    .bind(message.crew_id)
+    .all();
+
+  const now = nowISO();
+  const statements = [
+    db.prepare(`UPDATE crew_messages SET pinned_at = ?, pinned_by = ? WHERE id = ?`)
+      .bind(now, userId, messageId),
+  ];
+
+  if (pinned.length >= 3) {
+    const oldest = pinned[0];
+    statements.push(
+      db.prepare(`UPDATE crew_messages SET pinned_at = NULL, pinned_by = NULL WHERE id = ?`).bind(oldest.id)
+    );
+  }
+
+  await db.batch(statements);
+
+  return { pinned: true, message_id: messageId, auto_unpinned_id: pinned.length >= 3 ? pinned[0].id : null };
+}
+
+// ── UNPIN CREW MESSAGE (captain only) ─────────────────────────
+
+export async function unpinCrewMessage(messageId, clerkId, db) {
+  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  if (!userRow) return { error: 'User not found' };
+  const userId = userRow.id;
+
+  const message = await db
+    .prepare(`SELECT crew_id, pinned_at FROM crew_messages WHERE id = ?`)
+    .bind(messageId)
+    .first();
+  if (!message) return { error: 'Message not found' };
+  if (!message.pinned_at) return { error: 'Message is not pinned' };
+
+  const membership = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(message.crew_id, userId)
+    .first();
+  if (!membership || membership.role !== 'captain') {
+    return { error: 'Only the crew captain can unpin messages' };
+  }
+
+  await db.prepare(`UPDATE crew_messages SET pinned_at = NULL, pinned_by = NULL WHERE id = ?`).bind(messageId).run();
+
+  return { unpinned: true, message_id: messageId };
+}
+
+// ── GET PINNED CREW MESSAGES ───────────────────────────────────
+
+export async function getPinnedCrewMessages(crewId, db) {
+  const { results } = await db
+    .prepare(`
+      SELECT m.id, m.content, m.created_at, m.pinned_at, m.sender_id, u.username AS sender_username
+      FROM crew_messages m
+      JOIN users u ON u.id = m.sender_id
+      WHERE m.crew_id = ? AND m.pinned_at IS NOT NULL AND m.deleted_at IS NULL
+      ORDER BY m.pinned_at DESC
+    `)
+    .bind(crewId)
+    .all();
+  return { pinned: results };
 }
 
 export async function getCrewMessages(crewId, limit, before, db) {
