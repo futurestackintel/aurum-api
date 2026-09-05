@@ -363,8 +363,14 @@ const CrewAPI = {
   sendMessage: (id, content, replyToMessageId) =>
     apiRequest('POST', `/api/crews/${id}/messages`, { content, reply_to_message_id: replyToMessageId || undefined }),
 
-  deleteMessage: (messageId) =>
+    deleteMessage: (messageId) =>
     apiRequest('DELETE', `/api/crew-messages/${messageId}`),
+  pinMessage: (messageId) =>
+    apiRequest('POST', `/api/crew-messages/${messageId}/pin`),
+  unpinMessage: (messageId) =>
+    apiRequest('DELETE', `/api/crew-messages/${messageId}/pin`),
+  getPinnedMessages: (crewId) =>
+    apiRequest('GET', `/api/crews/${crewId}/pinned`),
   reactToMessage: (messageId, emoji) =>
     apiRequest('POST', `/api/crew-messages/${messageId}/reactions`, { emoji }),
   removeReaction: (messageId) =>
