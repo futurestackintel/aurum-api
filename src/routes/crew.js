@@ -12,6 +12,9 @@ import {
   createCrew,
   joinCrew,
   joinCrewByCode,
+  pinCrewMessage,
+  unpinCrewMessage,
+  getPinnedCrewMessages,
   createCrewBattle,
   acceptCrewBattle,
   declineCrewBattle,
@@ -849,12 +852,58 @@ export async function handleCrewRoutes(path, method, request, env) {
         .bind(user.id)
         .first();
       if (!userRow) return jsonResponse({ error: 'User not found' }, 404);
-      const result = await deleteCrewMessage(deleteMessageMatch[1], userRow.id, db);
+            const result = await deleteCrewMessage(deleteMessageMatch[1], userRow.id, db);
       if (result.error) return jsonResponse({ error: result.error }, 400);
       return jsonResponse(result);
     } catch (err) {
       console.error('Delete crew message error:', err);
       return jsonResponse({ error: 'Unable to delete message. Please try again.' }, 500);
+    }
+  }
+
+  // ── POST /api/crew-messages/:id/pin — captain pins a message ──
+  const pinMatch = path.match(/^\/api\/crew-messages\/([^/]+)\/pin$/);
+  if (pinMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await pinCrewMessage(pinMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Pin crew message error:', err);
+      return jsonResponse({ error: 'Unable to pin message. Please try again.' }, 500);
+    }
+  }
+
+  // ── DELETE /api/crew-messages/:id/pin — captain unpins a message ──
+  if (pinMatch && method === 'DELETE') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await unpinCrewMessage(pinMatch[1], user.id, db);
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Unpin crew message error:', err);
+      return jsonResponse({ error: 'Unable to unpin message. Please try again.' }, 500);
+    }
+  }
+
+  // ── GET /api/crews/:id/pinned — fetch pinned messages ─────────
+  const pinnedListMatch = path.match(/^\/api\/crews\/([^/]+)\/pinned$/);
+  if (pinnedListMatch && method === 'GET') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await getPinnedCrewMessages(pinnedListMatch[1], db);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Get pinned crew messages error:', err);
+      return jsonResponse({ error: 'Unable to load pinned messages. Please try again.' }, 500);
     }
   }
 
