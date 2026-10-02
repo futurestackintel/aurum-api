@@ -331,6 +331,11 @@ window.LedgerPage = {
   },
 
   bindPostEvents() {
+    document.querySelectorAll('.btn-post-profile').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => App.openPublicProfile(btn.dataset.username));
+    });
     /* ---- Tip buttons ---- */
     document.querySelectorAll('.btn-tip').forEach(btn => {
       if (btn.dataset.bound) return;
@@ -440,8 +445,8 @@ window.LedgerPage = {
   /* -----------------------------------------
      POST DETAIL VIEW — full-screen swap
   ----------------------------------------- */
-  openPostDetail(postId) {
-    const post = this.postsCache.get(String(postId));
+  openPostDetail(postId, suppliedPost = null) {
+    const post = suppliedPost || this.postsCache.get(String(postId));
     if (!post) {
       AURUM.showToast('Could not open this post.', 'error');
       return;
@@ -469,6 +474,19 @@ window.LedgerPage = {
 
     /* Scroll detail view to top */
     document.querySelector('.detail-scroll')?.scrollTo(0, 0);
+  },
+
+  async openPostById(postId) {
+    try {
+      const { post } = await AURUM.LedgerAPI.getPost(postId);
+      App.navigate('ledger');
+      setTimeout(() => {
+        this.postsCache.set(String(post.id), post);
+        this.openPostDetail(post.id, post);
+      }, 120);
+    } catch (error) {
+      AURUM.showToast(error.message || 'This post is no longer available.', 'error');
+    }
   },
 
   closePostDetail(fromPopstate = false) {
@@ -522,7 +540,7 @@ window.LedgerPage = {
   /* Recursive — a comment renders itself, then all of its
      replies indented one level further. */
   commentHTML(comment, depth) {
-    const initials     = comment.username?.charAt(0).toUpperCase() || '?';
+    const initials     = this.escapeHTML(comment.username?.charAt(0).toUpperCase() || '?');
     const indent        = Math.min(depth, 4) * 20;
     const isOwnComment  = window.App?.user?.id === comment.user_id;
 
@@ -531,35 +549,35 @@ window.LedgerPage = {
       .join('');
 
     return `
-      <div class="comment-item" style="margin-left:${indent}px;" data-comment-id="${comment.id}">
+      <div class="comment-item" style="margin-left:${indent}px;" data-comment-id="${this.escapeHTML(comment.id)}">
         <div class="comment-row">
           <div class="avatar avatar-sm" style="width:24px;height:24px;font-size:11px;flex-shrink:0;">
             ${AURUM.avatarInnerHTML(comment.avatar_url, initials)}
           </div>
           <div class="comment-body">
             <div class="comment-meta">
-              <span class="comment-username">${comment.username || 'Anonymous'}</span>
+              ${comment.profile_username ? `<button class="comment-username btn-comment-profile" data-username="${this.escapeHTML(comment.profile_username)}">${this.escapeHTML(comment.username || 'Anonymous')}</button>` : `<span class="comment-username">${this.escapeHTML(comment.username || 'Member')}</span>`}
               <span class="comment-time">${AURUM.timeAgo(comment.created_at)}</span>
             </div>
             <p class="comment-text">${this.escapeHTML(comment.content)}</p>
             <div class="comment-actions">
-              <button class="comment-action-link btn-reply-toggle" data-comment-id="${comment.id}">
+              <button class="comment-action-link btn-reply-toggle" data-comment-id="${this.escapeHTML(comment.id)}">
                 Reply
               </button>
               ${isOwnComment ? `
                 <button class="comment-action-link comment-action-danger btn-comment-delete"
-                  data-comment-id="${comment.id}">
+                  data-comment-id="${this.escapeHTML(comment.id)}">
                   Delete
                 </button>
               ` : ''}
             </div>
-            <div class="reply-input-wrap" id="reply-wrap-${comment.id}" style="display:none;">
+            <div class="reply-input-wrap" id="reply-wrap-${this.escapeHTML(comment.id)}" style="display:none;">
               <textarea class="comment-input reply-input" maxlength="${COMMENT_MAX_LENGTH}"
-                data-parent-id="${comment.id}" placeholder="Write a reply..." rows="1"></textarea>
+                data-parent-id="${this.escapeHTML(comment.id)}" placeholder="Write a reply..." rows="1"></textarea>
               <div class="comment-input-footer">
                 <span class="comment-char-count" data-max="${COMMENT_MAX_LENGTH}">0/${COMMENT_MAX_LENGTH}</span>
                 <button class="btn btn-primary btn-sm btn-reply-submit"
-                  data-comment-id="${comment.id}">Reply</button>
+                  data-comment-id="${this.escapeHTML(comment.id)}">Reply</button>
               </div>
             </div>
           </div>
@@ -570,6 +588,11 @@ window.LedgerPage = {
   },
 
   bindCommentEvents() {
+    document.querySelectorAll('.btn-comment-profile').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => App.openPublicProfile(btn.dataset.username));
+    });
     document.querySelectorAll('.btn-reply-toggle').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
@@ -757,8 +780,8 @@ window.LedgerPage = {
      the detail view — visually the same card, but its comment
      icon is inert (you're already viewing the thread). */
   postHTML(post, opts = {}) {
-    const initials    = post.username?.charAt(0).toUpperCase() || '?';
-    const league      = post.league || 'bronze';
+    const initials    = this.escapeHTML(post.username?.charAt(0).toUpperCase() || '?');
+    const league      = post.league || null;
     const stakeStatus = post.stake_status || 'locked';
 
     const stakeColor  = {
@@ -780,7 +803,15 @@ window.LedgerPage = {
     const cheers       = post.cheers || 0;
     const commentCount = post.comment_count ?? post.comments ?? 0;
 
-    const mediaUrl = post.media_urls || post.media_url || null;
+    const mediaCandidate = post.media_urls || post.media_url || null;
+    let mediaUrl = null;
+    if (mediaCandidate) {
+      try {
+        const parsed = new URL(mediaCandidate, window.location.origin);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') mediaUrl = parsed.href;
+      } catch (_) { /* Ignore malformed evidence URLs. */ }
+    }
+    const canOpenProfile = !post.stealth_mode && post.username && post.username !== 'Anonymous';
 
     const commentBtnHTML = opts.inDetail
       ? `
@@ -789,16 +820,16 @@ window.LedgerPage = {
             stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
           </svg>
-          <span class="post-action-value mono" data-comment-count="${post.id}">${commentCount}</span>
+          <span class="post-action-value mono" data-comment-count="${this.escapeHTML(post.id)}">${commentCount}</span>
         </div>
       `
       : `
-        <button class="post-action-btn btn-comment-toggle" data-post-id="${post.id}">
+        <button class="post-action-btn btn-comment-toggle" data-post-id="${this.escapeHTML(post.id)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
           </svg>
-          <span class="post-action-value mono" data-comment-count="${post.id}">${commentCount}</span>
+          <span class="post-action-value mono" data-comment-count="${this.escapeHTML(post.id)}">${commentCount}</span>
         </button>
       `;
 
@@ -806,19 +837,17 @@ window.LedgerPage = {
       <div class="post-card card fade-in">
         <div class="post-header">
           <div class="avatar avatar-sm ${league === 'sovereign' ? 'avatar-gold' : ''}">
-            ${AURUM.avatarInnerHTML(post.avatar_url, initials)}
+            ${canOpenProfile ? `<button class="btn-post-profile" data-username="${this.escapeHTML(post.username)}" aria-label="View ${this.escapeHTML(post.username)}'s profile">${AURUM.avatarInnerHTML(post.avatar_url, initials)}</button>` : AURUM.avatarInnerHTML(post.avatar_url, initials)}
           </div>
           <div class="post-meta">
             <div class="post-username">
-              ${post.username || 'Anonymous'}
+              ${canOpenProfile ? `<button class="post-username-link btn-post-profile" data-username="${this.escapeHTML(post.username)}">${this.escapeHTML(post.username)}</button>` : this.escapeHTML(post.username || 'Anonymous')}
               ${post.verified
                 ? '<span style="color:var(--color-gold);font-size:10px;">✦</span>'
                 : ''}
             </div>
             <div class="post-sub">
-              <span class="badge ${AURUM.getLeagueBadge(league)}" style="font-size:9px;">
-                ${league}
-              </span>
+              ${league ? `<span class="badge ${AURUM.getLeagueBadge(league)}" style="font-size:9px;">${this.escapeHTML(league)}</span>` : ''}
               <span class="post-time">
                 ${AURUM.timeAgo(post.created_at || new Date())}
               </span>
@@ -834,15 +863,15 @@ window.LedgerPage = {
 
         ${post.title ? `<p style="font-weight:var(--weight-semi);font-size:var(--text-base);color:var(--color-text);">${this.escapeHTML(post.title)}</p>` : ''}
         ${post.achievement_category ? `<span class="badge badge-gold" style="font-size:9px;align-self:flex-start;">${this.escapeHTML(post.achievement_category)}</span>` : ''}
-        <p class="post-content">${post.content || ''}</p>
+        <p class="post-content">${this.escapeHTML(post.content || '')}</p>
         ${mediaUrl ? `
-          <img src="${mediaUrl}" class="post-media" alt="Achievement proof" />
+          <img src="${this.escapeHTML(mediaUrl)}" class="post-media" alt="Achievement proof" loading="lazy" />
         ` : ''}
 
         <div class="post-actions">
 
-          <button class="btn-tip post-action-btn" data-post-id="${post.id}"
-            data-receiver-id="${post.user_id || ''}"
+          <button class="btn-tip post-action-btn" data-post-id="${this.escapeHTML(post.id)}"
+            data-receiver-id="${this.escapeHTML(post.user_id || '')}"
             ${tipsEnabled ? '' : 'disabled'}
             title="${tipsEnabled ? 'Send a tip' : 'This post was ruled fake — tipping disabled'}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -850,14 +879,14 @@ window.LedgerPage = {
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
             </svg>
             <span class="post-action-value mono"
-              data-tips="${post.id}"
+              data-tips="${this.escapeHTML(post.id)}"
               data-total="${post.tips_received || 0}">
               ${formatAurum(post.tips_received || 0)}
             </span>
           </button>
 
           <button class="btn-cheer post-action-btn ${post.user_cheered ? 'cheered' : ''}"
-            data-post-id="${post.id}"
+            data-post-id="${this.escapeHTML(post.id)}"
             ${post.user_cheered ? 'disabled' : ''}>
             <svg width="14" height="14" viewBox="0 0 24 24"
               fill="${post.user_cheered ? 'var(--color-gold)' : 'none'}"
@@ -871,7 +900,7 @@ window.LedgerPage = {
           ${commentBtnHTML}
 
           ${window.App?.user?.id && post.user_id === window.App.user.id ? `
-            <button class="btn-delete-post post-action-btn" data-post-id="${post.id}"
+            <button class="btn-delete-post post-action-btn" data-post-id="${this.escapeHTML(post.id)}"
               title="Delete post">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">
@@ -881,7 +910,7 @@ window.LedgerPage = {
           ` : ''}
 
           ${window.App?.user?.id && post.user_id !== window.App.user.id ? `
-            <button class="btn-flag-post post-action-btn" data-post-id="${post.id}"
+            <button class="btn-flag-post post-action-btn" data-post-id="${this.escapeHTML(post.id)}"
               title="Report this post">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">

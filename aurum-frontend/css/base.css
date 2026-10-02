@@ -16,6 +16,7 @@ html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--nav-height) + var(--safe-top));
 }
 
 body {
@@ -154,17 +155,32 @@ input:focus, textarea:focus, select:focus {
   border-color: var(--color-gold-dim);
 }
 
+:focus-visible {
+  outline: 3px solid var(--color-gold-bright);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
 /* --- Layout containers --- */
 .container {
   width: 100%;
-  max-width: var(--max-width);
+  max-width: var(--content-max-width);
   margin: 0 auto;
   padding: 0 var(--space-4);
 }
 
 .container-lg {
   width: 100%;
-  max-width: var(--max-width-lg);
+  max-width: var(--app-shell-max-width);
   margin: 0 auto;
   padding: 0 var(--space-4);
 }
@@ -198,4 +214,13 @@ input:focus, textarea:focus, select:focus {
 
 .fade-in {
   animation: fadeIn 0.4s ease forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

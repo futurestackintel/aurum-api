@@ -6,6 +6,7 @@
 // ============================================================
 
 import { scoreToLeague } from './aurumScore.js';
+import { notificationEnabled } from './notifications.js';
 
 // League rank order — higher index = higher rank
 const LEAGUE_RANK = {
@@ -62,7 +63,7 @@ export async function assignLeague(userId, db) {
     const newRank      = LEAGUE_RANK[newLeague]      ?? -1;
     const isPromotion  = newRank > previousRank;
 
-    if (isPromotion) {
+    if (isPromotion && await notificationEnabled(userId, 'league_promotions', db)) {
       await db
         .prepare(`
           INSERT INTO notifications

@@ -76,11 +76,11 @@ window.ProfilePage = {
         <div class="profile-stats">
           <div class="profile-stat card card-sm">
             <span class="stat-value" id="stat-earned">—</span>
-            <span class="stat-label">Total Earned</span>
+            <span class="stat-label">Tips Received</span>
           </div>
           <div class="profile-stat card card-sm">
             <span class="stat-value" id="stat-given">—</span>
-            <span class="stat-label">Total Given</span>
+            <span class="stat-label">Tips Given</span>
           </div>
           <div class="profile-stat card card-sm">
             <span class="stat-value" id="stat-wins">—</span>
@@ -232,7 +232,13 @@ window.ProfilePage = {
     try {
       const data = await AURUM.AuthAPI.me();
       this.user  = { ...this.user, ...data.user };
-      AURUM.ProfileCache.set(data.user);
+      try {
+        const badgeData = await AURUM.BadgeAPI.getMine();
+        this.user.badges = badgeData.badges || [];
+      } catch (err) {
+        /* Keep cached badges if the separate badge request is unavailable. */
+      }
+      AURUM.ProfileCache.set(this.user);
       this.populateProfile();
       /* Sync wallet balance to stat card */
       this.loadWalletStat();
@@ -259,7 +265,7 @@ window.ProfilePage = {
     const username = u.username  || u.firstName || 'Member';
     const league   = u.league    || 'Bronze';
     const score    = u.aurum_score || 0;
-    const streak   = u.streak    || 0;
+    const streak   = u.streak_current ?? 0;
     const tier     = u.tier      || 'explorer';
     const memberSince = u.created_at
       ? new Date(u.created_at).getFullYear()
@@ -281,7 +287,7 @@ window.ProfilePage = {
     /* Verified badge */
     const verifiedBadge = document.getElementById('profile-verified-badge');
     if (verifiedBadge) {
-      verifiedBadge.style.display = u.verified ? 'flex' : 'none';
+      verifiedBadge.style.display = u.is_verified ? 'flex' : 'none';
     }
 
     /* Score */
@@ -316,12 +322,12 @@ window.ProfilePage = {
     const earnedEl = document.getElementById('stat-earned');
     const givenEl  = document.getElementById('stat-given');
     const winsEl   = document.getElementById('stat-wins');
-    if (earnedEl) earnedEl.textContent = AURUM.formatAmount(u.total_earned || 0);
-    if (givenEl)  givenEl.textContent  = AURUM.formatAmount(u.total_given  || 0);
-    if (winsEl)   winsEl.textContent   = u.challenge_wins || 0;
+    if (earnedEl) earnedEl.textContent = AURUM.formatAmount((u.total_tips_received_cents || 0) / 100);
+    if (givenEl)  givenEl.textContent  = AURUM.formatAmount((u.total_tips_sent_cents || 0) / 100);
+    if (winsEl)   winsEl.textContent   = u.total_challenges_won ?? 0;
 
     /* Badges */
-    this.renderBadges(u.badges || []);
+    this.renderBadges(u.badges);
 
     /* Passport */
     const pAvatar  = document.getElementById('passport-avatar');
@@ -333,12 +339,12 @@ window.ProfilePage = {
     const ppStreak = document.getElementById('pp-streak');
     const ppSince  = document.getElementById('pp-since');
 
-    if (pAvatar)  pAvatar.textContent  = username.charAt(0).toUpperCase();
+    if (pAvatar)  pAvatar.innerHTML = AURUM.avatarInnerHTML(u.avatar_url, username.charAt(0).toUpperCase());
     if (pName)    pName.textContent    = username;
-    if (pLeague)  pLeague.textContent  = `${league} League`;
+    if (pLeague)  pLeague.textContent  = u.hide_league ? 'League hidden' : `${league} League`;
     if (pTier)    pTier.textContent    = tier.charAt(0).toUpperCase() + tier.slice(1);
-    if (ppScore)  ppScore.textContent  = AURUM.formatNumber(score);
-    if (ppWins)   ppWins.textContent   = u.challenge_wins || 0;
+    if (ppScore)  ppScore.textContent  = u.hide_aurum_score ? 'Hidden' : AURUM.formatNumber(score);
+    if (ppWins)   ppWins.textContent   = u.total_challenges_won ?? 0;
     if (ppStreak) ppStreak.textContent = `${streak}d`;
     if (ppSince)  ppSince.textContent  = `Member since ${memberSince}`;
 
@@ -350,17 +356,28 @@ window.ProfilePage = {
   renderBadges(earnedBadges) {
     const grid = document.getElementById('badges-grid');
     if (!grid) return;
+    if (!Array.isArray(earnedBadges)) {
+      grid.textContent = 'Badges unavailable.';
+      return;
+    }
 
     const allBadges = [
+      { key: 'founding_member',      icon: '✦', name: 'Founding Member'       },
       { key: 'verified_builder',     icon: '🥉', name: 'Verified Builder'     },
       { key: 'verified_founder',     icon: '🥈', name: 'Verified Founder'     },
       { key: 'verified_millionaire', icon: '🥇', name: 'Verified Millionaire' },
       { key: 'sovereign',            icon: '💎', name: 'Sovereign'            },
     ];
 
+    const earnedKeys = new Set(earnedBadges.map(b => b?.type || b?.badge_type || b?.key || b));
+    earnedBadges.forEach(b => {
+      const key = b?.type || b?.badge_type || b?.key || (typeof b === 'string' ? b : null);
+      if (key && !allBadges.some(badge => badge.key === key)) {
+        allBadges.push({ key, icon: '✦', name: b?.label || key.replace(/_/g, ' ') });
+      }
+    });
     grid.innerHTML = allBadges.map(badge => {
-      const earned = earnedBadges.includes(badge.key)
-        || earnedBadges.some(b => b?.key === badge.key || b === badge.key);
+      const earned = earnedKeys.has(badge.key);
       return `
         <div class="badge-item ${earned ? 'badge-item-earned' : 'badge-item-locked'}">
           <span class="badge-item-icon">${badge.icon}</span>
@@ -440,8 +457,10 @@ window.ProfilePage = {
 
   getShareText() {
     const username = this.user?.username || 'member';
-    const league   = this.user?.league   || 'Bronze';
-    const score    = AURUM.formatNumber(this.user?.aurum_score || 0);
+    const league   = this.user?.hide_league ? 'Hidden' : (this.user?.league || 'Bronze');
+    const score    = this.user?.hide_aurum_score
+      ? 'Hidden'
+      : AURUM.formatNumber(this.user?.aurum_score || 0);
     const url      = this.getPassportURL();
     return `My AURUM Wealth Passport ðŸ† League: ${league} | Score: ${score} ${url} #AURUM`;
   },

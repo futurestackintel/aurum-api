@@ -103,6 +103,7 @@ const StatsAPI = {
 */
 const LedgerAPI = {
   getFeed:    (offset = 0) => apiRequest('GET',  `/api/posts?limit=20&offset=${offset}`),
+  getPost:    (postId) => apiRequest('GET', `/api/posts/${encodeURIComponent(postId)}`, null, 'optional'),
   createPost: (data)       => apiRequest('POST', '/api/posts', data),
   flagPost:   (postId, data) => apiRequest('POST', `/api/posts/${postId}/flag`, data),
   appeal:     (postId, data) => apiRequest('POST', `/api/posts/${postId}/appeal`, data),
@@ -239,7 +240,7 @@ const AdminAPI = {
 /* --- Comments --- */
 const CommentsAPI = {
   getForPost: (postId) =>
-    apiRequest('GET', `/api/posts/${postId}/comments`, null, false),
+    apiRequest('GET', `/api/posts/${postId}/comments`, null, 'optional'),
 
   create: (postId, data) =>
     apiRequest('POST', `/api/posts/${postId}/comments`, data),
@@ -272,10 +273,17 @@ const SubAPI = {
 /* --- Profile --- */
 const ProfileAPI = {
   getPassport:  (username) =>
-    apiRequest('GET', `/api/passport/${username}`, null, false),
+    apiRequest('GET', `/api/passport/${encodeURIComponent(username)}`, null, 'optional'),
+  getPublicPosts: (username) =>
+    apiRequest('GET', `/api/profiles/${encodeURIComponent(username)}/posts`, null, 'optional'),
 
   updateProfile: (data) =>
     apiRequest('PATCH', '/api/users/me', data),
+};
+
+/* --- Badges --- */
+const BadgeAPI = {
+  getMine: () => apiRequest('GET', '/api/badges/me'),
 };
 
 /* --- Settings --- */
@@ -708,6 +716,7 @@ window.AURUM = {
   NotificationsAPI,
   SubAPI,
   ProfileAPI,
+  BadgeAPI,
   SettingsAPI,
   WalletAPI,
   FoundingAPI,

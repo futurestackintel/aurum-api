@@ -9,6 +9,33 @@
 
 import { addScoreEvent } from './aurumScore.js';
 
+const POST_ELIGIBILITY_SQL = `
+  p.deleted_at IS NULL
+  AND p.moderation_status = 'active'
+  AND u.account_deleted = 0
+  AND u.deleted_at IS NULL
+  AND u.is_suspended = 0
+  AND (ps.status IS NULL OR ps.status != 'slashed')
+  AND (
+    p.visibility = 'public'
+    OR (p.visibility = 'members_only' AND ? IS NOT NULL)
+    OR (p.visibility = 'league_only' AND ? IS NOT NULL AND u.league = ?)
+  )
+`;
+
+export async function canViewPost(postId, db, viewer = null) {
+  const viewerId = viewer?.id ?? null;
+  const viewerLeague = viewer?.league ?? null;
+  const row = await db.prepare(`
+    SELECT p.id
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN post_stakes ps ON ps.post_id = p.id
+    WHERE p.id = ? AND ${POST_ELIGIBILITY_SQL}
+  `).bind(postId, viewerId, viewerId, viewerLeague).first();
+  return !!row;
+}
+
 // Stake tiers — minimum stake based on claim size
 export const STAKE_TIERS = {
   micro:    { min: 5,    max: 49,   label: 'Micro Claim'   },
@@ -655,37 +682,39 @@ async function _finaliseSlash(postId, userId, stakeAmount, db, now) {
  * Get all posts — returns in exact shape frontend Ledger expects.
  * Joins post_stakes to get stake amount and status.
  */
-export async function getLedgerPosts(limit, offset, db) {
+export async function getLedgerPosts(limit, offset, db, viewerId = null, viewerLeague = null) {
   const { results } = await db
     .prepare(`
-      SELECT
-        p.id,
-        p.user_id,
-        p.title,
-        p.achievement_category,
-        p.content,
-        p.media_urls,
-        p.tips_received_cents,
-        p.created_at,
-        ps.amount_usd           AS stake_amount_usd,
-        ps.status               AS stake_status,
-        u.username,
-        u.league,
-        u.avatar_url,
-        p.comment_count,
-        (SELECT COUNT(*) FROM post_cheers pc2 WHERE pc2.post_id = p.id) AS cheers,
-        EXISTS (
-          SELECT 1 FROM badges b WHERE b.user_id = p.user_id LIMIT 1
-        ) AS verified
-      FROM posts p
-      JOIN users u       ON u.id  = p.user_id
-      LEFT JOIN post_stakes ps ON ps.post_id = p.id
-      WHERE (ps.status != 'slashed' OR ps.status IS NULL)
-        AND p.deleted_at IS NULL
-      ORDER BY p.created_at DESC
+      WITH ledger_rows AS (
+        SELECT p.id, p.user_id, p.title, p.achievement_category, p.content, p.media_urls,
+          p.tips_received_cents, p.created_at, p.comment_count,
+          ps.amount_usd AS stake_amount_usd, ps.status AS stake_status,
+          u.username AS author_username, u.league AS author_league, u.avatar_url AS author_avatar,
+          u.stealth_mode, u.hide_league, u.is_verified,
+          CASE WHEN
+            (u.stealth_mode = 1 AND COALESCE(u.id != ?, 1) = 1) OR
+            (u.profile_visibility = 'private' AND COALESCE(u.id != ?, 1) = 1) OR
+            (COALESCE(u.profile_visibility, 'members') = 'members' AND ? IS NULL)
+          THEN 1 ELSE 0 END AS identity_hidden
+        FROM posts p
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN post_stakes ps ON ps.post_id = p.id
+        WHERE ${POST_ELIGIBILITY_SQL}
+      )
+      SELECT id, CASE WHEN identity_hidden = 1 THEN NULL ELSE user_id END AS user_id,
+        title, achievement_category, content, media_urls,
+        tips_received_cents, created_at, stake_amount_usd, stake_status,
+        CASE WHEN identity_hidden = 1 THEN 'Anonymous' ELSE author_username END AS username,
+        CASE WHEN identity_hidden = 1 OR hide_league = 1 THEN NULL ELSE author_league END AS league,
+        CASE WHEN identity_hidden = 1 THEN NULL ELSE author_avatar END AS avatar_url,
+        CASE WHEN identity_hidden = 1 THEN 0 ELSE stealth_mode END AS stealth_mode, comment_count,
+        (SELECT COUNT(*) FROM post_cheers pc2 WHERE pc2.post_id = ledger_rows.id) AS cheers,
+        is_verified AS verified
+      FROM ledger_rows
+      ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `)
-    .bind(limit ?? 20, offset ?? 0)
+    .bind(viewerId, viewerId, viewerId, viewerId, viewerId, viewerLeague, limit ?? 20, offset ?? 0)
     .all();
 
   // Convert cents to USD for tips
@@ -694,4 +723,51 @@ export async function getLedgerPosts(limit, offset, db) {
     tips_received: (row.tips_received_cents ?? 0) / 100,
     tips_received_cents: undefined,
   }));
+}
+
+export async function getPublicLedgerPost(postId, db, viewerId = null, viewerLeague = null) {
+  const row = await db.prepare(`
+    WITH post_row AS (
+      SELECT p.id, p.user_id, p.title, p.achievement_category, p.content, p.media_urls,
+        p.tips_received_cents, p.created_at, p.comment_count,
+        ps.amount_usd AS stake_amount_usd, ps.status AS stake_status,
+        u.username AS author_username, u.league AS author_league, u.avatar_url AS author_avatar,
+        u.hide_league, u.stealth_mode, u.is_verified,
+        CASE WHEN
+          (u.stealth_mode = 1 AND COALESCE(u.id != ?, 1) = 1) OR
+          (u.profile_visibility = 'private' AND COALESCE(u.id != ?, 1) = 1) OR
+          (COALESCE(u.profile_visibility, 'members') = 'members' AND ? IS NULL)
+        THEN 1 ELSE 0 END AS identity_hidden
+      FROM posts p JOIN users u ON u.id = p.user_id
+      LEFT JOIN post_stakes ps ON ps.post_id = p.id
+      WHERE p.id = ? AND ${POST_ELIGIBILITY_SQL}
+    )
+    SELECT id, CASE WHEN identity_hidden = 1 THEN NULL ELSE user_id END AS user_id,
+      title, achievement_category, content, media_urls,
+      tips_received_cents, created_at, stake_amount_usd, stake_status,
+      CASE WHEN identity_hidden = 1 THEN 'Anonymous' ELSE author_username END AS username,
+      CASE WHEN identity_hidden = 1 OR hide_league = 1 THEN NULL ELSE author_league END AS league,
+      CASE WHEN identity_hidden = 1 THEN NULL ELSE author_avatar END AS avatar_url,
+      comment_count, (SELECT COUNT(*) FROM post_cheers pc WHERE pc.post_id = post_row.id) AS cheers,
+      is_verified AS verified,
+      CASE WHEN identity_hidden = 1 THEN 0 ELSE stealth_mode END AS stealth_mode
+    FROM post_row
+  `).bind(viewerId, viewerId, viewerId, postId, viewerId, viewerId, viewerLeague).first();
+  if (!row) return null;
+  return { ...row, tips_received: (row.tips_received_cents ?? 0) / 100, tips_received_cents: undefined };
+}
+
+export async function getPublicProfilePosts(userId, db, limit = 10) {
+  const { results } = await db.prepare(`
+    SELECT p.id, p.title, p.achievement_category, p.content, p.media_urls, p.created_at
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN post_stakes ps ON ps.post_id = p.id
+    WHERE p.user_id = ? AND p.visibility = 'public'
+      AND p.moderation_status = 'active' AND p.deleted_at IS NULL
+      AND u.account_deleted = 0 AND u.deleted_at IS NULL AND u.is_suspended = 0
+      AND (ps.status IS NULL OR ps.status != 'slashed')
+    ORDER BY p.created_at DESC LIMIT ?
+  `).bind(userId, limit).all();
+  return results;
 }

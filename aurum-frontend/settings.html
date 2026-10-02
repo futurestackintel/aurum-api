@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>AURUM — Settings</title>
   <meta name="theme-color" content="#0A0A0A" />
 
@@ -32,6 +32,7 @@
       color: var(--color-text);
       font-family: var(--font-body);
       min-height: 100vh;
+      min-height: 100dvh;
     }
 
     /* ---- Top bar ---- */
@@ -39,7 +40,7 @@
       position: sticky;
       top: 0;
       z-index: var(--z-sticky);
-      height: var(--nav-height);
+      height: calc(var(--nav-height) + var(--safe-top));
       background: rgba(10,10,10,0.92);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
@@ -47,7 +48,7 @@
       display: flex;
       align-items: center;
       gap: var(--space-3);
-      padding: 0 var(--space-4);
+      padding: var(--safe-top) max(var(--space-4), var(--safe-right)) 0 max(var(--space-4), var(--safe-left));
       max-width: var(--max-width);
       margin: 0 auto;
     }
@@ -84,7 +85,12 @@
       display: flex;
       flex-direction: column;
       gap: var(--space-2);
-      padding-bottom: var(--space-16);
+      padding-bottom: calc(var(--space-16) + var(--safe-bottom));
+    }
+
+    @media (min-width: 900px) {
+      .settings-topbar, .settings-wrap { max-width: 760px; }
+      .settings-wrap { padding-top: var(--space-8); }
     }
 
 .sticker-grid {
@@ -655,7 +661,7 @@
       var(--radius-lg) 0 0;">
       <div class="settings-row-left">
         <span class="settings-row-label">Tips Received</span>
-        <span class="settings-row-sub">When someone tips one of your posts</span>
+        <span class="settings-row-sub">When a completed tip is credited to your account</span>
       </div>
       <label class="toggle-wrap">
         <input type="checkbox" class="toggle-input"
@@ -668,7 +674,7 @@
       <div class="settings-row-left">
         <span class="settings-row-label">Challenge Updates</span>
         <span class="settings-row-sub">
-          Entry confirmations, results, and prize payouts
+          Duel announcements and challenge progress updates
         </span>
       </div>
       <label class="toggle-wrap">
@@ -680,38 +686,38 @@
 
     <div class="settings-row">
       <div class="settings-row-left">
-        <span class="settings-row-label">Duel Requests</span>
-        <span class="settings-row-sub">When someone challenges you to a duel</span>
+        <span class="settings-row-label">Messages</span>
+        <span class="settings-row-sub">New direct messages and reactions to your DM messages</span>
       </div>
       <label class="toggle-wrap">
         <input type="checkbox" class="toggle-input"
-          id="notif-duels" checked />
+          id="notif-messages" checked />
         <span class="toggle-slider"></span>
       </label>
     </div>
 
     <div class="settings-row">
       <div class="settings-row-left">
-        <span class="settings-row-label">League Promotions</span>
-        <span class="settings-row-sub">When your Aurum Score moves you up a league</span>
+        <span class="settings-row-label">Crew Updates</span>
+        <span class="settings-row-sub">Invites, join requests, role changes, removals, and crew chat reactions</span>
       </div>
       <label class="toggle-wrap">
         <input type="checkbox" class="toggle-input"
-          id="notif-league" checked />
+          id="notif-crew-updates" checked />
         <span class="toggle-slider"></span>
       </label>
     </div>
 
     <div class="settings-row">
       <div class="settings-row-left">
-        <span class="settings-row-label">Platform Announcements</span>
+        <span class="settings-row-label">Badge Awards</span>
         <span class="settings-row-sub">
-          New features, maintenance, and AURUM news
+          When a badge is awarded or a badge request is reviewed
         </span>
       </div>
       <label class="toggle-wrap">
         <input type="checkbox" class="toggle-input"
-          id="notif-platform" checked />
+          id="notif-badges" checked />
         <span class="toggle-slider"></span>
       </label>
     </div>
@@ -719,14 +725,14 @@
     <div class="settings-row" style="border-radius:0 0 var(--radius-lg)
       var(--radius-lg);">
       <div class="settings-row-left">
-        <span class="settings-row-label">Wallet Transactions</span>
+        <span class="settings-row-label">Weekly Summary</span>
         <span class="settings-row-sub">
-          Deposit confirmations and withdrawal status
+          AURUM does not currently generate weekly summary notifications
         </span>
       </div>
       <label class="toggle-wrap">
         <input type="checkbox" class="toggle-input"
-          id="notif-wallet" checked />
+          id="notif-weekly" checked />
         <span class="toggle-slider"></span>
       </label>
     </div>
@@ -1007,18 +1013,15 @@
       if (stealthBadge) stealthBadge.style.display = 'inline-flex';
     }
 
-    /* Notification toggles
-       NOTE: there is currently no GET endpoint for saved notification
-       preferences, so these always fall back to their HTML defaults
-       (all checked) rather than reflecting a real saved state. Not
-       fixed in this pass — flagging so it isn't mistaken for working. */
+    /* Notification preferences come from the existing persisted
+       notification_preferences contract included by /api/auth/me. */
     const notifs = user.notifications || {};
-    setToggle('notif-tips',       notifs.tips       !== false);
-    setToggle('notif-challenges', notifs.challenges !== false);
-    setToggle('notif-duels',      notifs.duels      !== false);
-    setToggle('notif-league',     notifs.league     !== false);
-    setToggle('notif-platform',   notifs.platform   !== false);
-    setToggle('notif-wallet',     notifs.wallet     !== false);
+    setToggle('notif-tips',       notifs.tips_received !== false);
+    setToggle('notif-challenges', notifs.challenge_updates !== false);
+    setToggle('notif-messages',   notifs.messages !== false);
+    setToggle('notif-crew-updates', notifs.crew_updates !== false);
+    setToggle('notif-badges',     notifs.badge_awards !== false);
+    setToggle('notif-weekly',     notifs.weekly_summary !== false);
 
     /* Membership tier */
     populateTierSection(tier, user);
@@ -1320,14 +1323,24 @@
       btn.disabled    = true;
 
       try {
-        await AURUM.SettingsAPI.updateNotifications({
-          tips:       getToggle('notif-tips'),
-          challenges: getToggle('notif-challenges'),
-          duels:      getToggle('notif-duels'),
-          league:     getToggle('notif-league'),
-          platform:   getToggle('notif-platform'),
-          wallet:     getToggle('notif-wallet'),
+        const saved = await AURUM.SettingsAPI.updateNotifications({
+          tips_received:    getToggle('notif-tips'),
+          challenge_updates:getToggle('notif-challenges'),
+          messages:         getToggle('notif-messages'),
+          crew_updates:     getToggle('notif-crew-updates'),
+          badge_awards:     getToggle('notif-badges'),
+          weekly_summary:   getToggle('notif-weekly'),
         });
+        if (App.user && saved.preferences) {
+          App.user.notifications = {
+            tips_received: !!saved.preferences.tips_received,
+            challenge_updates: !!saved.preferences.challenge_updates,
+            messages: !!saved.preferences.messages,
+            crew_updates: !!saved.preferences.crew_updates,
+            badge_awards: !!saved.preferences.badge_awards,
+            weekly_summary: !!saved.preferences.weekly_summary,
+          };
+        }
         AURUM.showToast('Notification preferences saved.', 'gold');
       } catch (err) {
         AURUM.showToast('Could not save notifications.', 'error');

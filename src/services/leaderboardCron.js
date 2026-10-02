@@ -270,6 +270,7 @@ function buildAurumScoreQuery(since) {
       u.aurum_score                                     as score
     FROM users u
     WHERE u.aurum_score > 0
+      AND u.hide_aurum_score = 0
     ORDER BY score DESC
     LIMIT 100
   `;

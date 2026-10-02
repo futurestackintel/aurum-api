@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>AURUM</title>
   <meta name="theme-color" content="#0A0A0A" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -35,10 +35,13 @@
     .app-shell {
       display: flex;
       flex-direction: column;
+      width: 100%;
       min-height: 100vh;
-      max-width: var(--max-width);
+      min-height: 100dvh;
+      max-width: var(--app-shell-max-width);
       margin: 0 auto;
       position: relative;
+      padding-top: var(--safe-top);
     }
 
     /* ---- App bar ---- */
@@ -55,6 +58,8 @@
       align-items: center;
       justify-content: space-between;
       padding: 0 var(--space-4);
+      padding-left: max(var(--space-4), var(--safe-left));
+      padding-right: max(var(--space-4), var(--safe-right));
     }
 
     .app-bar-mark {
@@ -72,12 +77,16 @@
       align-items: center;
       gap: var(--space-3);
       overflow-x: auto;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-gold-dim) transparent;
       max-width: calc(100vw - 70px);
     }
     .app-bar-right::-webkit-scrollbar {
-      display: none;
+      height: 3px;
+    }
+    .app-bar-right::-webkit-scrollbar-thumb {
+      background: var(--color-gold-dim);
+      border-radius: var(--radius-full);
     }
 
     /* Narrow phones — tighten spacing so all icons + avatar fit
@@ -131,6 +140,7 @@
       margin-top: 2px;
     }
     .app-bar-stat-divider {
+      display: block;
       width: 1px;
       height: 20px;
       background: var(--color-border);
@@ -305,8 +315,12 @@
     /* ---- Page content ---- */
     .page-content {
       flex: 1;
+      min-width: 0;
       overflow-y: auto;
-      padding-bottom: var(--bottom-nav-h);
+      padding-left: var(--safe-left);
+      padding-right: var(--safe-right);
+      padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom));
+      scroll-padding-top: calc(var(--nav-height) + var(--safe-top));
     }
 
     /* ---- Page views ---- */
@@ -315,6 +329,106 @@
       animation: fadeIn 0.3s ease;
     }
     .page-view.active { display: block; }
+
+    @media (min-width: 900px) {
+      .app-shell {
+        display: grid;
+        grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
+        grid-template-rows: var(--nav-height) minmax(0, 1fr);
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        overflow: hidden;
+        border-left: 1px solid var(--color-border);
+        border-right: 1px solid var(--color-border);
+      }
+      .app-bar { grid-column: 1 / -1; grid-row: 1; }
+      .page-content {
+        grid-column: 2;
+        grid-row: 2;
+        padding-bottom: var(--space-8);
+      }
+      .page-view > :first-child {
+        width: 100%;
+        max-width: var(--content-max-width);
+        margin-inline: auto;
+      }
+      .bottom-nav {
+        position: relative;
+        inset: auto;
+        grid-column: 1;
+        grid-row: 2;
+        align-self: stretch;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: var(--space-2);
+        width: 100%;
+        height: auto;
+        min-height: 0;
+        max-width: none;
+        margin: 0;
+        padding: var(--space-5) var(--space-3) max(var(--space-5), var(--safe-bottom));
+        border-top: 0;
+        border-right: 1px solid var(--color-border);
+        background: rgba(17,17,17,0.96);
+      }
+      .nav-item {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        text-align: left;
+      }
+      .nav-item.active::before {
+        top: 50%;
+        left: 0;
+        transform: translateY(-50%);
+        width: 2px;
+        height: 24px;
+      }
+      .nav-item-center { align-self: center; margin: var(--space-4) 0; }
+    }
+
+    @media (max-width: 380px) {
+      .bottom-nav { padding-left: var(--space-1); padding-right: var(--space-1); }
+      .nav-item { padding-left: var(--space-2); padding-right: var(--space-2); font-size: 10px; }
+      .nav-item-center { width: 44px; height: 44px; flex-basis: 44px; margin-top: -18px; }
+    }
+
+    .skip-link {
+      position: fixed;
+      top: calc(var(--safe-top) + var(--space-2));
+      left: var(--space-2);
+      z-index: calc(var(--z-toast) + 1);
+      padding: var(--space-3) var(--space-4);
+      color: var(--color-bg);
+      background: var(--color-gold-bright);
+      border-radius: var(--radius-md);
+      transform: translateY(-160%);
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .app-bar-home {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 44px;
+      width: 44px;
+      height: 44px;
+      margin-left: calc(var(--space-2) * -1);
+      border-radius: var(--radius-md);
+    }
+    .app-bar-home img { width: 30px; height: 30px; }
+    .app-bar-home:focus-visible { box-shadow: var(--focus-ring); }
+    .app-bar-right { min-width: 0; }
+    .notif-bell-btn, .admin-icon-btn {
+      min-width: 44px;
+      min-height: 44px;
+      flex: 0 0 44px;
+      border-radius: var(--radius-md);
+    }
+    .avatar-button { border: 0; padding: 0; flex: 0 0 auto; }
 
     /* ---- Auth screen ---- */
     #auth-screen {
@@ -567,34 +681,38 @@
   ====================================================== -->
   <div id="app-shell" class="app-shell" style="display:none;">
 
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
     <!-- App Bar -->
     <div class="app-bar">
-      <img class="app-bar-mark" src="favicon-32x32.png" alt="AURUM" onclick="App.navigate('ledger')" />
+      <button class="app-bar-home" type="button" aria-label="Go to Ledger" onclick="App.navigate('ledger')">
+        <img src="favicon-32x32.png" alt="" />
+      </button>
       <div class="app-bar-right">
 
-        <div class="app-bar-stats-capsule" id="appbar-wallet-wrap" style="display:none;cursor:pointer;"
-          title="Wallet" onclick="App.openWalletModal()">
-          <div class="app-bar-stat">
+        <button class="app-bar-stats-capsule" id="appbar-wallet-wrap" type="button" style="display:none;cursor:pointer;"
+          aria-label="Open wallet" title="Wallet" onclick="App.openWalletModal()">
+          <span class="app-bar-stat">
             <span class="app-bar-stat-value" id="user-wallet">₳0.00</span>
             <span class="app-bar-stat-label">Balance</span>
-          </div>
-          <div class="app-bar-stat-divider" id="appbar-divider"></div>
-          <div class="app-bar-stat">
+          </span>
+          <span class="app-bar-stat-divider" id="appbar-divider"></span>
+          <span class="app-bar-stat">
             <span class="app-bar-stat-value" id="user-score">—</span>
             <span class="app-bar-stat-label">Score</span>
-          </div>
-        </div>
+          </span>
+        </button>
 
         <button class="notif-bell-btn" id="search-icon-btn" aria-label="Search" onclick="App.navigate('search')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
 
         <div class="notif-bell-wrap">
-          <button class="notif-bell-btn" id="notif-bell-btn" aria-label="Notifications">
+          <button class="notif-bell-btn" id="notif-bell-btn" aria-label="Notifications" aria-expanded="false" aria-controls="notif-dropdown">
             <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
             <span class="notif-bell-badge" id="notif-bell-badge">0</span>
           </button>
-          <div class="notif-dropdown" id="notif-dropdown">
+          <div class="notif-dropdown" id="notif-dropdown" role="dialog" aria-label="Notifications">
             <div class="notif-dropdown-header">
               <span class="notif-dropdown-title">Notifications</span>
               <button class="notif-dropdown-markall" id="notif-markall-btn">Mark all read</button>
@@ -624,12 +742,12 @@
           </svg>
         </button>
 
-        <div class="avatar avatar-sm avatar-gold" id="user-avatar"
-          style="cursor:pointer;" onclick="App.navigate('profile')">—</div>
+        <button class="avatar avatar-sm avatar-gold avatar-button" id="user-avatar" type="button"
+          aria-label="Open profile" onclick="App.navigate('profile')">—</button>
       </div>
     </div>
     <!-- Page Content -->
-    <div class="page-content">
+    <main class="page-content" id="main-content" tabindex="-1">
       <div class="page-view active" id="view-ledger"></div>
       <div class="page-view" id="view-arena"></div>
       <div class="page-view" id="view-leaderboard"></div>
@@ -637,11 +755,12 @@
       <div class="page-view" id="view-elite"></div>
       <div class="page-view" id="view-messages"></div>
       <div class="page-view" id="view-search"></div>
-    </div>
+      <div class="page-view" id="view-public-profile"></div>
+    </main>
 
     <!-- Bottom Nav -->
-    <nav class="bottom-nav">
-      <button class="nav-item active" data-view="ledger">
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <button class="nav-item active" data-view="ledger" aria-current="page">
         <svg viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h6M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg>
         Ledger
       </button>
@@ -773,6 +892,7 @@
   <script src="js/pages/admin.js"></script>
   <script src="js/pages/dm.js"></script>
   <script src="js/pages/search.js"></script>
+  <script src="js/pages/public-profile.js"></script>
 
   <script>
   /* ============================================
@@ -1002,8 +1122,23 @@
 
         showApp() {
       document.getElementById('auth-screen').style.display = 'none';
-      document.getElementById('app-shell').style.display   = 'flex';
-      this.navigate('ledger');
+      document.getElementById('app-shell').style.display   = '';
+      const query = new URLSearchParams(location.search);
+      const requestedMessage = query.get('message');
+      const requestedProfile = query.get('profile');
+      if (requestedMessage) {
+        this.pendingProfileMessage = requestedMessage;
+        window.PublicProfilePage.username = requestedMessage;
+        this.navigate('public-profile');
+        query.delete('message');
+        const remainingQuery = query.toString();
+        history.replaceState(history.state, '', `${location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}${location.hash}`);
+      } else if (requestedProfile) {
+        window.PublicProfilePage.username = requestedProfile;
+        this.navigate('public-profile');
+      } else {
+        this.navigate('ledger');
+      }
       this.tryJoinCrewFromLink();
     },
 
@@ -1028,17 +1163,32 @@
        ROUTING
     ----------------------------------------- */
     navigate(view) {
+      if (this.currentView === 'messages' && view !== 'messages') window.DmPage?.closeThread(false);
       document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
       const viewEl = document.getElementById(`view-${view}`);
       const navEl  = document.querySelector(`[data-view="${view}"]`);
       if (viewEl) viewEl.classList.add('active');
-      if (navEl)  navEl.classList.add('active');
+      document.querySelectorAll('.nav-item').forEach(n => n.removeAttribute('aria-current'));
+      if (navEl) {
+        navEl.classList.add('active');
+        navEl.setAttribute('aria-current', 'page');
+      }
       this.currentView = view;
       AURUM.BackNav?.pushView(view);
       AURUM.Loader.show();
       this.loadView(view);
       AURUM.Loader.hide();
+    },
+
+    openPublicProfile(username) {
+      if (!username) return;
+      this.publicProfileReturnView = this.currentView === 'public-profile' ? (this.publicProfileReturnView || 'search') : this.currentView;
+      window.PublicProfilePage.username = username;
+      this.navigate('public-profile');
+      const query = new URLSearchParams(location.search);
+      query.set('profile', username);
+      history.replaceState(history.state, '', `${location.pathname}?${query.toString()}`);
     },
 
     loadView(view) {
@@ -1050,6 +1200,7 @@
         elite:       () => window.ElitePage?.init('view-elite'),
         messages:    () => window.DmPage?.init('view-messages'),
         search:      () => window.SearchPage?.init('view-search'),
+        'public-profile': () => window.PublicProfilePage?.open('view-public-profile', window.PublicProfilePage.username),
       };
       loaders[view]?.();
     },
@@ -1512,12 +1663,20 @@
     open() {
       this.isOpen = true;
       document.getElementById('notif-dropdown').classList.add('open');
+      document.getElementById('notif-bell-btn').setAttribute('aria-expanded', 'true');
       this.loadNotifications();
     },
 
     close() {
       this.isOpen = false;
       document.getElementById('notif-dropdown').classList.remove('open');
+      document.getElementById('notif-bell-btn').setAttribute('aria-expanded', 'false');
+    },
+
+    escapeHTML(value) {
+      const element = document.createElement('div');
+      element.textContent = value == null ? '' : String(value);
+      return element.innerHTML;
     },
 
     async refreshUnreadCount() {
@@ -1546,9 +1705,9 @@
         }
 
         list.innerHTML = notifs.map(n => `
-          <button class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}" data-url="${n.action_url || ''}">
-            <div class="notif-item-title">${n.title}</div>
-            <div class="notif-item-body">${n.body}</div>
+          <button class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${this.escapeHTML(n.id)}" data-url="${this.escapeHTML(n.action_url || '')}">
+            <div class="notif-item-title">${this.escapeHTML(n.title)}</div>
+            <div class="notif-item-body">${this.escapeHTML(n.body)}</div>
             <div class="notif-item-time">${AURUM.timeAgo(n.created_at)}</div>
           </button>
         `).join('');
@@ -1579,23 +1738,20 @@
       }
     },
 
-    /* Maps notification action_url patterns to real in-app views.
-       Known limitations:
-       - Posts: openPostDetail() only works if the post is already
-         in LedgerPage's local cache (built from whatever's loaded
-         in the feed). Older posts not yet loaded will show a
-         "could not open" toast instead of navigating — there's no
-         single-post-fetch endpoint yet to cover that gap.
-       - Duels: there's no per-duel detail view yet, so this just
-         opens the Arena and switches to the Duels tab, not the
-         specific duel. */
+    /* Routes only recognized internal action paths. */
     navigateToActionUrl(url) {
+      if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) return;
+      const allowed = url === '/leaderboard' || url === '/profile' || url === '/crews' || /^\/(posts|duels|messages|crews)\/[A-Za-z0-9_-]+$/.test(url);
+      if (!allowed) return;
       const postMatch = url.match(/^\/posts\/([^/]+)/);
       if (postMatch) {
-        App.navigate('ledger');
-        setTimeout(() => window.LedgerPage?.openPostDetail(postMatch[1]), 50);
+        setTimeout(() => window.LedgerPage?.openPostById(postMatch[1]), 50);
         return;
       }
+
+      if (url === '/profile') { App.navigate('profile'); return; }
+      const messageMatch = url.match(/^\/messages\/([^/]+)/);
+      if (messageMatch) { window.DmPage?.openChannelById(messageMatch[1]); return; }
 
       if (url === '/leaderboard') {
         App.navigate('leaderboard');
@@ -1607,6 +1763,7 @@
         App.navigate('arena');
         setTimeout(() => {
           document.querySelector('.arena-section-tab[data-section="duels"]')?.click();
+          setTimeout(() => window.ArenaPage?.openDuelById(duelMatch[1]), 120);
         }, 50);
         return;
       }

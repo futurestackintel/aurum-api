@@ -17,7 +17,13 @@ export async function handleBadgeRoutes(path, method, request, env) {
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
-      const badges = await getUserBadges(user.id, db);
+      const dbUser = await db
+        .prepare(`SELECT id FROM users WHERE clerk_id = ? AND deleted_at IS NULL`)
+        .bind(user.id)
+        .first();
+      if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
+
+      const badges = await getUserBadges(dbUser.id, db);
       return jsonResponse({ badges });
     } catch (err) {
       console.error("Get badges error:", err);

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b0b0e">
+  <title>AURUM Profile</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <style>
+    body { min-height:100vh; padding:clamp(16px,5vw,64px); background:var(--color-bg); }
+    .public-profile-shell { max-width:760px; margin:0 auto; }
+    .public-profile-brand { margin-bottom:28px; color:var(--color-gold); letter-spacing:.2em; }
+    .public-profile-view { display:grid; gap:20px; }
+    .public-profile-actions { display:flex; flex-wrap:wrap; gap:12px; }
+    .public-profile-view .profile-header { align-items:center; }
+    .public-profile-view .profile-stats { grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); }
+    .public-profile-view .profile-section { display:grid; gap:10px; }
+    .public-profile-view .profile-section .badge { justify-self:start; }
+    .public-profile-footer { margin-top:24px; color:var(--color-text-muted); font-size:var(--text-sm); }
+  </style>
+</head>
+<body>
+  <main class="public-profile-shell">
+    <div class="public-profile-brand">AURUM</div>
+    <div id="public-profile-root" aria-live="polite"></div>
+    <footer class="public-profile-footer">A public social identity. <a href="/">AURUM home</a></footer>
+  </main>
+  <script src="js/api.js"></script>
+  <script src="js/pages/public-profile.js"></script>
+</body>
+</html>

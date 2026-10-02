@@ -35,7 +35,7 @@ export async function handleSearchRoutes(path, method, request, env) {
           LIMIT 10
         `).bind(q).all(),
         db.prepare(`
-          SELECT p.id, p.content, p.created_at, p.user_id, u.username, u.stealth_mode
+          SELECT p.id, p.content, p.created_at, p.user_id, u.username, u.stealth_mode, u.profile_visibility
           FROM posts p
           JOIN users u ON u.id = p.user_id
           WHERE p.content LIKE '%' || ? || '%'
@@ -43,6 +43,8 @@ export async function handleSearchRoutes(path, method, request, env) {
             AND p.moderation_status = 'active'
             AND p.deleted_at IS NULL
             AND u.account_deleted = 0
+            AND u.is_suspended = 0
+            AND u.deleted_at IS NULL
           ORDER BY p.created_at DESC
           LIMIT 10
         `).bind(q).all(),
@@ -67,7 +69,7 @@ export async function handleSearchRoutes(path, method, request, env) {
         id: p.id,
         content: p.content,
         created_at: p.created_at,
-        author_username: p.stealth_mode ? 'Anonymous' : p.username,
+        author_username: p.stealth_mode || !['public', 'members'].includes(p.profile_visibility) ? 'Anonymous' : p.username,
       }));
 
       return jsonResponse({ users, crews, posts });

@@ -181,7 +181,7 @@ export async function getUserBadges(userId, db) {
     .prepare(`
       SELECT badge_type, verified_at
       FROM badges
-      WHERE user_id = ?
+      WHERE user_id = ? AND revoked_at IS NULL
     `)
     .bind(userId)
     .all();

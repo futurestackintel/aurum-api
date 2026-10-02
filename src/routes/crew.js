@@ -48,6 +48,7 @@ import {
   getCrewWalletTransactions,
   getActiveCrewBattle,
 } from '../services/crew.js';
+import { notificationEnabled } from '../services/notifications.js';
 import { setReaction, removeReaction, getReactionsForMessages } from '../services/reactions.js';
 import { requireAuth, requireAdmin, requireAuthFromQuery, optionalAuth } from '../middleware/auth.js';
 export async function handleCrewRoutes(path, method, request, env) {
@@ -667,7 +668,7 @@ export async function handleCrewRoutes(path, method, request, env) {
               .bind(crypto.randomUUID(), messageId, mentionedUser.id)
               .run();
             const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(messageMatch[1]).first();
-            await db.prepare(`
+            if (await notificationEnabled(mentionedUser.id, 'crew_updates', db)) await db.prepare(`
                 INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
                 VALUES (?, ?, 'crew_mention', 'You were mentioned', ?, ?, ?)
               `)

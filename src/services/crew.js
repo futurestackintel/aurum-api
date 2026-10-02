@@ -8,6 +8,7 @@
 
 import { addScoreEvent } from './aurumScore.js';
 import { calcNetPayout } from './battleShared.js';
+import { notificationEnabled } from './notifications.js';
 
 function nowISO() {
   return new Date().toISOString();
@@ -297,13 +298,14 @@ export async function inviteToCrew(crewId, clerkId, targetUsername, db) {
   const now = nowISO();
   const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
 
-  await db.batch([
+  const inviteStatements = [
     db.prepare(`
       INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
       VALUES (?, ?, ?, 'invite', 'pending', ?)
     `).bind(id, crewId, targetUserId, now),
-
-    db.prepare(`
+  ];
+  if (await notificationEnabled(targetUserId, 'crew_updates', db)) {
+    inviteStatements.push(db.prepare(`
       INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
       VALUES (?, ?, 'crew_invite', 'Crew Invite', ?, '/crews', ?)
     `).bind(
@@ -311,8 +313,9 @@ export async function inviteToCrew(crewId, clerkId, targetUsername, db) {
       targetUserId,
       `You've been invited to join ${crewRow?.name || 'a crew'}.`,
       now,
-    ),
-  ]);
+    ));
+  }
+  await db.batch(inviteStatements);
 
     return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
 }
@@ -358,7 +361,7 @@ export async function requestToJoinCrew(crewId, clerkId, db) {
     `).bind(id, crewId, userId, now),
   ];
 
-  if (captainRow) {
+  if (captainRow && await notificationEnabled(captainRow.user_id, 'crew_updates', db)) {
     statements.push(
       db.prepare(`
         INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
@@ -556,7 +559,7 @@ export async function kickMember(crewId, clerkId, targetUserId, db) {
     `).bind(crypto.randomUUID(), crewId, targetUserId, kickedAt),
   ]);
 
-  await db.prepare(`
+  if (await notificationEnabled(targetUserId, 'crew_updates', db)) await db.prepare(`
       INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
       VALUES (?, ?, 'crew_kicked', 'Removed from crew', ?, ?, ?)
     `)
@@ -615,7 +618,7 @@ export async function setModeratorRole(crewId, clerkId, targetUserId, makeModera
   await db.prepare(`UPDATE crew_members SET role = ? WHERE id = ?`).bind(newRole, target.id).run();
 
   const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
-  await db.prepare(`
+  if (await notificationEnabled(targetUserId, 'crew_updates', db)) await db.prepare(`
       INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `)

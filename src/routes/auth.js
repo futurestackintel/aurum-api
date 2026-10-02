@@ -205,6 +205,20 @@ export async function handleAuthRoutes(pathname, request, env) {
         }
       }
 
+      const preferences = await env.DB
+        .prepare(`SELECT tips_received, challenge_updates, duel_challenges, league_promotions, badge_awards, weekly_summary, messages, crew_updates FROM notification_preferences WHERE user_id = ?`)
+        .bind(user.id)
+        .first();
+      user.notifications = {
+        tips_received: preferences ? !!preferences.tips_received : true,
+        challenge_updates: preferences ? !!preferences.challenge_updates : true,
+        duel_challenges: preferences ? !!preferences.duel_challenges : true,
+        league_promotions: preferences ? !!preferences.league_promotions : true,
+        badge_awards: preferences ? !!preferences.badge_awards : true,
+        weekly_summary: preferences ? !!preferences.weekly_summary : true,
+        messages: preferences ? !!preferences.messages : true,
+        crew_updates: preferences ? !!preferences.crew_updates : true,
+      };
       return json({ user });
     } catch (err) {
       console.error("Auth me error:", err);

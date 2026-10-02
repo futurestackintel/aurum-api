@@ -5,6 +5,8 @@
 // - On approval: writes to badges table + fires notification
 // - On rejection: updates badge_requests + fires notification with reason
 
+import { notificationEnabled } from './notifications.js';
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -269,6 +271,7 @@ export async function getBadgeRequest(requestId, env) {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 async function sendNotification(env, { userId, type, title, body, actionUrl, metadata }) {
+  if (type === 'badge_awarded' && !(await notificationEnabled(userId, 'badge_awards', env.DB))) return;
   const id = crypto.randomUUID();
   await env.DB.prepare(`
     INSERT INTO notifications

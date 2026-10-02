@@ -7,6 +7,7 @@
 
 import { requireAuth } from "../middleware/auth.js";
 import { addScoreEvent } from "../services/aurumScore.js";
+import { notificationEnabled } from "../services/notifications.js";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -226,6 +227,23 @@ export async function handleTipsRoutes(pathname, request, env) {
         { tip_id: tipId, post_id },
         env.DB
       );
+
+      try {
+        if (await notificationEnabled(receiver_id, 'tips_received', env.DB)) {
+          await env.DB.prepare(`
+            INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
+            VALUES (?, ?, 'tip_received', 'Tip received', ?, ?, ?)
+          `).bind(
+            crypto.randomUUID(),
+            receiver_id,
+            `You received a $${netUsd.toFixed(2)} tip.`,
+            `/posts/${post_id}`,
+            now,
+          ).run();
+        }
+      } catch (notificationError) {
+        console.error('Tip notification failed (non-fatal):', notificationError);
+      }
 
       return json({
         success: true,

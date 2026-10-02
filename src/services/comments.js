@@ -14,6 +14,8 @@
 //     e.g. posts.deleted_at, users.deleted_at).
 // ============================================================
 
+import { canViewPost } from './proofOfStake.js';
+
 const MAX_COMMENT_LENGTH = 1000;
 
 function nowISO() {
@@ -152,27 +154,38 @@ export async function createComment(postId, clerkId, body, db) {
 
 // ── GET COMMENTS FOR A POST (threaded) ────────────────────────
 
-export async function getCommentsForPost(postId, db) {
-  const post = await db
-    .prepare(`SELECT id FROM posts WHERE id = ? AND deleted_at IS NULL`)
-    .bind(postId)
-    .first();
-
-  if (!post) return { error: 'Post not found' };
+export async function getCommentsForPost(postId, db, viewer = null) {
+  const viewerContext = typeof viewer === 'string' ? { id: viewer } : (viewer || null);
+  if (!(await canViewPost(postId, db, viewerContext))) return { error: 'Post not found' };
 
   const { results: rows } = await db
     .prepare(`
-      SELECT
-        pc.id, pc.parent_comment_id, pc.content, pc.created_at,
-        pc.user_id, u.username, u.league, u.avatar_url
-      FROM post_comments pc
-      JOIN users u ON u.id = pc.user_id
-      WHERE pc.post_id = ?
-        AND pc.deleted_at IS NULL
-        AND pc.moderation_status = 'active'
-      ORDER BY pc.created_at ASC
+      WITH comment_rows AS (
+        SELECT pc.id, pc.parent_comment_id, pc.content, pc.created_at, pc.user_id,
+          u.username, u.league, u.avatar_url, u.hide_league, u.stealth_mode,
+          CASE WHEN
+            (u.stealth_mode = 1 AND COALESCE(u.id != ?, 1) = 1) OR
+            (u.profile_visibility = 'private' AND COALESCE(u.id != ?, 1) = 1) OR
+            (COALESCE(u.profile_visibility, 'members') = 'members' AND ? IS NULL)
+          THEN 1 ELSE 0 END AS identity_hidden,
+          CASE WHEN u.stealth_mode = 0 AND (
+            u.profile_visibility = 'public' OR
+            (COALESCE(u.profile_visibility, 'members') = 'members' AND ? IS NOT NULL) OR u.id = ?
+          ) THEN u.username ELSE NULL END AS profile_username
+        FROM post_comments pc JOIN users u ON u.id = pc.user_id
+        WHERE pc.post_id = ? AND pc.deleted_at IS NULL AND pc.moderation_status = 'active'
+          AND u.account_deleted = 0 AND u.deleted_at IS NULL AND u.is_suspended = 0
+      )
+      SELECT id, parent_comment_id, content, created_at,
+        CASE WHEN identity_hidden = 1 THEN NULL ELSE user_id END AS user_id,
+        CASE WHEN identity_hidden = 1 THEN 'Member' ELSE username END AS username,
+        CASE WHEN identity_hidden = 1 OR hide_league = 1 THEN NULL ELSE league END AS league,
+        CASE WHEN identity_hidden = 1 THEN NULL ELSE avatar_url END AS avatar_url,
+        profile_username
+      FROM comment_rows ORDER BY created_at ASC
     `)
-    .bind(postId)
+    .bind(viewerContext?.id ?? null, viewerContext?.id ?? null, viewerContext?.id ?? null,
+      viewerContext?.id ?? null, viewerContext?.id ?? null, postId)
     .all();
 
   // Build the reply tree in memory — comment volume per post is

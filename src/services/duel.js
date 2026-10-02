@@ -17,6 +17,7 @@
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
+import { notificationEnabled } from './notifications.js';
 
 const DUEL_EXPIRY_HOURS   = 48;
 const DEFAULT_DUEL_DAYS   = 7;
@@ -342,6 +343,7 @@ export async function announceDuel(duelId, clerkId, db) {
     .all();
 
   for (const watcher of watchers) {
+    if (!(await notificationEnabled(watcher.user_id, 'challenge_updates', db))) continue;
     await db
       .prepare(`
         INSERT INTO notifications

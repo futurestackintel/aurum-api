@@ -1093,6 +1093,24 @@ window.ArenaPage = {
     }
   },
 
+  async openDuelById(duelId) {
+    try {
+      const { duel } = await AURUM.DuelAPI.getDuel(duelId);
+      const list = document.getElementById('duel-list');
+      if (!duel || !list) throw new Error('Duel is unavailable.');
+      const existing = list.querySelector(`[data-duel-card-id="${CSS.escape(String(duelId))}"]`);
+      if (existing) { existing.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+      const detail = document.createElement('article');
+      detail.className = 'challenge-card duel-card-v2 card';
+      detail.innerHTML = `<span class="badge badge-muted">Duel</span><h3>${this.escapeHTML(duel.title || 'Duel')}</h3><p>${this.escapeHTML(duel.description || '')}</p><p>Status: ${this.escapeHTML(duel.status || 'unknown')}</p><button class="btn btn-ghost" type="button">Back to active duels</button>`;
+      detail.querySelector('button').addEventListener('click', () => detail.remove());
+      list.prepend(detail);
+      detail.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (error) {
+      AURUM.showToast(error.message || 'Could not open this duel.', 'error');
+    }
+  },
+
     duelHTML(duel, index) {
     const isActive     = duel.status === 'active';
     const isPending     = duel.status === 'pending';
@@ -1115,7 +1133,7 @@ window.ArenaPage = {
     const statusLabel = duel.status === 'tied' ? 'tied — under review' : (duel.status || 'pending');
 
     return `
-      <div class="challenge-card duel-card-v2 card fade-in" style="animation-delay:${index * 80}ms;">
+      <div class="challenge-card duel-card-v2 card fade-in" data-duel-card-id="${this.escapeHTML(duel.id)}" style="animation-delay:${index * 80}ms;">
 
         <!-- Duel header -->
         <div class="duel-card-header">

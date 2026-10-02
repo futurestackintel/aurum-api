@@ -32,7 +32,7 @@ import { finaliseExpiredAppeals }       from './services/proofOfStake.js';
 import { expireChallenges }             from './services/dropCircle.js';
 import { processDuelCron }              from './services/duel.js';
 import { processCrewBattleCron }        from './services/crew.js';
-import { requireAuth }                  from './middleware/auth.js';
+import { requireAuth, optionalAuth }     from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
 export { CrewChatRoom } from './durableObjects/CrewChatRoom.js';
 export { DmRoom } from './durableObjects/DmRoom.js';
@@ -176,31 +176,28 @@ async function handlePublicLeaderboard(env) {
   const result = {};
 
   for (const board of boards) {
-    let { results } = await db
-      .prepare(`
-        SELECT rank, display_name, score, league_at_snapshot
-        FROM leaderboard_snapshots
-        WHERE board_type = ?
-          AND period     = 'daily'
-          AND period_key = ?
-        ORDER BY rank ASC
-        LIMIT 10
-      `)
-      .bind(board, today)
-      .all();
+    const leaderboardQuery = (periodKey) => db.prepare(`
+      WITH eligible_rows AS (
+        SELECT ls.rank AS stored_rank, ls.display_name, ls.score,
+          CASE WHEN u.hide_league = 1 THEN NULL ELSE ls.league_at_snapshot END AS league_at_snapshot
+        FROM leaderboard_snapshots ls
+        JOIN users u ON u.id = ls.user_id
+        WHERE ls.board_type = ? AND ls.period = 'daily'
+          ${periodKey ? 'AND ls.period_key = ?' : ''}
+          AND (? != 'aurum_score' OR u.hide_aurum_score = 0)
+      ), ranked_rows AS (
+        SELECT ROW_NUMBER() OVER (ORDER BY stored_rank ASC) AS rank,
+          display_name, score, league_at_snapshot
+        FROM eligible_rows
+      )
+      SELECT rank, display_name, score, league_at_snapshot
+      FROM ranked_rows ORDER BY rank ASC LIMIT 10
+    `).bind(...(periodKey ? [board, periodKey, board] : [board, board]));
+
+    let { results } = await leaderboardQuery(today).all();
 
     if (!results.length) {
-      const fallback = await db
-        .prepare(`
-          SELECT rank, display_name, score, league_at_snapshot
-          FROM leaderboard_snapshots
-          WHERE board_type = ?
-            AND period     = 'daily'
-          ORDER BY period_key DESC, rank ASC
-          LIMIT 10
-        `)
-        .bind(board)
-        .all();
+      const fallback = await leaderboardQuery(null).all();
       results = fallback.results;
     }
 
@@ -219,34 +216,28 @@ async function handleAuthenticatedLeaderboard(type, env) {
   };
   const boardType = TYPE_MAP[type] || 'aurum_score';
   const today = new Date().toISOString().slice(0, 10);
-  let { results } = await db
-    .prepare(`
-      SELECT ls.rank, ls.score, ls.avatar_url, ls.league_at_snapshot,
-             u.username, u.league, u.is_verified, u.stealth_mode
+  const leaderboardQuery = (periodKey) => db.prepare(`
+    WITH eligible_rows AS (
+      SELECT ls.rank AS stored_rank, ls.score, ls.avatar_url,
+        CASE WHEN u.hide_league = 1 THEN NULL ELSE ls.league_at_snapshot END AS league_at_snapshot,
+        u.username, u.league, u.is_verified, u.stealth_mode
       FROM leaderboard_snapshots ls
       JOIN users u ON u.id = ls.user_id
-      WHERE ls.board_type = ?
-        AND ls.period     = 'daily'
-        AND ls.period_key = ?
-      ORDER BY ls.rank ASC
-      LIMIT 20
-    `)
-    .bind(boardType, today)
-    .all();
+      WHERE ls.board_type = ? AND ls.period = 'daily'
+        ${periodKey ? 'AND ls.period_key = ?' : ''}
+        AND (? != 'aurum_score' OR u.hide_aurum_score = 0)
+    ), ranked_rows AS (
+      SELECT ROW_NUMBER() OVER (ORDER BY stored_rank ASC) AS rank,
+        score, avatar_url, league_at_snapshot, username, league, is_verified, stealth_mode
+      FROM eligible_rows
+    )
+    SELECT rank, score, avatar_url, league_at_snapshot, username, league, is_verified, stealth_mode
+    FROM ranked_rows ORDER BY rank ASC LIMIT 20
+  `).bind(...(periodKey ? [boardType, periodKey, boardType] : [boardType, boardType]));
+
+  let { results } = await leaderboardQuery(today).all();
   if (!results.length) {
-    const fallback = await db
-      .prepare(`
-        SELECT ls.rank, ls.score, ls.avatar_url, ls.league_at_snapshot,
-               u.username, u.league, u.is_verified, u.stealth_mode
-        FROM leaderboard_snapshots ls
-        JOIN users u ON u.id = ls.user_id
-        WHERE ls.board_type = ?
-          AND ls.period     = 'daily'
-        ORDER BY ls.period_key DESC, ls.rank ASC
-        LIMIT 20
-      `)
-      .bind(boardType)
-      .all();
+    const fallback = await leaderboardQuery(null).all();
     results = fallback.results;
   }
   const entries = results.map(r => ({
@@ -261,83 +252,87 @@ async function handleAuthenticatedLeaderboard(type, env) {
 }
 
 // ── Wealth Passport ───────────────────────────────────────────
-async function handlePassport(username, env) {
+async function handlePassport(username, env, request) {
   const db = env.DB;
+  const session = await optionalAuth(request, env);
 
   const user = await db
     .prepare(`
       SELECT id, username, league, aurum_score, streak_current, created_at,
-             hide_aurum_score, hide_league, profile_visibility
+             is_verified, total_challenges_won, total_tips_sent_cents,
+             hide_aurum_score, hide_league, profile_visibility,
+             avatar_url, stealth_mode, is_suspended
       FROM users
       WHERE username = ? AND account_deleted = 0
+        AND deleted_at IS NULL
     `)
     .bind(username)
     .first();
 
   if (!user)                                  return jsonResponse({ error: 'User not found' }, 404);
-  if (user.profile_visibility === 'private')  return jsonResponse({ error: 'This profile is private' }, 403);
+  const visibility = user.profile_visibility || 'members';
+  const viewerRecord = session.id
+    ? await db.prepare(`SELECT id, is_suspended FROM users WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL`).bind(session.id).first()
+    : null;
+  const isOwner = viewerRecord?.id === user.id;
+  const viewer = viewerRecord && !viewerRecord.is_suspended ? viewerRecord : null;
+  if (user.is_suspended && !isOwner) return jsonResponse({ error: 'User not found' }, 404);
+  if (visibility === 'private' && !isOwner) return jsonResponse({ error: 'This profile is private' }, 403);
+  if (visibility === 'members' && !viewer && !isOwner) return jsonResponse({ error: 'Sign in to view this profile' }, 401);
+  if (user.stealth_mode && !isOwner) return jsonResponse({ error: 'This profile is unavailable' }, 404);
 
   const { results: badgeRows } = await db
     .prepare(`
-      SELECT badge_type, awarded_at
-      FROM user_badges
+      SELECT badge_type, verified_at AS awarded_at
+      FROM badges
       WHERE user_id = ?
+        AND is_public = 1
+        AND revoked_at IS NULL
       ORDER BY awarded_at ASC
     `)
     .bind(user.id)
     .all();
 
-  const winsRow = await db
-    .prepare(`
-      SELECT COUNT(*) as count FROM challenges
-      WHERE winner_id = ? AND status = 'completed'
-    `)
-    .bind(user.id)
-    .first();
-
-  const tipsRow = await db
-    .prepare(`
-      SELECT COALESCE(SUM(amount_cents), 0) as total
-      FROM tips
-      WHERE sender_id = ? AND status = 'completed'
-    `)
-    .bind(user.id)
-    .first();
-
   const today = new Date().toISOString().slice(0, 10);
 
-  let rankRow = await db
-    .prepare(`
-      SELECT rank FROM leaderboard_snapshots
-      WHERE board_type = 'aurum_score'
-        AND period     = 'daily'
-        AND period_key = ?
-        AND user_id    = ?
-    `)
-    .bind(today, user.id)
-    .first();
-
-  if (!rankRow) {
+  let rankRow = null;
+  if (!user.hide_aurum_score) {
     rankRow = await db
       .prepare(`
         SELECT rank FROM leaderboard_snapshots
         WHERE board_type = 'aurum_score'
           AND period     = 'daily'
+          AND period_key = ?
           AND user_id    = ?
-        ORDER BY period_key DESC
-        LIMIT 1
       `)
-      .bind(user.id)
+      .bind(today, user.id)
       .first();
+
+    if (!rankRow) {
+      rankRow = await db
+        .prepare(`
+          SELECT rank FROM leaderboard_snapshots
+          WHERE board_type = 'aurum_score'
+            AND period     = 'daily'
+            AND user_id    = ?
+          ORDER BY period_key DESC
+          LIMIT 1
+        `)
+        .bind(user.id)
+        .first();
+    }
   }
 
   return jsonResponse({
+    ...(isOwner ? { user_id: user.id } : {}),
     username:            user.username,
+    avatar_url:          user.avatar_url,
     league:              user.hide_league      ? null : user.league,
     aurum_score:         user.hide_aurum_score ? null : user.aurum_score,
+    verified:            !!user.is_verified,
     badges:              badgeRows,
-    challenge_wins:      winsRow?.count         ?? 0,
-    total_tips_given:    (tipsRow?.total ?? 0)  / 100,
+    challenge_wins:      user.total_challenges_won ?? 0,
+    total_tips_given:    (user.total_tips_sent_cents ?? 0) / 100,
     streak:              user.streak_current    ?? 0,
     member_since:        user.created_at,
     rank_on_leaderboard: rankRow?.rank          ?? null,
@@ -440,6 +435,8 @@ async function handleUpdateNotifications(request, env) {
   const {
     tips_received,
     challenge_updates,
+    messages,
+    crew_updates,
     duel_challenges,
     league_promotions,
     badge_awards,
@@ -460,6 +457,8 @@ async function handleUpdateNotifications(request, env) {
 
     if (tips_received      !== undefined) { fields.push('tips_received = ?');      values.push(tips_received      ? 1 : 0); }
     if (challenge_updates  !== undefined) { fields.push('challenge_updates = ?');   values.push(challenge_updates  ? 1 : 0); }
+    if (messages           !== undefined) { fields.push('messages = ?');            values.push(messages           ? 1 : 0); }
+    if (crew_updates       !== undefined) { fields.push('crew_updates = ?');        values.push(crew_updates       ? 1 : 0); }
     if (duel_challenges    !== undefined) { fields.push('duel_challenges = ?');     values.push(duel_challenges    ? 1 : 0); }
     if (league_promotions  !== undefined) { fields.push('league_promotions = ?');   values.push(league_promotions  ? 1 : 0); }
     if (badge_awards       !== undefined) { fields.push('badge_awards = ?');        values.push(badge_awards       ? 1 : 0); }
@@ -480,8 +479,9 @@ async function handleUpdateNotifications(request, env) {
       .prepare(`
         INSERT INTO notification_preferences
           (id, user_id, tips_received, challenge_updates, duel_challenges,
-           league_promotions, badge_awards, weekly_summary, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           league_promotions, badge_awards, weekly_summary, messages, crew_updates,
+           created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .bind(
         crypto.randomUUID(),
@@ -492,6 +492,8 @@ async function handleUpdateNotifications(request, env) {
         league_promotions  !== undefined ? (league_promotions  ? 1 : 0) : 1,
         badge_awards       !== undefined ? (badge_awards       ? 1 : 0) : 1,
         weekly_summary     !== undefined ? (weekly_summary     ? 1 : 0) : 1,
+        messages           !== undefined ? (messages           ? 1 : 0) : 1,
+        crew_updates       !== undefined ? (crew_updates       ? 1 : 0) : 1,
         now,
         now,
       )
@@ -725,7 +727,7 @@ export default {
       const passportMatch = pathname.match(/^\/api\/passport\/([^/]+)$/);
       if (passportMatch && request.method === 'GET') {
         const username = decodeURIComponent(passportMatch[1]);
-        const res      = await handlePassport(username, env);
+        const res      = await handlePassport(username, env, request);
         return withCors(res, cors);
       }
 

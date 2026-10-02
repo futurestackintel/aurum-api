@@ -14,15 +14,53 @@ import {
   flagPost,
   resolvePost,
   getLedgerPosts,
+  getPublicLedgerPost,
+  getPublicProfilePosts,
   appealPost,
   resolveAppeal,
   deletePost,
 } from '../services/proofOfStake.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js';
 import { streakMiddleware }          from '../services/streak.js';
 
 export async function handlePostRoutes(path, method, request, env) {
   const db = env.DB;
+
+  const profilePostsMatch = path.match(/^\/api\/profiles\/([^/]+)\/posts$/);
+  if (profilePostsMatch && method === 'GET') {
+    try {
+      const username = decodeURIComponent(profilePostsMatch[1]);
+      const profile = await db.prepare(`SELECT id, profile_visibility, stealth_mode, account_deleted, deleted_at, is_suspended FROM users WHERE username = ?`).bind(username).first();
+      if (!profile || profile.account_deleted || profile.deleted_at) return jsonResponse({ error: 'Profile not found' }, 404);
+      const visibility = profile.profile_visibility || 'members';
+      const session = await optionalAuth(request, env);
+      const viewerRecord = session.id ? await db.prepare(`SELECT id, is_suspended FROM users WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL`).bind(session.id).first() : null;
+      const isOwner = viewerRecord?.id === profile.id;
+      const viewer = viewerRecord && !viewerRecord.is_suspended ? viewerRecord : null;
+      if (profile.is_suspended && !isOwner) return jsonResponse({ error: 'Profile not found' }, 404);
+      if (visibility === 'private' && !isOwner) return jsonResponse({ error: 'This profile is private' }, 403);
+      if (visibility === 'members' && !viewer && !isOwner) return jsonResponse({ error: 'Sign in to view this profile' }, 401);
+      if (profile.stealth_mode && !isOwner) return jsonResponse({ error: 'This profile is unavailable' }, 404);
+      const posts = await getPublicProfilePosts(profile.id, db);
+      return jsonResponse({ posts });
+    } catch (err) {
+      console.error('Get public profile posts error:', err);
+      return jsonResponse({ error: 'Unable to load profile activity.' }, 500);
+    }
+  }
+
+  const publicPostMatch = path.match(/^\/api\/posts\/([^/]+)$/);
+  if (publicPostMatch && method === 'GET') {
+    try {
+      const session = await optionalAuth(request, env);
+      const viewer = session.id ? await db.prepare(`SELECT id, league FROM users WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`).bind(session.id).first() : null;
+      const post = await getPublicLedgerPost(publicPostMatch[1], db, viewer?.id ?? null, viewer?.league ?? null);
+      return post ? jsonResponse({ post }) : jsonResponse({ error: 'Post not found' }, 404);
+    } catch (err) {
+      console.error('Get post error:', err);
+      return jsonResponse({ error: 'Unable to load post. Please try again.' }, 500);
+    }
+  }
 
   // ── POST /api/posts — create post with stake ────────────
   if (path === '/api/posts' && method === 'POST') {
@@ -49,7 +87,9 @@ export async function handlePostRoutes(path, method, request, env) {
       const url    = new URL(request.url);
       const limit  = parseInt(url.searchParams.get('limit')  ?? '20');
       const offset = parseInt(url.searchParams.get('offset') ?? '0');
-      const posts  = await getLedgerPosts(limit, offset, db);
+      const session = await optionalAuth(request, env);
+      const viewer = session.id ? await db.prepare(`SELECT id, league FROM users WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`).bind(session.id).first() : null;
+      const posts  = await getLedgerPosts(limit, offset, db, viewer?.id ?? null, viewer?.league ?? null);
       return jsonResponse({ posts });
     } catch (err) {
       console.error('Get posts error:', err);

@@ -3,6 +3,7 @@ const DmPage = {
 
   async init(containerId) {
     this.container = document.getElementById(containerId);
+    this.activeChannelId = null;
     this.applyStyles();
     await this.renderList();
   },
@@ -16,6 +17,7 @@ const DmPage = {
       <p class="dm-loading-text">Loading conversations...</p>`;
     try {
       const { channels } = await AURUM.DmAPI.getChannels();
+      if (this.activeChannelId) return;
       if (!channels || !channels.length) {
         this.container.innerHTML = `
           <div class="dm-page-header">
@@ -25,8 +27,10 @@ const DmPage = {
           <div class="empty-state">
             <div class="empty-state-icon">✦</div>
             <h4>No conversations yet</h4>
-            <p>Find someone in Search and say hello.</p>
-          </div>`;
+          <p>Find someone in Search and say hello.</p>
+          <button class="btn btn-primary" id="dm-empty-search">Discover people</button>
+        </div>`;
+        this.container.querySelector('#dm-empty-search')?.addEventListener('click', () => App.navigate('search'));
         return;
       }
       this.container.innerHTML = `
@@ -40,8 +44,9 @@ const DmPage = {
               <div class="avatar avatar-sm dm-list-avatar">${AURUM.avatarInnerHTML(c.other_avatar_url, this.escapeHTML(c.other_username).charAt(0).toUpperCase())}</div>
               <div class="dm-list-info">
                 <p class="dm-list-name">${this.escapeHTML(c.other_username)}</p>
-                <p class="dm-list-preview">${c.last_message ? this.escapeHTML(c.last_message) : 'No messages yet'}</p>
-              </div>
+              <p class="dm-list-preview">${c.last_message ? this.escapeHTML(c.last_message) : 'No messages yet'}</p>
+            </div>
+            <time class="dm-list-time">${c.last_message_at ? AURUM.timeAgo(c.last_message_at) : ''}</time>
             </div>
           `).join('')}
         </div>`;
@@ -51,6 +56,7 @@ const DmPage = {
         });
       });
     } catch (err) {
+      if (this.activeChannelId) return;
       this.container.innerHTML = `<p class="dm-loading-text" style="color:var(--color-danger);">Failed to load conversations.</p>`;
     }
   },
@@ -58,30 +64,35 @@ const DmPage = {
   async openThread(channelId, username, avatarUrl) {
     this.activeChannelId = channelId;
     this.activeUsername = username;
+    const openToken = this.threadToken = (this.threadToken || 0) + 1;
     this.container.innerHTML = `
       <div class="dm-thread">
         <div class="dm-thread-header">
           <button class="dm-back-btn" id="dm-back-btn" aria-label="Back">&larr;</button>
           <div class="avatar avatar-sm dm-thread-avatar">${AURUM.avatarInnerHTML(avatarUrl, this.escapeHTML(username).charAt(0).toUpperCase())}</div>
-          <p class="dm-thread-name">${this.escapeHTML(username)}</p>
+          <button class="dm-thread-name dm-profile-link" id="dm-profile-link">${this.escapeHTML(username)}</button>
+          <span class="dm-connection-status" id="dm-connection-status" role="status">Connecting…</span>
         </div>
         <div id="dm-thread-messages" class="dm-thread-messages">
           <p class="dm-loading-text">Loading messages...</p>
         </div>
         <div id="dm-reply-bar-container"></div>
         <div class="dm-input-bar">
-          <input class="input dm-input" id="dm-message-input" placeholder="Send a message..." />
+          <input class="input dm-input" id="dm-message-input" maxlength="2000" placeholder="Send a message..." />
           <button class="dm-send-btn" id="dm-send-btn" aria-label="Send">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
           </button>
         </div>
       </div>`;
     document.getElementById('dm-back-btn').addEventListener('click', () => this.closeThread());
+    document.getElementById('dm-profile-link').addEventListener('click', () => App.openPublicProfile(username));
     document.getElementById('dm-send-btn').addEventListener('click', () => this.sendMessage());
     document.getElementById('dm-message-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this.sendMessage();
     });
-    await this.loadMessages();
+    await this.loadMessages(channelId);
+    if (this.threadToken !== openToken || this.activeChannelId !== channelId) return;
+    this.socketRetryCount = 0;
     this.connectSocket(channelId);
     this.wireReactionHandlers();
     this.wireSwipeToReply();
@@ -221,8 +232,17 @@ const DmPage = {
     const token = AURUM.Auth.getToken();
     if (!token) return;
     const wsBase = API_BASE.replace('https://', 'wss://').replace('http://', 'ws://');
+    const generation = this.socketGeneration = (this.socketGeneration || 0) + 1;
     this.socket = new WebSocket(`${wsBase}/api/dm/channels/${channelId}/ws?token=${encodeURIComponent(token)}`);
+    this.socket.addEventListener('open', () => {
+      if (generation === this.socketGeneration) {
+        this.socketRetryCount = 0;
+        const status = document.getElementById('dm-connection-status');
+        if (status) status.textContent = 'Connected';
+      }
+    });
     this.socket.addEventListener('message', (event) => {
+      if (generation !== this.socketGeneration || this.activeChannelId !== channelId) return;
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'reaction') {
@@ -235,17 +255,33 @@ const DmPage = {
       }
     });
     this.socket.addEventListener('close', () => {
+      if (generation !== this.socketGeneration) return;
       this.socket = null;
+      if (this.activeChannelId !== channelId) return;
+      const status = document.getElementById('dm-connection-status');
+      this.socketRetryCount = (this.socketRetryCount || 0) + 1;
+      if (this.socketRetryCount > 5) {
+        if (status) status.textContent = 'Disconnected';
+        return;
+      }
+      if (status) status.textContent = 'Reconnecting…';
+      const delay = Math.min(1000 * (2 ** (this.socketRetryCount - 1)), 8000);
+      setTimeout(() => {
+        if (this.activeChannelId === channelId && generation === this.socketGeneration) this.connectSocket(channelId);
+      }, delay);
     });
   },
 
-  closeThread() {
+  closeThread(renderList = true) {
+    this.threadToken = (this.threadToken || 0) + 1;
+    this.messageLoadGeneration = (this.messageLoadGeneration || 0) + 1;
+    this.socketGeneration = (this.socketGeneration || 0) + 1;
     if (this.socket) {
       this.socket.close();
       this.socket = null;
     }
     this.activeChannelId = null;
-    this.renderList();
+    if (renderList) this.renderList();
   },
 
   appendMessage(msg) {
@@ -294,22 +330,32 @@ const DmPage = {
     `;
   },
 
-  async loadMessages() {
+  async loadMessages(channelId = this.activeChannelId) {
     const list = document.getElementById('dm-thread-messages');
+    if (!list || !channelId) return;
+    const requestGeneration = this.messageLoadGeneration = (this.messageLoadGeneration || 0) + 1;
+    const isCurrent = () => requestGeneration === this.messageLoadGeneration
+      && channelId === this.activeChannelId
+      && list.isConnected
+      && list.id === 'dm-thread-messages';
     try {
       const me = AURUM.ProfileCache.get();
-      const { messages } = await AURUM.DmAPI.getMessages(this.activeChannelId);
+      const { messages } = await AURUM.DmAPI.getMessages(channelId);
+      if (!isCurrent()) return;
       if (!messages || !messages.length) {
+        this.dmMessageReactions = {};
         list.innerHTML = `<p style="color:var(--color-text-muted);">No messages yet. Say hello.</p>`;
         return;
       }
-      this.dmMessageReactions = {};
+      let reactions = {};
       try {
         const reactData = await AURUM.DmAPI.getReactions(messages.map(m => m.id));
-        this.dmMessageReactions = reactData.reactions || {};
+        reactions = reactData.reactions || {};
       } catch (err) {
         /* Non-fatal — messages still show, just without reaction counts if this fails */
       }
+      if (!isCurrent()) return;
+      this.dmMessageReactions = reactions;
       list.innerHTML = messages.slice().reverse().map(m => `
         <div class="dm-message-wrap${m.sender_id === me?.id ? ' dm-message-mine' : ''}" data-message-id="${m.id}">
           ${m.reply_to ? `
@@ -323,7 +369,7 @@ const DmPage = {
       `).join('');
       list.scrollTop = list.scrollHeight;
     } catch (err) {
-      list.innerHTML = `<p style="color:var(--color-danger);">Failed to load messages.</p>`;
+      if (isCurrent()) list.innerHTML = `<p style="color:var(--color-danger);">Failed to load messages.</p>`;
     }
   },
 
@@ -332,14 +378,29 @@ const DmPage = {
     const content = input.value.trim();
     if (!content) return;
     const replyToId = this.replyingToMessage?.id || null;
-    input.value = '';
-    this.replyingToMessage = null;
-    this.renderReplyBar();
+    const button = document.getElementById('dm-send-btn');
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
     try {
       await AURUM.DmAPI.sendMessage(this.activeChannelId, content, replyToId);
+      if (input.value.trim() === content) input.value = '';
+      this.replyingToMessage = null;
+      this.renderReplyBar();
     } catch (err) {
       AURUM.showToast(err.message || 'Could not send message.', 'error');
+    } finally {
+      if (button?.isConnected) button.disabled = false;
     }
+  },
+
+  async openChannelById(channelId) {
+    try {
+      const { channels } = await AURUM.DmAPI.getChannels();
+      const channel = (channels || []).find(c => String(c.channel_id) === String(channelId));
+      if (!channel) throw new Error('Conversation is unavailable.');
+      App.navigate('messages');
+      this.openThread(channel.channel_id, channel.other_username, channel.other_avatar_url);
+    } catch (error) { AURUM.showToast(error.message || 'Could not open conversation.', 'error'); }
   },
 
   escapeHTML(str) {
@@ -406,6 +467,7 @@ const DmPage = {
         text-overflow: ellipsis;
         margin-top: 2px;
       }
+      .dm-list-time { margin-left:auto; flex-shrink:0; font-size:10px; color:var(--color-text-muted); }
       /* Thread */
       .dm-thread {
         display: flex;
@@ -442,7 +504,12 @@ const DmPage = {
         font-style: italic;
         font-size: var(--text-lg);
         color: var(--color-text);
+        border: 0;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
       }
+      .dm-connection-status { margin-left:auto; font-size:10px; color:var(--color-text-muted); }
       .dm-thread-messages {
         flex: 1;
         overflow-y: auto;

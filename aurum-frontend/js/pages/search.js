@@ -10,6 +10,7 @@ function escapeHTML(str) {
 
 window.SearchPage = {
   currentTab: 'users',
+  requestId: 0,
   lastResults: { users: [], crews: [], posts: [] },
 
   init(containerId) {
@@ -49,23 +50,47 @@ window.SearchPage = {
       });
     });
 
-    document.getElementById('search-results').addEventListener('click', (e) => {
+    const results = document.getElementById('search-results');
+    const activateRow = (row) => {
+      if (row.matches('.search-post-open')) {
+        window.LedgerPage?.openPostById(row.dataset.postId);
+      } else if (row.matches('.search-crew-open')) {
+        App.navigate('arena');
+        setTimeout(() => {
+          document.querySelector('.arena-section-tab[data-section="crews"]')?.click();
+          setTimeout(() => window.ArenaPage?.openCrewDetail(row.dataset.crewId), 80);
+        }, 80);
+      }
+    };
+    results.addEventListener('click', (e) => {
       const btn = e.target.closest('.search-message-btn');
-      if (btn) this.messageUser(btn.dataset.userId, btn.dataset.username);
+      if (btn) { this.messageUser(btn.dataset.userId, btn.dataset.username, btn.dataset.avatar); return; }
+      const profile = e.target.closest('.search-profile-btn');
+      if (profile) { App.openPublicProfile(profile.dataset.username); return; }
+      const row = e.target.closest('.search-post-open, .search-crew-open');
+      if (row) activateRow(row);
+    });
+    results.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const row = e.target.closest('.search-post-open, .search-crew-open');
+      if (!row) return;
+      e.preventDefault();
+      activateRow(row);
     });
   },
 
-  async messageUser(userId, username) {
+  async messageUser(userId, username, avatarUrl) {
     try {
       const { channel_id } = await AURUM.DmAPI.getOrCreateChannel(userId);
       App.navigate('messages');
-      window.DmPage.openThread(channel_id, username);
+      window.DmPage.openThread(channel_id, username, avatarUrl);
     } catch (err) {
       showToast('Could not start conversation', 'error');
     }
   },
 
   async runSearch(q) {
+    const requestId = ++this.requestId;
     const resultsEl = document.getElementById('search-results');
     if (q.length < 2) {
       resultsEl.innerHTML = '<div class="search-empty"><span>Type at least 2 characters...</span></div>';
@@ -78,9 +103,11 @@ window.SearchPage = {
     `;
     try {
       const data = await SearchAPI.search(q);
+      if (requestId !== this.requestId) return;
       this.lastResults = data;
       this.renderResults();
     } catch (err) {
+      if (requestId !== this.requestId) return;
       resultsEl.innerHTML = '<div class="search-empty">Search failed. Try again.</div>';
     }
   },
@@ -102,15 +129,16 @@ window.SearchPage = {
         <div class="search-result-row" style="animation-delay:${i * 40}ms">
           <div class="avatar avatar-sm search-result-avatar">${AURUM.avatarInnerHTML(u.avatar_url, escapeHTML(u.username).charAt(0).toUpperCase())}</div>
           <div class="search-result-body">
-            <span class="search-result-title">${escapeHTML(u.username)}</span>
-            ${u.league ? `<span class="search-result-sub">${escapeHTML(u.league)}</span>` : ''}
+            <button class="search-result-title search-profile-btn" data-username="${escapeHTML(u.username)}">${escapeHTML(u.username)}</button>
+            ${u.league ? `<span class="search-result-sub">${escapeHTML(u.league)} League</span>` : ''}
+            ${u.aurum_score != null ? `<span class="search-result-sub">Score ${escapeHTML(u.aurum_score)}</span>` : ''}
           </div>
-          <button class="search-message-btn" data-user-id="${escapeHTML(u.id)}" data-username="${escapeHTML(u.username)}">Message</button>
+          <button class="search-message-btn" data-user-id="${escapeHTML(u.id)}" data-username="${escapeHTML(u.username)}" data-avatar="${escapeHTML(u.avatar_url || '')}">Message</button>
         </div>
       `).join('');
     } else if (this.currentTab === 'crews') {
       resultsEl.innerHTML = items.map((c, i) => `
-        <div class="search-result-row" style="animation-delay:${i * 40}ms">
+          <div class="search-result-row search-crew-open" data-crew-id="${escapeHTML(c.id)}" role="button" tabindex="0" style="animation-delay:${i * 40}ms">
           <div class="search-result-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 20v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
           </div>
@@ -122,7 +150,7 @@ window.SearchPage = {
       `).join('');
     } else {
       resultsEl.innerHTML = items.map((p, i) => `
-        <div class="search-result-row search-result-row-post" style="animation-delay:${i * 40}ms">
+        <div class="search-result-row search-result-row-post search-post-open" data-post-id="${escapeHTML(p.id)}" role="button" tabindex="0" style="animation-delay:${i * 40}ms">
           <span class="search-result-quote">&ldquo;</span>
           <div class="search-result-body">
             <span class="search-result-title">${escapeHTML(p.author_username)}</span>

@@ -23,6 +23,8 @@ export async function handleUserSearchRoutes(path, method, request, env) {
             AND account_deleted = 0
             AND profile_visibility != 'private'
             AND stealth_mode = 0
+            AND is_suspended = 0
+            AND deleted_at IS NULL
           ORDER BY username ASC
           LIMIT 20
         `)

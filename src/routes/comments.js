@@ -10,7 +10,7 @@ import {
   getCommentsForPost,
   deleteComment,
 } from '../services/comments.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, optionalAuth } from '../middleware/auth.js';
 
 export async function handleCommentRoutes(path, method, request, env) {
   const db = env.DB;
@@ -19,7 +19,9 @@ export async function handleCommentRoutes(path, method, request, env) {
   const getMatch = path.match(/^\/api\/posts\/([^/]+)\/comments$/);
   if (getMatch && method === 'GET') {
     try {
-      const result = await getCommentsForPost(getMatch[1], db);
+      const session = await optionalAuth(request, env);
+      const viewer = session.id ? await db.prepare(`SELECT id, league FROM users WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`).bind(session.id).first() : null;
+      const result = await getCommentsForPost(getMatch[1], db, viewer);
       if (result.error) return jsonResponse({ error: result.error }, 404);
       return jsonResponse(result);
     } catch (err) {

@@ -1,3 +1,5 @@
+import { notificationEnabled } from './notifications.js';
+
 const VALID_EMOJI = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
 const VALID_TYPES = ['crew', 'dm'];
 
@@ -36,6 +38,8 @@ export async function setReaction(messageType, messageId, userId, emoji, db) {
   // Notify the message author (skip self-reactions)
   if (messageRow.sender_id && messageRow.sender_id !== userId) {
     try {
+      const preference = messageType === 'crew' ? 'crew_updates' : 'messages';
+      if (!(await notificationEnabled(messageRow.sender_id, preference, db))) return { reaction_id: reactionId };
       const reactorRow = await db.prepare(`SELECT username FROM users WHERE id = ?`).bind(userId).first();
       const reactorName = reactorRow?.username || 'Someone';
       const actionUrl = messageType === 'crew'

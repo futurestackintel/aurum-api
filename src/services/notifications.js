@@ -3,6 +3,17 @@
 // Notifications themselves are created elsewhere (duel.js, league.js,
 // comments.js, index.js cheer handler, etc.) — this file only reads/updates.
 
+export async function notificationEnabled(userId, preference, db) {
+  const allowed = [
+    'badge_awards', 'tips_received', 'challenge_updates', 'weekly_summary', 'messages', 'crew_updates',
+    // Retained as compatibility gates for existing saved preferences.
+    'duel_challenges', 'league_promotions',
+  ];
+  if (!allowed.includes(preference)) return true;
+  const row = await db.prepare(`SELECT ${preference} AS enabled FROM notification_preferences WHERE user_id = ?`).bind(userId).first();
+  return !row || !!row.enabled;
+}
+
 export async function getNotifications(userId, env, limit = 30, offset = 0) {
   const { results } = await env.DB.prepare(`
     SELECT id, type, title, body, action_url, metadata, is_read, created_at, read_at

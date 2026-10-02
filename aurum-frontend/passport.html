@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
   <!-- Dynamic OG tags — overwritten by JS for real data,
        these are the safe fallbacks for crawlers -->
@@ -51,6 +51,7 @@
       color: var(--color-text);
       font-family: var(--font-body);
       min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -60,10 +61,11 @@
     .pp-topbar {
       width: 100%;
       max-width: var(--max-width);
+      min-height: calc(var(--nav-height) + var(--safe-top));
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: var(--space-4);
+      padding: var(--safe-top) max(var(--space-4), var(--safe-right)) var(--space-4) max(var(--space-4), var(--safe-left));
       border-bottom: 1px solid var(--color-border);
     }
 
@@ -78,7 +80,7 @@
     .pp-wrap {
       width: 100%;
       max-width: var(--max-width);
-      padding: var(--space-6) var(--space-4);
+      padding: var(--space-6) max(var(--space-4), var(--safe-right)) calc(var(--space-6) + var(--safe-bottom)) max(var(--space-4), var(--safe-left));
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -168,6 +170,7 @@
       color: var(--color-gold);
       font-weight: var(--weight-light);
     }
+    .passport-avatar-img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
 
     /* Identity */
     .passport-name {
@@ -484,8 +487,8 @@
   -------------------------------------------------- */
   function updateMeta(passport) {
     const username = passport.username || 'Member';
-    const league   = capitalize(passport.league || 'Bronze');
-    const score    = formatNumber(passport.aurum_score || 0);
+    const league   = passport.league ? capitalize(passport.league) : 'Hidden';
+    const score    = passport.aurum_score == null ? 'Hidden' : formatNumber(passport.aurum_score);
     const url      = `https://tryaurum.store/passport/${username}`;
 
     const title = `${username}'s AURUM Wealth Passport`;
@@ -510,8 +513,8 @@
   -------------------------------------------------- */
   function getShareText(passport) {
     const username = passport.username || 'member';
-    const league   = capitalize(passport.league || 'Bronze');
-    const score    = formatNumber(passport.aurum_score || 0);
+    const league   = passport.league ? capitalize(passport.league) : 'Hidden';
+    const score    = passport.aurum_score == null ? 'Hidden' : formatNumber(passport.aurum_score);
     const url      = `https://tryaurum.store/passport/${username}`;
     return {
       text: `My AURUM Wealth Passport 🏆 League: ${league} | Score: ${score} ${url} #AURUM`,
@@ -586,17 +589,20 @@
     if (loading) loading.remove();
 
     const username    = passport.username || 'Member';
-    const league      = capitalize(passport.league || 'Bronze');
-    const tier        = capitalize(passport.tier   || 'Explorer');
-    const score       = formatNumber(passport.aurum_score    || 0);
-    const streak      = passport.streak           || 0;
-    const wins        = passport.challenge_wins   || 0;
-    const given       = AURUM.formatAmount(passport.total_given || 0);
-    const memberSince = passport.created_at
-      ? new Date(passport.created_at).getFullYear()
+    const safeUsername = escapeHTML(username);
+    const leagueValue = passport.league;
+    const league      = leagueValue ? capitalize(leagueValue) : 'Hidden';
+    const tier        = passport.tier ? capitalize(passport.tier) : null;
+    const score       = passport.aurum_score == null ? 'Hidden' : formatNumber(passport.aurum_score);
+    const streak      = passport.streak           ?? 0;
+    const wins        = passport.challenge_wins   ?? 0;
+    const given       = AURUM.formatAmount(passport.total_tips_given ?? 0);
+    const sinceValue  = passport.member_since || passport.created_at;
+    const memberSince = sinceValue
+      ? new Date(sinceValue).getFullYear()
       : '—';
-    const badges      = passport.badges || [];
-    const initial     = username.charAt(0).toUpperCase();
+    const badges      = (passport.badges || []).map(b => b?.badge_type || b?.type || b?.key || b);
+    const initial     = escapeHTML(username.charAt(0).toUpperCase());
 
     const badgeMap = {
       verified_builder:     { icon: '🥉', name: 'Verified Builder'     },
@@ -605,16 +611,20 @@
       sovereign:            { icon: '💎', name: 'Sovereign'            },
     };
 
+    badgeMap.founding_member = { icon: '✦', name: 'Founding Member' };
     const badgesHTML = badges.length
       ? badges.map(b => {
           const def = badgeMap[b?.key || b] || { icon: '✦', name: b?.key || b };
           return `
             <div class="passport-badge-chip">
-              ${def.icon} ${def.name}
+              ${def.icon} ${escapeHTML(def.name)}
             </div>`;
         }).join('')
       : '';
 
+    const avatarContent = ['raven', 'serpent', 'eye', 'crown', 'sigil', 'anonymous'].includes(passport.avatar_url)
+      ? `<img src="assets/stickers/${passport.avatar_url}.svg" alt="" class="passport-avatar-img">`
+      : initial;
     wrap.innerHTML = `
       <!-- Passport card -->
       <div class="passport-card fade-in">
@@ -625,17 +635,17 @@
           <!-- Header -->
           <div class="passport-header-row">
             <span class="passport-logo">AURUM</span>
-            <span class="passport-tier-badge">${tier}</span>
+            ${tier ? `<span class="passport-tier-badge">${escapeHTML(tier)}</span>` : ''}
           </div>
 
           <!-- Avatar -->
-          <div class="passport-avatar-ring">${initial}</div>
+          <div class="passport-avatar-ring">${avatarContent}</div>
 
           <!-- Identity -->
-          <p class="passport-name">${username}</p>
+          <p class="passport-name">${safeUsername}</p>
           <div class="passport-league-line">
-            <span class="badge ${getLeagueBadge(passport.league)}"
-              style="font-size:10px;">${league}</span>
+            <span class="badge ${leagueValue ? getLeagueBadge(leagueValue) : 'badge-muted'}"
+              style="font-size:10px;">${escapeHTML(league)}</span>
             <span class="passport-league-text">League</span>
             ${passport.verified
               ? '<span style="color:var(--color-gold);font-size:12px;">✦ Verified</span>'
@@ -663,7 +673,7 @@
             <div class="passport-stat-div"></div>
             <div class="passport-stat">
               <span class="passport-stat-value">${given}</span>
-              <span class="passport-stat-label">Given</span>
+              <span class="passport-stat-label">Tips Given</span>
             </div>
           </div>
 
@@ -734,6 +744,12 @@
       ?.addEventListener('click', () => copyLink(passport));
   }
 
+  function escapeHTML(value) {
+    const node = document.createElement('span');
+    node.textContent = value == null ? '' : String(value);
+    return node.innerHTML;
+  }
+
   /* --------------------------------------------------
      Render error state
   -------------------------------------------------- */
@@ -748,7 +764,7 @@
         <p class="pp-error-title">Passport not found</p>
         <p class="pp-error-sub">
           ${username
-            ? `No AURUM member with username <strong>${username}</strong> was found.`
+            ? `No AURUM member with username <strong>${escapeHTML(username)}</strong> was found.`
             : 'No username provided in the URL.'}
         </p>
         <div style="display:flex;flex-direction:column;gap:var(--space-3);

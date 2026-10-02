@@ -1,10 +1,12 @@
+import { notificationEnabled } from './notifications.js';
+
 export async function getOrCreateDmChannel(userAId, userBId, db) {
     if (userAId === userBId) {
     return { error: 'Cannot start a DM with yourself' };
   }
 
   const targetUser = await db
-    .prepare(`SELECT id, stealth_mode FROM users WHERE id = ? AND account_deleted = 0`)
+    .prepare(`SELECT id, stealth_mode FROM users WHERE id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`)
     .bind(userBId)
     .first();
   if (!targetUser) return { error: 'User not found' };
@@ -21,10 +23,21 @@ export async function getOrCreateDmChannel(userAId, userBId, db) {
   if (existing) return { channel_id: existing.id, created: false };
 
   const channelId = crypto.randomUUID();
-  await db
-    .prepare(`INSERT INTO dm_channels (id, user_a_id, user_b_id) VALUES (?, ?, ?)`)
-    .bind(channelId, firstId, secondId)
-    .run();
+  try {
+    await db
+      .prepare(`INSERT INTO dm_channels (id, user_a_id, user_b_id) VALUES (?, ?, ?)`)
+      .bind(channelId, firstId, secondId)
+      .run();
+  } catch (insertError) {
+    // A concurrent request may have inserted this canonical user pair after
+    // our initial lookup. Reuse that channel and preserve unrelated errors.
+    const racedChannel = await db
+      .prepare(`SELECT id FROM dm_channels WHERE user_a_id = ? AND user_b_id = ?`)
+      .bind(firstId, secondId)
+      .first();
+    if (racedChannel) return { channel_id: racedChannel.id, created: false };
+    throw insertError;
+  }
 
   return { channel_id: channelId, created: true };
 }
@@ -108,18 +121,20 @@ export async function sendDmMessage(channelId, senderId, content, db, replyToMes
     .run();
   const recipientId = senderId === channel.user_a_id ? channel.user_b_id : channel.user_a_id;
   const senderRow = await db.prepare(`SELECT username FROM users WHERE id = ?`).bind(senderId).first();
-  await db.prepare(`
-      INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
-      VALUES (?, ?, 'dm_received', 'New message', ?, ?, ?)
-    `)
-    .bind(
-      crypto.randomUUID(),
-      recipientId,
-      `${senderRow?.username || 'Someone'} sent you a message.`,
-      `/messages/${channelId}`,
-      new Date().toISOString(),
-    )
-    .run();
+  if (await notificationEnabled(recipientId, 'messages', db)) {
+    await db.prepare(`
+        INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
+        VALUES (?, ?, 'dm_received', 'New message', ?, ?, ?)
+      `)
+      .bind(
+        crypto.randomUUID(),
+        recipientId,
+        `${senderRow?.username || 'Someone'} sent you a message.`,
+        `/messages/${channelId}`,
+        new Date().toISOString(),
+      )
+      .run();
+  }
 
   return { message_id: messageId, reply_to_message_id: validReplyId };
 }
