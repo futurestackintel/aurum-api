@@ -14,6 +14,7 @@ import { handleChallengePaymentRoutes } from './routes/challenges.js';
 import { handleLeagueRoutes }           from './routes/league.js';
 import { handleBadgeRoutes }            from './routes/badge.js';
 import { handlePostRoutes }             from './routes/posts.js';
+import { handleSocialRoutes }           from './routes/social.js';
 import { handleChallengeRoutes }        from './routes/dropCircle.js';
 import { handleDuelRoutes }             from './routes/duel.js';
 import { handleAdminRoutes }            from './routes/admin.js';
@@ -28,7 +29,7 @@ import { handleCommentRoutes }          from './routes/comments.js';
 import { handleNotificationRoutes }     from './routes/notifications.js';
 import { runLeaderboardSnapshot }       from './services/leaderboardCron.js';
 import { updateExchangeRates }          from './services/currency.js';
-import { finaliseExpiredAppeals }       from './services/proofOfStake.js';
+import { finaliseExpiredAppeals, canViewPost } from './services/proofOfStake.js';
 import { expireChallenges }             from './services/dropCircle.js';
 import { processDuelCron }              from './services/duel.js';
 import { processCrewBattleCron }        from './services/crew.js';
@@ -554,17 +555,19 @@ async function handleDeleteAccount(request, env) {
 }
 
 // ── Feature 7b: POST /api/posts/:id/cheer ────────────────────
-async function handlePostCheer(postId, request, env) {
+export async function handlePostCheer(postId, request, env) {
   const db   = env.DB;
   const user = await requireAuth(request, env);
   if (user.error) return jsonResponse({ error: user.error }, 401);
 
   const dbUser = await db
-    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .prepare(`SELECT id, league FROM users WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`)
     .bind(user.id)
     .first();
 
   if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
+
+  if (!(await canViewPost(postId, db, dbUser))) return jsonResponse({ error: 'Post not found' }, 404);
 
   const post = await db
     .prepare(`SELECT id, user_id FROM posts WHERE id = ?`)
@@ -766,6 +769,7 @@ export default {
         (await handleLeagueRoutes(pathname, request.method, request, env))    ||
         (await handleBadgeRoutes(pathname, request.method, request, env))     ||
         (await handlePostRoutes(pathname, request.method, request, env))      ||
+        (await handleSocialRoutes(pathname, request.method, request, env))    ||
         (await handleChallengeRoutes(pathname, request.method, request, env)) ||
         (await handleDuelRoutes(pathname, request.method, request, env))      ||
         (await handleCrewRoutes(pathname, request.method, request, env))      ||

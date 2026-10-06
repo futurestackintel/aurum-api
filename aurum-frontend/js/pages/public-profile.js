@@ -17,7 +17,7 @@ window.PublicProfilePage = {
           <button class="btn btn-ghost" id="public-profile-back">← Back</button>
           <header class="profile-header">
             <div class="avatar avatar-xl">${AURUM.avatarInnerHTML(profile.avatar_url, this.escape(profile.username).charAt(0).toUpperCase())}</div>
-            <div class="profile-identity"><h2 class="profile-username">${this.escape(profile.username)}</h2>
+            <div class="profile-identity"><h2 class="profile-username">${this.escape(profile.display_name || profile.username)}</h2><span>@${this.escape(profile.username)}</span>
               ${profile.verified ? '<span class="badge badge-gold">Verified</span>' : ''}</div>
           </header>
           <div class="profile-stats">
@@ -29,14 +29,36 @@ window.PublicProfilePage = {
           </div>
           <section class="profile-section"><h3 class="profile-section-title">Badges</h3>${badges || '<p>No public badges.</p>'}</section>
           <div class="public-profile-actions">
+            <button class="btn btn-primary" id="public-profile-follow">Follow</button>
             <button class="btn btn-primary" id="public-profile-message">Message</button>
             <a class="btn btn-outline" href="/passport/${encodeURIComponent(profile.username)}" target="_blank" rel="noopener">Wealth Passport</a>
             <a class="btn btn-ghost" href="/public-profile.html?username=${encodeURIComponent(profile.username)}" target="_blank" rel="noopener">Share profile</a>
           </div>
+          <section class="profile-section" id="public-profile-social-counts"><button class="btn btn-ghost btn-sm" data-relationship-list="followers">Followers</button> <button class="btn btn-ghost btn-sm" data-relationship-list="following">Following</button></section>
           <section class="profile-section"><h3 class="profile-section-title">Public activity</h3><div id="public-profile-posts"><p>Loading posts…</p></div></section>
         </section>`;
       this.container.querySelector('#public-profile-back')?.addEventListener('click', () => this.close());
       this.container.querySelector('#public-profile-message')?.addEventListener('click', () => this.startMessage(profile));
+      const followButton = this.container.querySelector('#public-profile-follow');
+      try {
+        const relationship = await AURUM.ProfileAPI.getRelationship(username);
+        if (this.username !== username) return;
+        this.renderRelationship(relationship);
+        if (relationship.is_self) followButton?.remove();
+        else this.setFollowButton(!!relationship.following);
+      } catch (_) { followButton?.remove(); }
+      followButton?.addEventListener('click', async () => {
+        followButton.disabled = true;
+        try {
+          const updated = followButton.dataset.following === 'true'
+            ? await AURUM.ProfileAPI.unfollow(username)
+            : await AURUM.ProfileAPI.follow(username);
+          this.setFollowButton(updated.following);
+          this.renderRelationship(updated);
+        } catch (error) { AURUM.showToast(error.message || 'Could not update follow.', 'error'); }
+        finally { followButton.disabled = false; }
+      });
+      this.container.querySelectorAll('[data-relationship-list]').forEach(button => button.addEventListener('click', () => this.showRelationshipList(button.dataset.relationshipList)));
       if (window.App?.pendingProfileMessage?.toLowerCase() === profile.username.toLowerCase()) {
         window.App.pendingProfileMessage = null;
         await this.startMessage(profile);
@@ -58,6 +80,29 @@ window.PublicProfilePage = {
       this.container.innerHTML = `<section class="profile-wrap"><button class="btn btn-ghost" id="public-profile-back">← Back</button><div class="empty-state"><h3>Profile unavailable</h3><p>${this.escape(error.message || 'This profile cannot be viewed.')}</p>${needsSignIn ? `<a class="btn btn-primary" href="${signInUrl}">Sign in to AURUM</a>` : ''}</div></section>`;
       this.container.querySelector('#public-profile-back')?.addEventListener('click', () => this.close());
     }
+  },
+  setFollowButton(following) {
+    const button = this.container?.querySelector('#public-profile-follow');
+    if (!button) return;
+    button.dataset.following = String(following);
+    button.textContent = following ? 'Following' : 'Follow';
+    button.classList.toggle('btn-outline', following);
+  },
+  renderRelationship(data) {
+    const section = this.container?.querySelector('#public-profile-social-counts');
+    if (!section) return;
+    section.querySelector('[data-relationship-list="followers"]').textContent = `Followers ${data.followers_count}`;
+    section.querySelector('[data-relationship-list="following"]').textContent = `Following ${data.following_count}`;
+  },
+  async showRelationshipList(kind) {
+    try {
+      const { users = [] } = await AURUM.ProfileAPI.listRelationships(this.username, kind, 20, 0);
+      const section = this.container?.querySelector('#public-profile-social-counts');
+      if (!section) return;
+      let list = section.querySelector('.relationship-users');
+      if (!list) { list = document.createElement('div'); list.className = 'relationship-users'; section.appendChild(list); }
+      list.innerHTML = users.map(user => `<a class="btn btn-ghost btn-sm" href="/app.html?profile=${encodeURIComponent(user.username)}">${this.escape(user.display_name || user.username)} (@${this.escape(user.username)})</a>`).join('') || '<p>No users to show.</p>';
+    } catch (error) { AURUM.showToast(error.message || 'Could not load users.', 'error'); }
   },
   async startMessage(profile) {
     if (!window.App) {

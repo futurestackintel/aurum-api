@@ -102,9 +102,10 @@ const StatsAPI = {
      tipPost removed — use TipsAPI.send()
 */
 const LedgerAPI = {
-  getFeed:    (offset = 0) => apiRequest('GET',  `/api/posts?limit=20&offset=${offset}`),
+  getFeed:    (offset = 0, mode = 'all') => apiRequest('GET',  `/api/posts?limit=20&offset=${offset}&mode=${encodeURIComponent(mode)}`),
   getPost:    (postId) => apiRequest('GET', `/api/posts/${encodeURIComponent(postId)}`, null, 'optional'),
   createPost: (data)       => apiRequest('POST', '/api/posts', data),
+  createSocialPost: (data) => apiRequest('POST', '/api/posts/social', data),
   flagPost:   (postId, data) => apiRequest('POST', `/api/posts/${postId}/flag`, data),
   appeal:     (postId, data) => apiRequest('POST', `/api/posts/${postId}/appeal`, data),
   cheer:      (postId)       => apiRequest('POST', `/api/posts/${postId}/cheer`),
@@ -276,6 +277,10 @@ const ProfileAPI = {
     apiRequest('GET', `/api/passport/${encodeURIComponent(username)}`, null, 'optional'),
   getPublicPosts: (username) =>
     apiRequest('GET', `/api/profiles/${encodeURIComponent(username)}/posts`, null, 'optional'),
+  getRelationship: (username) => apiRequest('GET', `/api/profiles/${encodeURIComponent(username)}/relationship`, null, 'optional'),
+  listRelationships: (username, kind, limit = 20, offset = 0) => apiRequest('GET', `/api/profiles/${encodeURIComponent(username)}/${kind}?limit=${limit}&offset=${offset}`, null, 'optional'),
+  follow: (username) => apiRequest('POST', `/api/users/${encodeURIComponent(username)}/follow`),
+  unfollow: (username) => apiRequest('POST', `/api/users/${encodeURIComponent(username)}/unfollow`),
 
   updateProfile: (data) =>
     apiRequest('PATCH', '/api/users/me', data),

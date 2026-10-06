@@ -1126,6 +1126,7 @@
       const query = new URLSearchParams(location.search);
       const requestedMessage = query.get('message');
       const requestedProfile = query.get('profile');
+      const requestedPost = query.get('post');
       if (requestedMessage) {
         this.pendingProfileMessage = requestedMessage;
         window.PublicProfilePage.username = requestedMessage;
@@ -1133,6 +1134,9 @@
         query.delete('message');
         const remainingQuery = query.toString();
         history.replaceState(history.state, '', `${location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}${location.hash}`);
+      } else if (requestedPost) {
+        this.navigate('ledger');
+        setTimeout(() => window.LedgerPage?.openPostById(requestedPost), 150);
       } else if (requestedProfile) {
         window.PublicProfilePage.username = requestedProfile;
         this.navigate('public-profile');

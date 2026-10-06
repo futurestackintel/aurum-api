@@ -63,6 +63,32 @@ export async function handlePostRoutes(path, method, request, env) {
   }
 
   // ── POST /api/posts — create post with stake ────────────
+  if (path === '/api/posts/social' && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+    try {
+      const body = await request.json();
+      if (typeof body.content !== 'string' || !body.content.trim()) return jsonResponse({ error: 'Post content is required' }, 400);
+      if (body.content.trim().length > 5000) return jsonResponse({ error: 'Post must be 5000 characters or fewer' }, 400);
+      if (body.visibility !== undefined && !['public', 'members_only'].includes(body.visibility)) return jsonResponse({ error: 'Invalid visibility' }, 400);
+      const author = await db.prepare(`SELECT id, username, display_name, avatar_url FROM users
+        WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`).bind(user.id).first();
+      if (!author) return jsonResponse({ error: 'User not found' }, 404);
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const title = typeof body.title === 'string' ? body.title.trim().slice(0, 200) || null : null;
+      await db.prepare(`INSERT INTO posts (id, user_id, title, content, post_type, visibility, moderation_status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'social', ?, 'active', ?, ?)`)
+        .bind(id, author.id, title, body.content.trim(), body.visibility || 'public', now, now).run();
+      return jsonResponse({ post: { id, user_id: author.id, username: author.username, display_name: author.display_name,
+        avatar_url: author.avatar_url, title, content: body.content.trim(), post_type: 'social', stake_amount_usd: null,
+        stake_status: 'none', visibility: body.visibility || 'public', created_at: now } }, 201);
+    } catch (err) {
+      console.error('Create social post error:', err);
+      return jsonResponse({ error: 'Unable to create post. Please try again.' }, 500);
+    }
+  }
+
   if (path === '/api/posts' && method === 'POST') {
     const user = await requireAuth(request, env);
     if (user.error) return jsonResponse({ error: user.error }, 401);
@@ -85,11 +111,13 @@ export async function handlePostRoutes(path, method, request, env) {
   if (path === '/api/posts' && method === 'GET') {
     try {
       const url    = new URL(request.url);
-      const limit  = parseInt(url.searchParams.get('limit')  ?? '20');
-      const offset = parseInt(url.searchParams.get('offset') ?? '0');
+      const limit  = Math.max(1, Math.min(50, parseInt(url.searchParams.get('limit') ?? '20', 10) || 20));
+      const offset = Math.max(0, parseInt(url.searchParams.get('offset') ?? '0', 10) || 0);
+      const mode = url.searchParams.get('mode') || 'all';
+      if (!['all', 'following', 'community', 'proof'].includes(mode)) return jsonResponse({ error: 'Invalid feed mode' }, 400);
       const session = await optionalAuth(request, env);
       const viewer = session.id ? await db.prepare(`SELECT id, league FROM users WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`).bind(session.id).first() : null;
-      const posts  = await getLedgerPosts(limit, offset, db, viewer?.id ?? null, viewer?.league ?? null);
+      const posts  = await getLedgerPosts(limit, offset, db, viewer?.id ?? null, viewer?.league ?? null, mode);
       return jsonResponse({ posts });
     } catch (err) {
       console.error('Get posts error:', err);

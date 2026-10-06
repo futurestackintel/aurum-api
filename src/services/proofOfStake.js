@@ -32,7 +32,8 @@ export async function canViewPost(postId, db, viewer = null) {
     JOIN users u ON u.id = p.user_id
     LEFT JOIN post_stakes ps ON ps.post_id = p.id
     WHERE p.id = ? AND ${POST_ELIGIBILITY_SQL}
-  `).bind(postId, viewerId, viewerId, viewerLeague).first();
+      AND (COALESCE(u.profile_visibility, 'members') != 'private' OR u.id = ?)
+  `).bind(postId, viewerId, viewerId, viewerLeague, viewerId).first();
   return !!row;
 }
 
@@ -682,11 +683,11 @@ async function _finaliseSlash(postId, userId, stakeAmount, db, now) {
  * Get all posts — returns in exact shape frontend Ledger expects.
  * Joins post_stakes to get stake amount and status.
  */
-export async function getLedgerPosts(limit, offset, db, viewerId = null, viewerLeague = null) {
+export async function getLedgerPosts(limit, offset, db, viewerId = null, viewerLeague = null, mode = 'all') {
   const { results } = await db
     .prepare(`
       WITH ledger_rows AS (
-        SELECT p.id, p.user_id, p.title, p.achievement_category, p.content, p.media_urls,
+        SELECT p.id, p.user_id, p.title, p.post_type, p.achievement_category, p.content, p.media_urls,
           p.tips_received_cents, p.created_at, p.comment_count,
           ps.amount_usd AS stake_amount_usd, ps.status AS stake_status,
           u.username AS author_username, u.league AS author_league, u.avatar_url AS author_avatar,
@@ -700,9 +701,15 @@ export async function getLedgerPosts(limit, offset, db, viewerId = null, viewerL
         JOIN users u ON u.id = p.user_id
         LEFT JOIN post_stakes ps ON ps.post_id = p.id
         WHERE ${POST_ELIGIBILITY_SQL}
+          AND (COALESCE(u.profile_visibility, 'members') != 'private' OR u.id = ?)
+          AND (? != 'proof' OR p.post_type = 'proof')
+          AND (? != 'community' OR p.post_type = 'social')
+          AND (? != 'following' OR p.user_id = ? OR EXISTS (
+            SELECT 1 FROM user_follows f WHERE f.follower_id = ? AND f.followed_id = p.user_id
+          ))
       )
       SELECT id, CASE WHEN identity_hidden = 1 THEN NULL ELSE user_id END AS user_id,
-        title, achievement_category, content, media_urls,
+        title, post_type, achievement_category, content, media_urls,
         tips_received_cents, created_at, stake_amount_usd, stake_status,
         CASE WHEN identity_hidden = 1 THEN 'Anonymous' ELSE author_username END AS username,
         CASE WHEN identity_hidden = 1 OR hide_league = 1 THEN NULL ELSE author_league END AS league,
@@ -714,7 +721,7 @@ export async function getLedgerPosts(limit, offset, db, viewerId = null, viewerL
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `)
-    .bind(viewerId, viewerId, viewerId, viewerId, viewerId, viewerLeague, limit ?? 20, offset ?? 0)
+    .bind(viewerId, viewerId, viewerId, viewerId, viewerId, viewerLeague, viewerId, mode, mode, mode, viewerId, viewerId, limit ?? 20, offset ?? 0)
     .all();
 
   // Convert cents to USD for tips
@@ -728,7 +735,7 @@ export async function getLedgerPosts(limit, offset, db, viewerId = null, viewerL
 export async function getPublicLedgerPost(postId, db, viewerId = null, viewerLeague = null) {
   const row = await db.prepare(`
     WITH post_row AS (
-      SELECT p.id, p.user_id, p.title, p.achievement_category, p.content, p.media_urls,
+      SELECT p.id, p.user_id, p.title, p.post_type, p.achievement_category, p.content, p.media_urls,
         p.tips_received_cents, p.created_at, p.comment_count,
         ps.amount_usd AS stake_amount_usd, ps.status AS stake_status,
         u.username AS author_username, u.league AS author_league, u.avatar_url AS author_avatar,
@@ -741,9 +748,10 @@ export async function getPublicLedgerPost(postId, db, viewerId = null, viewerLea
       FROM posts p JOIN users u ON u.id = p.user_id
       LEFT JOIN post_stakes ps ON ps.post_id = p.id
       WHERE p.id = ? AND ${POST_ELIGIBILITY_SQL}
+        AND (COALESCE(u.profile_visibility, 'members') != 'private' OR u.id = ?)
     )
     SELECT id, CASE WHEN identity_hidden = 1 THEN NULL ELSE user_id END AS user_id,
-      title, achievement_category, content, media_urls,
+      title, post_type, achievement_category, content, media_urls,
       tips_received_cents, created_at, stake_amount_usd, stake_status,
       CASE WHEN identity_hidden = 1 THEN 'Anonymous' ELSE author_username END AS username,
       CASE WHEN identity_hidden = 1 OR hide_league = 1 THEN NULL ELSE author_league END AS league,
@@ -752,14 +760,14 @@ export async function getPublicLedgerPost(postId, db, viewerId = null, viewerLea
       is_verified AS verified,
       CASE WHEN identity_hidden = 1 THEN 0 ELSE stealth_mode END AS stealth_mode
     FROM post_row
-  `).bind(viewerId, viewerId, viewerId, postId, viewerId, viewerId, viewerLeague).first();
+  `).bind(viewerId, viewerId, viewerId, postId, viewerId, viewerId, viewerLeague, viewerId).first();
   if (!row) return null;
   return { ...row, tips_received: (row.tips_received_cents ?? 0) / 100, tips_received_cents: undefined };
 }
 
 export async function getPublicProfilePosts(userId, db, limit = 10) {
   const { results } = await db.prepare(`
-    SELECT p.id, p.title, p.achievement_category, p.content, p.media_urls, p.created_at
+    SELECT p.id, p.title, p.post_type, p.achievement_category, p.content, p.media_urls, p.created_at
     FROM posts p
     JOIN users u ON u.id = p.user_id
     LEFT JOIN post_stakes ps ON ps.post_id = p.id

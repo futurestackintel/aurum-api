@@ -22,19 +22,19 @@ function nowISO() {
   return new Date().toISOString();
 }
 
-async function resolveUserId(clerkId, db) {
-  const row = await db
-    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+async function resolveActiveUser(clerkId, db) {
+  return db.prepare(`SELECT id, league FROM users
+    WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`)
     .bind(clerkId)
     .first();
-  return row?.id ?? null;
 }
 
 // ── CREATE COMMENT (top-level or reply) ──────────────────────
 
 export async function createComment(postId, clerkId, body, db) {
-  const userId = await resolveUserId(clerkId, db);
-  if (!userId) return { error: 'User not found' };
+  const user = await resolveActiveUser(clerkId, db);
+  if (!user) return { error: 'User not found' };
+  const userId = user.id;
 
   const { content, parent_comment_id } = body;
 
@@ -44,6 +44,8 @@ export async function createComment(postId, clerkId, body, db) {
   if (content.trim().length > MAX_COMMENT_LENGTH) {
     return { error: `Comment must be ${MAX_COMMENT_LENGTH} characters or fewer` };
   }
+
+  if (!(await canViewPost(postId, db, user))) return { error: 'Post not found' };
 
   const post = await db
     .prepare(`SELECT id, user_id FROM posts WHERE id = ? AND deleted_at IS NULL`)
@@ -217,8 +219,9 @@ export async function getCommentsForPost(postId, db, viewer = null) {
 // ── DELETE COMMENT (author only, soft delete) ─────────────────
 
 export async function deleteComment(commentId, clerkId, db) {
-  const userId = await resolveUserId(clerkId, db);
-  if (!userId) return { error: 'User not found' };
+  const user = await resolveActiveUser(clerkId, db);
+  if (!user) return { error: 'User not found' };
+  const userId = user.id;
 
   const comment = await db
     .prepare(`

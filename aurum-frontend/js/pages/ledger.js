@@ -37,6 +37,7 @@ window.LedgerPage = {
   loading:     false,
   initialized: false,
   hasMore:     true,
+  feedMode:    'all',
 
   /* Full post objects keyed by id, populated as the feed loads,
      so the detail view can pin the correct post at the top
@@ -72,6 +73,19 @@ window.LedgerPage = {
 
         <!-- Main feed view -->
         <div id="ledger-main">
+
+          <section class="social-composer card" style="padding:16px;margin-bottom:16px;">
+            <textarea id="social-post-content" class="input" maxlength="5000" rows="3" placeholder="Share an update or start a discussion…"></textarea>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+              <button class="btn btn-primary btn-sm" id="social-post-submit">Post</button>
+            </div>
+          </section>
+          <nav class="feed-modes" aria-label="Feed filters" style="display:flex;gap:8px;overflow:auto;margin-bottom:12px;">
+            <button class="btn btn-outline btn-sm" data-feed-mode="all">For You</button>
+            <button class="btn btn-outline btn-sm" data-feed-mode="following">Following</button>
+            <button class="btn btn-outline btn-sm" data-feed-mode="community">Community</button>
+            <button class="btn btn-outline btn-sm" data-feed-mode="proof">Proof</button>
+          </nav>
 
           <!-- Feed -->
           <div class="feed" id="ledger-feed"></div>
@@ -176,6 +190,12 @@ window.LedgerPage = {
 
     this.applyStyles();
     this.bindEvents();
+    this.container.querySelectorAll('[data-feed-mode]').forEach(button => button.addEventListener('click', () => {
+      this.feedMode = button.dataset.feedMode;
+      this.container.querySelectorAll('[data-feed-mode]').forEach(item => item.classList.toggle('btn-primary', item === button));
+      this.loadPosts(false);
+    }));
+    this.container.querySelector('#social-post-submit')?.addEventListener('click', () => this.submitSocialPost());
   },
 
   bindEvents() {
@@ -230,7 +250,7 @@ window.LedgerPage = {
     }
 
     try {
-      const data  = await AURUM.LedgerAPI.getFeed(this.offset);
+      const data  = await AURUM.LedgerAPI.getFeed(this.offset, this.feedMode);
       const posts = data.posts || [];
 
       document.getElementById('append-skeleton')?.remove();
@@ -281,6 +301,23 @@ window.LedgerPage = {
   openFullPostSheet() {
     const modal = document.getElementById('full-post-modal');
     if (modal) modal.style.display = 'flex';
+  },
+
+  async submitSocialPost() {
+    const input = document.getElementById('social-post-content');
+    const button = document.getElementById('social-post-submit');
+    const content = input?.value.trim();
+    if (!content) return AURUM.showToast('Write something before posting.', 'error');
+    button.disabled = true;
+    try {
+      await AURUM.LedgerAPI.createSocialPost({ content });
+      input.value = '';
+      AURUM.showToast('Your update is live.', 'gold');
+      this.feedMode = 'all';
+      this.loadPosts(false);
+    } catch (error) {
+      AURUM.showToast(error.message || 'Could not publish your post.', 'error');
+    } finally { button.disabled = false; }
   },
 
   closeFullPostSheet() {
@@ -453,7 +490,7 @@ window.LedgerPage = {
     }
 
     this.currentDetailPostId = String(postId);
-    history.pushState({ aurumPostDetail: true, postId }, '', location.pathname);
+    history.pushState({ aurumPostDetail: true, postId }, '', `/app.html?post=${encodeURIComponent(postId)}`);
 
     document.getElementById('ledger-main').style.display      = 'none';
     document.getElementById('post-detail-view').style.display  = 'flex';
@@ -782,6 +819,7 @@ window.LedgerPage = {
   postHTML(post, opts = {}) {
     const initials    = this.escapeHTML(post.username?.charAt(0).toUpperCase() || '?');
     const league      = post.league || null;
+    const isSocial = post.post_type === 'social';
     const stakeStatus = post.stake_status || 'locked';
 
     const stakeColor  = {
@@ -853,12 +891,12 @@ window.LedgerPage = {
               </span>
             </div>
           </div>
-          <div class="post-stake" style="border-color:${stakeColor};">
+          ${isSocial ? '<div class="post-stake" style="border-color:var(--color-text-muted);"><span class="post-stake-label">Social post · no stake</span></div>' : `<div class="post-stake" style="border-color:${stakeColor};">
             <span class="post-stake-amount mono" style="color:${stakeColor};">
               ₳${post.stake_amount_usd || (post.stake_amount_cents / 100) || 5}
             </span>
             <span class="post-stake-label">stake</span>
-          </div>
+          </div>`}
         </div>
 
         ${post.title ? `<p style="font-weight:var(--weight-semi);font-size:var(--text-base);color:var(--color-text);">${this.escapeHTML(post.title)}</p>` : ''}
@@ -920,12 +958,12 @@ window.LedgerPage = {
             </button>
           ` : ''}
 
-          <div class="post-stake-status" style="margin-left:auto;">
+          ${!isSocial ? `<div class="post-stake-status" style="margin-left:auto;">
             <span style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;
               color:${stakeColor};">
               ${stakeStatusLabel}
             </span>
-          </div>
+          </div>` : ''}
 
         </div>
       </div>

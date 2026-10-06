@@ -6,6 +6,9 @@ export async function handleSearchRoutes(path, method, request, env) {
     const user = await requireAuth(request, env);
     if (user.error) return jsonResponse({ error: user.error }, 401);
     try {
+      const viewer = await db.prepare(`SELECT id, is_suspended FROM users
+        WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL`).bind(user.id).first();
+      if (!viewer || viewer.is_suspended) return jsonResponse({ error: 'User not found or unavailable' }, 403);
       const url = new URL(request.url);
       const q = (url.searchParams.get('q') || '').trim();
       if (q.length < 2) {
@@ -45,9 +48,11 @@ export async function handleSearchRoutes(path, method, request, env) {
             AND u.account_deleted = 0
             AND u.is_suspended = 0
             AND u.deleted_at IS NULL
+            AND (u.stealth_mode = 0 OR u.id = ?)
+            AND (COALESCE(u.profile_visibility, 'members') != 'private' OR u.id = ?)
           ORDER BY p.created_at DESC
           LIMIT 10
-        `).bind(q).all(),
+        `).bind(q, viewer.id, viewer.id).all(),
       ]);
 
       const users = usersResult.results.map(u => ({
