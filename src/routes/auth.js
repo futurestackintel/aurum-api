@@ -43,7 +43,7 @@ export async function handleAuthRoutes(pathname, request, env) {
   // ── POST /auth/register ─────────────────────────────────────
   if (pathname === "/api/auth/register" && request.method === "POST") {
     const auth = await requireAuth(request, env);
-    if (auth.error) return json({ error: auth.error }, auth.status);
+    if (auth.error) return json({ error: auth.error }, 401);
 
         const clerkUserId = auth.id;
     const body = await request.json();
