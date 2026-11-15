@@ -341,82 +341,157 @@ async function handlePassport(username, env, request) {
 }
 
 // ── Settings: PATCH /api/users/me ────────────────────────────
+
 async function handleUpdateProfile(request, env) {
-  const db   = env.DB;
+  const db = env.DB;
   const user = await requireAuth(request, env);
   if (user.error) return jsonResponse({ error: user.error }, 401);
 
-  const dbUser = await db
-    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
-    .bind(user.id)
-    .first();
-
-  if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
-
-  const body = await request.json();
-  const {
-    username,
-    stealth_mode,
-    profile_visibility,
-    hide_aurum_score,
-    hide_league,
-    avatar_url,
-  } = body;
-	
-  // Validate profile_visibility if provided
-  const validVisibility = ['public', 'members', 'private'];
-  if (profile_visibility && !validVisibility.includes(profile_visibility)) {
-    return jsonResponse({ error: `profile_visibility must be one of: ${validVisibility.join(', ')}` }, 400);
-  }
-
-  // Validate username if provided
-  if (username !== undefined) {
-    if (typeof username !== 'string' || username.trim().length < 3) {
-      return jsonResponse({ error: 'Username must be at least 3 characters' }, 400);
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(username.trim())) {
-      return jsonResponse({ error: 'Username can only contain letters, numbers and underscores' }, 400);
-    }
-    // Check uniqueness
-    const taken = await db
-      .prepare(`SELECT id FROM users WHERE username = ? AND id != ?`)
-      .bind(username.trim(), dbUser.id)
+  try {
+    const dbUser = await db
+      .prepare(`SELECT id FROM users WHERE clerk_id = ? AND deleted_at IS NULL`)
+      .bind(user.id)
       .first();
-    if (taken) return jsonResponse({ error: 'Username is already taken' }, 400);
+
+    if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
+
+    const body = await request.json();
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return jsonResponse({ error: 'Invalid request body' }, 400);
+    }
+
+    const {
+      username,
+      display_name,
+      bio,
+      stealth_mode,
+      profile_visibility,
+      hide_aurum_score,
+      hide_league,
+      avatar_url,
+    } = body;
+
+    const validVisibility = ['public', 'members', 'private'];
+
+    if (profile_visibility !== undefined &&
+        !validVisibility.includes(profile_visibility)) {
+      return jsonResponse({
+        error: `profile_visibility must be one of: ${validVisibility.join(', ')}`
+      }, 400);
+    }
+
+    if (username !== undefined) {
+      if (typeof username !== 'string' ||
+          username.trim().length < 3 ||
+          username.trim().length > 30 ||
+          !/^[a-zA-Z0-9_]+$/.test(username.trim())) {
+        return jsonResponse({ error: 'Username must be 3–30 characters and contain only letters, numbers and underscores' }, 400);
+      }
+
+      const taken = await db
+        .prepare(`SELECT id FROM users WHERE username = ? AND id != ?`)
+        .bind(username.trim(), dbUser.id)
+        .first();
+
+      if (taken) {
+        return jsonResponse({ error: 'Username is already taken' }, 409);
+      }
+    }
+
+    if (display_name !== undefined &&
+        (typeof display_name !== 'string' ||
+         display_name.trim().length < 1 ||
+         display_name.trim().length > 80)) {
+      return jsonResponse({ error: 'Display name must be 1–80 characters' }, 400);
+    }
+
+    if (bio !== undefined &&
+        (typeof bio !== 'string' || bio.length > 300)) {
+      return jsonResponse({ error: 'Bio must be 300 characters or fewer' }, 400);
+    }
+
+    for (const [field, value] of Object.entries({
+      stealth_mode,
+      hide_aurum_score,
+      hide_league,
+    })) {
+      if (value !== undefined && typeof value !== 'boolean') {
+        return jsonResponse({ error: `${field} must be a boolean` }, 400);
+      }
+    }
+
+    if (avatar_url !== undefined &&
+        avatar_url !== null &&
+        (typeof avatar_url !== 'string' || avatar_url.length > 2048)) {
+      return jsonResponse({ error: 'Invalid avatar value' }, 400);
+    }
+
+    const fields = [];
+    const values = [];
+
+    if (username !== undefined) {
+      fields.push('username = ?');
+      values.push(username.trim());
+    }
+    if (display_name !== undefined) {
+      fields.push('display_name = ?');
+      values.push(display_name.trim());
+    }
+    if (bio !== undefined) {
+      fields.push('bio = ?');
+      values.push(bio.trim());
+    }
+    if (stealth_mode !== undefined) {
+      fields.push('stealth_mode = ?');
+      values.push(stealth_mode ? 1 : 0);
+    }
+    if (profile_visibility !== undefined) {
+      fields.push('profile_visibility = ?');
+      values.push(profile_visibility);
+    }
+    if (hide_aurum_score !== undefined) {
+      fields.push('hide_aurum_score = ?');
+      values.push(hide_aurum_score ? 1 : 0);
+    }
+    if (hide_league !== undefined) {
+      fields.push('hide_league = ?');
+      values.push(hide_league ? 1 : 0);
+    }
+    if (avatar_url !== undefined) {
+      fields.push('avatar_url = ?');
+      values.push(avatar_url);
+    }
+
+    if (fields.length === 0) {
+      return jsonResponse({ error: 'No valid fields provided' }, 400);
+    }
+
+    fields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(dbUser.id);
+
+    await db
+      .prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`)
+      .bind(...values)
+      .run();
+
+    const updated = await db
+      .prepare(`
+        SELECT username, display_name, bio, avatar_url,
+               stealth_mode, profile_visibility,
+               hide_aurum_score, hide_league
+        FROM users WHERE id = ?
+      `)
+      .bind(dbUser.id)
+      .first();
+
+    return jsonResponse({ updated: true, user: updated });
+  } catch (err) {
+    console.error('Profile update error:', err);
+    return jsonResponse({ error: 'Unable to update profile. Please try again.' }, 500);
   }
-
-  const now    = new Date().toISOString();
-  const fields = [];
-  const values = [];
-
-  if (username          !== undefined) { fields.push('username = ?');           values.push(username.trim()); }
-  if (stealth_mode      !== undefined) { fields.push('stealth_mode = ?');        values.push(stealth_mode ? 1 : 0); }
-  if (profile_visibility !== undefined){ fields.push('profile_visibility = ?');  values.push(profile_visibility); }
-  if (hide_aurum_score  !== undefined) { fields.push('hide_aurum_score = ?');    values.push(hide_aurum_score ? 1 : 0); }
-  if (hide_league       !== undefined) { fields.push('hide_league = ?');         values.push(hide_league ? 1 : 0); }
-  if (avatar_url        !== undefined) { fields.push('avatar_url = ?');          values.push(avatar_url); }
-  if (fields.length === 0) return jsonResponse({ error: 'No valid fields provided' }, 400);
-  fields.push('updated_at = ?');
-  values.push(now);
-  values.push(dbUser.id);
-
-  await db
-    .prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`)
-    .bind(...values)
-    .run();
-
-  const updated = await db
-    .prepare(`
-      SELECT username, stealth_mode, profile_visibility,
-             hide_aurum_score, hide_league
-      FROM users WHERE id = ?
-    `)
-    .bind(dbUser.id)
-    .first();
-
-  return jsonResponse({ updated: true, user: updated });
 }
-
 // ── Settings: PATCH /api/users/me/notifications ──────────────
 // Fix 3 confirmed present: internal DB user id resolved from
 // Clerk id before the upsert.
