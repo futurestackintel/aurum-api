@@ -41,4 +41,12 @@ describe("API worker root route", () => {
 
 		expect(response.status).toBe(401);
 	});
+	it("rejects unauthenticated profile updates with 401", async () => {
+  const response = await SELF.fetch(
+    "http://example.com/api/users/me",
+    { method: "PATCH", body: JSON.stringify({ bio: "Test" }) }
+  );
+
+  expect(response.status).toBe(401);
+});
 });
