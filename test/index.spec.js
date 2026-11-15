@@ -17,6 +17,21 @@ describe("API worker root route", () => {
 		await waitOnExecutionContext(ctx);
 		expect(response.status).toBe(404);
 		expect(await response.json()).toEqual({ error: "Route not found" });
+		it("rejects unauthenticated registration with 401", async () => {
+    const response = await SELF.fetch(
+        "http://example.com/api/auth/register",
+        { method: "POST" }
+    );
+
+    expect(response.status).toBe(401);
+});
+
+it("rejects unauthenticated auth/me requests with 401", async () => {
+    const response = await SELF.fetch(
+        "http://example.com/api/auth/me"
+    );
+
+    expect(response.status).toBe(401);
 	});
 
 	it("returns route-not-found for an unregistered root path (integration style)", async () => {
