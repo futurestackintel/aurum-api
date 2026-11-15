@@ -33,7 +33,7 @@ import { finaliseExpiredAppeals, canViewPost } from './services/proofOfStake.js'
 import { expireChallenges }             from './services/dropCircle.js';
 import { processDuelCron }              from './services/duel.js';
 import { processCrewBattleCron }        from './services/crew.js';
-import { requireAuth, optionalAuth }     from './middleware/auth.js';
+import { requireAuth }                   from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
 export { CrewChatRoom } from './durableObjects/CrewChatRoom.js';
 export { DmRoom } from './durableObjects/DmRoom.js';
@@ -210,18 +210,20 @@ async function handlePublicLeaderboard(env) {
 async function handleAuthenticatedLeaderboard(type, env) {
   const db = env.DB;
   const TYPE_MAP = {
-    earners:   'highest_earner',
-    generous:  'most_generous',
+    earners: 'highest_earner',
+    generous: 'most_generous',
     champions: 'most_wins',
-    score:     'aurum_score',
+    score: 'aurum_score',
   };
+
   const boardType = TYPE_MAP[type] || 'aurum_score';
   const today = new Date().toISOString().slice(0, 10);
+
   const leaderboardQuery = (periodKey) => db.prepare(`
     WITH eligible_rows AS (
       SELECT ls.rank AS stored_rank, ls.score, ls.avatar_url,
         CASE WHEN u.hide_league = 1 THEN NULL ELSE ls.league_at_snapshot END AS league_at_snapshot,
-        u.username, u.league, u.is_verified, u.stealth_mode
+        u.username, u.league, u.is_verified
       FROM leaderboard_snapshots ls
       JOIN users u ON u.id = ls.user_id
       WHERE ls.board_type = ? AND ls.period = 'daily'
@@ -229,58 +231,50 @@ async function handleAuthenticatedLeaderboard(type, env) {
         AND (? != 'aurum_score' OR u.hide_aurum_score = 0)
     ), ranked_rows AS (
       SELECT ROW_NUMBER() OVER (ORDER BY stored_rank ASC) AS rank,
-        score, avatar_url, league_at_snapshot, username, league, is_verified, stealth_mode
+        score, avatar_url, league_at_snapshot, username, league, is_verified
       FROM eligible_rows
     )
-    SELECT rank, score, avatar_url, league_at_snapshot, username, league, is_verified, stealth_mode
+    SELECT rank, score, avatar_url, league_at_snapshot, username, league, is_verified
     FROM ranked_rows ORDER BY rank ASC LIMIT 20
   `).bind(...(periodKey ? [boardType, periodKey, boardType] : [boardType, boardType]));
 
   let { results } = await leaderboardQuery(today).all();
+
   if (!results.length) {
     const fallback = await leaderboardQuery(null).all();
     results = fallback.results;
   }
+
   const entries = results.map(r => ({
-    username:   r.stealth_mode ? null : r.username,
-    league:     r.league_at_snapshot || r.league,
-    value:      r.score,
-    verified:   !!r.is_verified,
-    stealth:    !!r.stealth_mode,
-    avatar_url: r.stealth_mode ? null : r.avatar_url,
+    username: r.username,
+    league: r.league_at_snapshot || r.league,
+    value: r.score,
+    verified: !!r.is_verified,
+    avatar_url: r.avatar_url,
   }));
+
   return jsonResponse({ entries });
 }
-
 // ── Wealth Passport ───────────────────────────────────────────
-async function handlePassport(username, env, request) {
+async function handlePassport(username, env) {
   const db = env.DB;
-  const session = await optionalAuth(request, env);
 
   const user = await db
     .prepare(`
       SELECT id, username, league, aurum_score, streak_current, created_at,
              is_verified, total_challenges_won, total_tips_sent_cents,
-             hide_aurum_score, hide_league, profile_visibility,
-             avatar_url, stealth_mode, is_suspended
+             hide_aurum_score, hide_league, avatar_url, is_suspended
       FROM users
-      WHERE username = ? AND account_deleted = 0
+      WHERE username = ?
+        AND account_deleted = 0
         AND deleted_at IS NULL
     `)
     .bind(username)
     .first();
 
-  if (!user)                                  return jsonResponse({ error: 'User not found' }, 404);
-  const visibility = user.profile_visibility || 'members';
-  const viewerRecord = session.id
-    ? await db.prepare(`SELECT id, is_suspended FROM users WHERE clerk_id = ? AND account_deleted = 0 AND deleted_at IS NULL`).bind(session.id).first()
-    : null;
-  const isOwner = viewerRecord?.id === user.id;
-  const viewer = viewerRecord && !viewerRecord.is_suspended ? viewerRecord : null;
-  if (user.is_suspended && !isOwner) return jsonResponse({ error: 'User not found' }, 404);
-  if (visibility === 'private' && !isOwner) return jsonResponse({ error: 'This profile is private' }, 403);
-  if (visibility === 'members' && !viewer && !isOwner) return jsonResponse({ error: 'Sign in to view this profile' }, 401);
-  if (user.stealth_mode && !isOwner) return jsonResponse({ error: 'This profile is unavailable' }, 404);
+  if (!user || user.is_suspended) {
+    return jsonResponse({ error: 'User not found' }, 404);
+  }
 
   const { results: badgeRows } = await db
     .prepare(`
@@ -297,14 +291,15 @@ async function handlePassport(username, env, request) {
   const today = new Date().toISOString().slice(0, 10);
 
   let rankRow = null;
+
   if (!user.hide_aurum_score) {
     rankRow = await db
       .prepare(`
         SELECT rank FROM leaderboard_snapshots
         WHERE board_type = 'aurum_score'
-          AND period     = 'daily'
+          AND period = 'daily'
           AND period_key = ?
-          AND user_id    = ?
+          AND user_id = ?
       `)
       .bind(today, user.id)
       .first();
@@ -314,8 +309,8 @@ async function handlePassport(username, env, request) {
         .prepare(`
           SELECT rank FROM leaderboard_snapshots
           WHERE board_type = 'aurum_score'
-            AND period     = 'daily'
-            AND user_id    = ?
+            AND period = 'daily'
+            AND user_id = ?
           ORDER BY period_key DESC
           LIMIT 1
         `)
@@ -325,27 +320,28 @@ async function handlePassport(username, env, request) {
   }
 
   return jsonResponse({
-    ...(isOwner ? { user_id: user.id } : {}),
-    username:            user.username,
-    avatar_url:          user.avatar_url,
-    league:              user.hide_league      ? null : user.league,
-    aurum_score:         user.hide_aurum_score ? null : user.aurum_score,
-    verified:            !!user.is_verified,
-    badges:              badgeRows,
-    challenge_wins:      user.total_challenges_won ?? 0,
-    total_tips_given:    (user.total_tips_sent_cents ?? 0) / 100,
-    streak:              user.streak_current    ?? 0,
-    member_since:        user.created_at,
-    rank_on_leaderboard: rankRow?.rank          ?? null,
+    username: user.username,
+    avatar_url: user.avatar_url,
+    league: user.hide_league ? null : user.league,
+    aurum_score: user.hide_aurum_score ? null : user.aurum_score,
+    verified: !!user.is_verified,
+    badges: badgeRows,
+    challenge_wins: user.total_challenges_won ?? 0,
+    total_tips_given: (user.total_tips_sent_cents ?? 0) / 100,
+    streak: user.streak_current ?? 0,
+    member_since: user.created_at,
+    rank_on_leaderboard: rankRow?.rank ?? null,
   });
 }
-
 // ── Settings: PATCH /api/users/me ────────────────────────────
 
 async function handleUpdateProfile(request, env) {
   const db = env.DB;
   const user = await requireAuth(request, env);
-  if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  if (user.error) {
+    return jsonResponse({ error: user.error }, 401);
+  }
 
   try {
     const dbUser = await db
@@ -353,7 +349,9 @@ async function handleUpdateProfile(request, env) {
       .bind(user.id)
       .first();
 
-    if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
+    if (!dbUser) {
+      return jsonResponse({ error: 'User not found' }, 404);
+    }
 
     const body = await request.json();
 
@@ -365,28 +363,21 @@ async function handleUpdateProfile(request, env) {
       username,
       display_name,
       bio,
-      stealth_mode,
-      profile_visibility,
       hide_aurum_score,
       hide_league,
       avatar_url,
     } = body;
 
-    const validVisibility = ['public', 'members', 'private'];
-
-    if (profile_visibility !== undefined &&
-        !validVisibility.includes(profile_visibility)) {
-      return jsonResponse({
-        error: `profile_visibility must be one of: ${validVisibility.join(', ')}`
-      }, 400);
-    }
-
     if (username !== undefined) {
-      if (typeof username !== 'string' ||
-          username.trim().length < 3 ||
-          username.trim().length > 30 ||
-          !/^[a-zA-Z0-9_]+$/.test(username.trim())) {
-        return jsonResponse({ error: 'Username must be 3–30 characters and contain only letters, numbers and underscores' }, 400);
+      if (
+        typeof username !== 'string' ||
+        username.trim().length < 3 ||
+        username.trim().length > 30 ||
+        !/^[a-zA-Z0-9_]+$/.test(username.trim())
+      ) {
+        return jsonResponse({
+          error: 'Username must be 3–30 characters and contain only letters, numbers and underscores'
+        }, 400);
       }
 
       const taken = await db
@@ -399,20 +390,24 @@ async function handleUpdateProfile(request, env) {
       }
     }
 
-    if (display_name !== undefined &&
-        (typeof display_name !== 'string' ||
-         display_name.trim().length < 1 ||
-         display_name.trim().length > 80)) {
-      return jsonResponse({ error: 'Display name must be 1–80 characters' }, 400);
+    if (
+      display_name !== undefined &&
+      (typeof display_name !== 'string' ||
+        display_name.trim().length < 1 ||
+        display_name.trim().length > 80)
+    ) {
+      return jsonResponse({
+        error: 'Display name must be 1–80 characters'
+      }, 400);
     }
 
-    if (bio !== undefined &&
-        (typeof bio !== 'string' || bio.length > 300)) {
-      return jsonResponse({ error: 'Bio must be 300 characters or fewer' }, 400);
+    if (bio !== undefined && (typeof bio !== 'string' || bio.length > 300)) {
+      return jsonResponse({
+        error: 'Bio must be 300 characters or fewer'
+      }, 400);
     }
 
     for (const [field, value] of Object.entries({
-      stealth_mode,
       hide_aurum_score,
       hide_league,
     })) {
@@ -421,9 +416,11 @@ async function handleUpdateProfile(request, env) {
       }
     }
 
-    if (avatar_url !== undefined &&
-        avatar_url !== null &&
-        (typeof avatar_url !== 'string' || avatar_url.length > 2048)) {
+    if (
+      avatar_url !== undefined &&
+      avatar_url !== null &&
+      (typeof avatar_url !== 'string' || avatar_url.length > 2048)
+    ) {
       return jsonResponse({ error: 'Invalid avatar value' }, 400);
     }
 
@@ -434,30 +431,27 @@ async function handleUpdateProfile(request, env) {
       fields.push('username = ?');
       values.push(username.trim());
     }
+
     if (display_name !== undefined) {
       fields.push('display_name = ?');
       values.push(display_name.trim());
     }
+
     if (bio !== undefined) {
       fields.push('bio = ?');
       values.push(bio.trim());
     }
-    if (stealth_mode !== undefined) {
-      fields.push('stealth_mode = ?');
-      values.push(stealth_mode ? 1 : 0);
-    }
-    if (profile_visibility !== undefined) {
-      fields.push('profile_visibility = ?');
-      values.push(profile_visibility);
-    }
+
     if (hide_aurum_score !== undefined) {
       fields.push('hide_aurum_score = ?');
       values.push(hide_aurum_score ? 1 : 0);
     }
+
     if (hide_league !== undefined) {
       fields.push('hide_league = ?');
       values.push(hide_league ? 1 : 0);
     }
+
     if (avatar_url !== undefined) {
       fields.push('avatar_url = ?');
       values.push(avatar_url);
@@ -479,7 +473,6 @@ async function handleUpdateProfile(request, env) {
     const updated = await db
       .prepare(`
         SELECT username, display_name, bio, avatar_url,
-               stealth_mode, profile_visibility,
                hide_aurum_score, hide_league
         FROM users WHERE id = ?
       `)
@@ -489,7 +482,9 @@ async function handleUpdateProfile(request, env) {
     return jsonResponse({ updated: true, user: updated });
   } catch (err) {
     console.error('Profile update error:', err);
-    return jsonResponse({ error: 'Unable to update profile. Please try again.' }, 500);
+    return jsonResponse({
+      error: 'Unable to update profile. Please try again.'
+    }, 500);
   }
 }
 // ── Settings: PATCH /api/users/me/notifications ──────────────
