@@ -19,13 +19,15 @@ async function viewerFor(request, env, required = false) {
 }
 
 async function visibleProfile(db, username, viewerId) {
-  const row = await db.prepare(`SELECT id, profile_visibility, stealth_mode, is_suspended
-    FROM users WHERE username = ? AND account_deleted = 0 AND deleted_at IS NULL`)
-    .bind(username).first();
-  if (!row || row.is_suspended || (row.stealth_mode && row.id !== viewerId)) return null;
-  const visibility = row.profile_visibility || 'members';
-  if (visibility === 'private' && row.id !== viewerId) return null;
-  if (visibility === 'members' && !viewerId) return null;
+  const row = await db.prepare(`
+    SELECT id, is_suspended
+    FROM users
+    WHERE username = ?
+      AND account_deleted = 0
+      AND deleted_at IS NULL
+  `).bind(username).first();
+
+  if (!row || row.is_suspended) return null;
   return row;
 }
 
@@ -84,8 +86,8 @@ export async function handleSocialRoutes(path, method, request, env) {
     const query = list[2] === 'followers'
       ? `SELECT u.username, u.display_name, u.avatar_url, u.league, u.is_verified FROM user_follows f JOIN users u ON u.id = f.follower_id WHERE f.followed_id = ?`
       : `SELECT u.username, u.display_name, u.avatar_url, u.league, u.is_verified FROM user_follows f JOIN users u ON u.id = f.followed_id WHERE f.follower_id = ?`;
-    const { results } = await db.prepare(`${query} AND u.account_deleted = 0 AND u.deleted_at IS NULL AND u.is_suspended = 0 AND u.stealth_mode = 0 AND (COALESCE(u.profile_visibility, 'members') = 'public' OR ? IS NOT NULL) ORDER BY f.created_at DESC LIMIT ? OFFSET ?`)
-      .bind(target.id, viewer.id, limit, offset).all();
+    const { results } = await db.prepare(`${query} AND u.account_deleted = 0 AND u.deleted_at IS NULL AND u.is_suspended = 0 ORDER BY f.created_at DESC LIMIT ? OFFSET ?`)
+      .bind(target.id, limit, offset).all();
     return json({ users: results });
   }
   return null;
