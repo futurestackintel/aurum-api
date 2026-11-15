@@ -167,8 +167,7 @@ export async function handleAuthRoutes(pathname, request, env) {
   // ── GET /auth/me ────────────────────────────────────────────
   if (pathname === "/api/auth/me" && request.method === "GET") {
     const auth = await requireAuth(request, env);
-    if (auth.error) return json({ error: auth.error }, auth.status);
-
+   if (auth.error) return json({ error: auth.error }, 401);
     try {
       const user = await env.DB
         .prepare(`
