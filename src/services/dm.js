@@ -6,11 +6,10 @@ export async function getOrCreateDmChannel(userAId, userBId, db) {
   }
 
   const targetUser = await db
-    .prepare(`SELECT id, stealth_mode FROM users WHERE id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`)
+    .prepare(`SELECT id FROM users WHERE id = ? AND account_deleted = 0 AND deleted_at IS NULL AND is_suspended = 0`)
     .bind(userBId)
     .first();
   if (!targetUser) return { error: 'User not found' };
-  if (targetUser.stealth_mode) return { error: 'This user is not available to message' };
 
   // Consistent ordering so (A,B) and (B,A) always map to the same row
   const [firstId, secondId] = [userAId, userBId].sort();
