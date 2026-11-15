@@ -990,9 +990,8 @@
        FIX: read the real backend field names now that GET /api/auth/me
        actually returns them — profile_visibility (enum) and
        hide_aurum_score, not profile_public / hide_score. */
-    setToggle('toggle-public-profile', user.profile_visibility !== 'private');
-    setToggle('toggle-hide-score',     !!user.hide_aurum_score);
-    setToggle('toggle-hide-league',    !!user.hide_league);
+    setToggle('toggle-hide-score', !!user.hide_aurum_score);
+    setToggle('toggle-hide-league', !!user.hide_league);
 
     /* Stealth Mode — Sovereign only */
     const stealthInput = document.getElementById('toggle-stealth');
@@ -1245,11 +1244,9 @@
     try {
       const isPublic = getToggle('toggle-public-profile');
       await AURUM.SettingsAPI.updateProfile({
-        profile_visibility: isPublic ? 'public' : 'private',
-        hide_aurum_score:   getToggle('toggle-hide-score'),
-        hide_league:        getToggle('toggle-hide-league'),
-        stealth_mode:       getToggle('toggle-stealth'),
-      });
+        hide_aurum_score: getToggle('toggle-hide-score'),
+        hide_league: getToggle('toggle-hide-league'),
+   });
       AURUM.ProfileCache.clear();
       AURUM.showToast('Privacy settings saved.', 'gold');
     } catch (err) {
@@ -1257,11 +1254,9 @@
     }
   }, 800);
 
-  ['toggle-public-profile', 'toggle-hide-score',
-   'toggle-hide-league',    'toggle-stealth'].forEach(id => {
-    document.getElementById(id)
-      ?.addEventListener('change', savePrivacy);
-  });
+  ['toggle-hide-score', 'toggle-hide-league'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', savePrivacy);
+});
 
   /* --------------------------------------------------
      WALLET — Currency preference (auto-save)
