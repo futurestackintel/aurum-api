@@ -1051,8 +1051,6 @@ export async function muteMember(crewId, clerkId, targetUserId, durationHours, r
   ) {
     return { error: 'You do not have permission to mute crew members' };
   }    
-	return { error: 'Only a crew captain or moderator can mute a member' };
-  }
 
   if (!durationHours || durationHours <= 0) return { error: 'durationHours must be a positive number' };
   if (!reason || reason.trim().length === 0) return { error: 'A reason is required to mute a member' };
@@ -1121,8 +1119,6 @@ export async function deleteCrewMessage(messageId, clerkId, db) {
     )
   ) {
     return { error: 'You do not have permission to delete crew messages' };
-  }
-	return { error: 'Only the Captain or a Moderator can delete crew messages' };
   }
 
     await db
