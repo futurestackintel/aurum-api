@@ -594,50 +594,113 @@ export async function setCrewLocked(crewId, clerkId, locked, db) {
 
 // ── PROMOTE / DEMOTE MODERATOR (captain only) ─────────────────
 
-export async function setModeratorRole(crewId, clerkId, targetUserId, makeModerator, db) {
-  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
-  if (!userRow) return { error: 'User not found' };
-  const userId = userRow.id;
+export async function setCrewMemberRole(crewId, clerkId, targetUserId, newRole, db) {
+  const allowedRoles = ['vice_captain', 'moderator', 'treasurer', 'member'];
 
-  const membership = await db
-    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
-    .bind(crewId, userId)
+  if (!allowedRoles.includes(newRole)) {
+    return { error: 'Invalid crew role' };
+  }
+
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
     .first();
-  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can promote or demote moderators' };
+
+  if (!userRow) return { error: 'User not found' };
+
+  const actorId = userRow.id;
+
+  const actor = await db
+    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, actorId)
+    .first();
+
+  if (!actor || actor.role !== 'captain') {
+    return { error: 'Only the crew captain can manage crew roles' };
+  }
+
+  if (actorId === targetUserId) {
+    return { error: 'The captain cannot change their own role' };
+  }
 
   const target = await db
-    .prepare(`SELECT * FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .prepare(`SELECT id, role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
     .bind(crewId, targetUserId)
     .first();
-  if (!target) return { error: 'That user is not a member of this crew' };
-  if (target.role === 'captain') return { error: 'Cannot change the captain\'s role this way' };
 
-  const newRole = makeModerator ? 'moderator' : 'member';
-  if (target.role === newRole) return { error: `That member is already a ${newRole}` };
+  if (!target) {
+    return { error: 'That user is not a member of this crew' };
+  }
 
-  await db.prepare(`UPDATE crew_members SET role = ? WHERE id = ?`).bind(newRole, target.id).run();
+  if (target.role === 'captain') {
+    return { error: 'The captain role cannot be changed through this action' };
+  }
 
-  const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
-  if (await notificationEnabled(targetUserId, 'crew_updates', db)) await db.prepare(`
-      INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
-    .bind(
-      crypto.randomUUID(),
+  const previousRole = target.role;
+
+  if (previousRole === newRole) {
+    return { error: `That member is already a ${newRole}` };
+  }
+
+  if (newRole !== 'member') {
+    const existing = await db
+      .prepare(`
+        SELECT user_id
+        FROM crew_members
+        WHERE crew_id = ? AND role = ? AND user_id != ?
+      `)
+      .bind(crewId, newRole, targetUserId)
+      .first();
+
+    if (existing) {
+      return { error: `This crew already has a ${newRole.replace('_', ' ')}` };
+    }
+  }
+
+  const now = nowISO();
+  const historyId = crypto.randomUUID();
+
+  let action = 'role_changed';
+
+  if (newRole === 'member') {
+    action = 'role_removed';
+  } else if (previousRole === 'member') {
+    action = 'role_appointed';
+  }
+
+  await db.batch([
+    db.prepare(`
+      UPDATE crew_members
+      SET role = ?
+      WHERE id = ?
+    `).bind(newRole, target.id),
+
+    db.prepare(`
+      INSERT INTO crew_governance_history
+        (id, crew_id, actor_user_id, target_user_id, action,
+         previous_role, new_role, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      historyId,
+      crewId,
+      actorId,
       targetUserId,
-      makeModerator ? 'crew_promoted' : 'crew_demoted',
-      makeModerator ? 'Promoted to Moderator' : 'Moderator role removed',
-      makeModerator
-        ? `You were promoted to Moderator in ${crewRow?.name || 'your crew'}.`
-        : `You are no longer a Moderator in ${crewRow?.name || 'your crew'}.`,
-      `/crews/${crewId}`,
-      new Date().toISOString(),
-    )
-    .run();
+      action,
+      previousRole,
+      newRole,
+      now
+    ),
+  ]);
 
-  return { crew_id: crewId, target_user_id: targetUserId, role: newRole };
+  return {
+    success: true,
+    crew_id: crewId,
+    target_user_id: targetUserId,
+    previous_role: previousRole,
+    role: newRole,
+    history_id: historyId,
+  };
 }
-
 // ── DISBAND CREW (captain only) ───────────────────────────────
 
 export async function disbandCrew(crewId, clerkId, db) {
