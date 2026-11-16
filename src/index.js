@@ -866,12 +866,24 @@ export default {
 
   async scheduled(event, env, ctx) {
 	ctx.waitUntil(
-      processRegisteredEventDeliveries(env.DB).catch((error) => {
-        console.error(
-          '[event-dispatcher] Processing failed:',
-          error?.name || 'ProcessingError',
-        );
-      }),
+            processRegisteredEventDeliveries(env.DB)
+        .then((summary) => {
+          if (summary.attempted > 0) {
+            console.log('[event-dispatcher] Delivery summary:', {
+              consumers: summary.consumers,
+              attempted: summary.attempted,
+              succeeded: summary.succeeded,
+              failed: summary.failed,
+              deadLettered: summary.deadLettered,
+            });
+          }
+        })
+        .catch((error) => {
+          console.error(
+            '[event-dispatcher] Processing failed:',
+            error?.name || 'ProcessingError',
+          );
+        }),
     );
     if (event.cron === '*/15 * * * *') {
       ctx.waitUntil(processDuelCron(env.DB));
