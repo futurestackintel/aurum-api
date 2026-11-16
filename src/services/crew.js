@@ -325,11 +325,12 @@ export async function inviteToCrew(crewId, clerkId, targetUsername, db) {
 
   if (targetUserId === userId) return { error: 'You cannot invite yourself' };
 
-  const targetMembership = await db
-    .prepare(`SELECT id FROM crew_members WHERE user_id = ?`)
-    .bind(targetUserId)
+    const targetMembership = await db
+    .prepare(`SELECT id FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, targetUserId)
     .first();
-  if (targetMembership) return { error: 'That user is already in a crew' };
+
+  if (targetMembership) return { error: 'That user is already a member of this crew' };
 
   const existing = await db
     .prepare(`SELECT id FROM crew_join_requests WHERE crew_id = ? AND user_id = ? AND status = 'pending'`)
@@ -380,9 +381,12 @@ export async function requestToJoinCrew(crewId, clerkId, db) {
     .first();
   if (kicked) return { error: 'You were removed from this crew and need an invite from the captain to rejoin' };
 
-  const membership = await db.prepare(`SELECT id FROM crew_members WHERE user_id = ?`).bind(userId).first();
-  if (membership) return { error: 'You are already a member of a crew' };
+    const membership = await db
+    .prepare(`SELECT id FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
+    .first();
 
+  if (membership) return { error: 'You are already a member of this crew' };
   const existing = await db
     .prepare(`SELECT id FROM crew_join_requests WHERE crew_id = ? AND user_id = ? AND status = 'pending'`)
     .bind(crewId, userId)
@@ -459,8 +463,12 @@ export async function respondToJoinRequest(requestId, clerkId, accept, db) {
     return { request: { id: requestId, status: 'declined' } };
   }
 
-  const alreadyInCrew = await db.prepare(`SELECT id FROM crew_members WHERE user_id = ?`).bind(jr.user_id).first();
-  if (alreadyInCrew) return { error: 'That user is already in a crew' };
+    const alreadyInCrew = await db
+    .prepare(`SELECT id FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(jr.crew_id, jr.user_id)
+    .first();
+
+  if (alreadyInCrew) return { error: 'That user is already a member of this crew' };
 
   await db.batch([
     db.prepare(`UPDATE crew_join_requests SET status = 'accepted', responded_at = ? WHERE id = ?`).bind(now, requestId),
@@ -528,7 +536,7 @@ export async function getPendingJoinRequestsForCrew(crewId, clerkId, db) {
 // ── LEAVE CREW (with captaincy succession) ───────────────────
 
 
-export async function leaveCrew(clerkId, db) {
+export async function leaveCrew(crewId, clerkId, db) {
   const userRow = await db
     .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
     .bind(clerkId)
@@ -538,13 +546,14 @@ export async function leaveCrew(clerkId, db) {
 
   const userId = userRow.id;
 
+    if (!crewId) return { error: 'crew_id is required' };
+
   const membership = await db
-    .prepare(`SELECT * FROM crew_members WHERE user_id = ?`)
-    .bind(userId)
+    .prepare(`SELECT * FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
     .first();
 
-  if (!membership) return { error: 'You are not in a crew' };
-
+  if (!membership) return { error: 'You are not a member of this crew' };
   const crewId = membership.crew_id;
   const now = nowISO();
 
@@ -1732,13 +1741,6 @@ export async function createCrew(clerkId, body, db) {
 
   if (existing) return { error: 'A crew with that name already exists' };
 
-  // Check user is not already in a crew
-  const membership = await db
-    .prepare(`SELECT id FROM crew_members WHERE user_id = ?`)
-    .bind(userId)
-    .first();
-
-  if (membership) return { error: 'You are already a member of a crew' };
 
     const now    = nowISO();
   const crewId = crypto.randomUUID();
@@ -1806,13 +1808,13 @@ export async function joinCrew(crewId, clerkId, db) {
     .first();
   if (kicked) return { error: 'You were removed from this crew and need an invite from the captain to rejoin' };
 
-  // Check user not already in any crew
+    // Check whether the user already belongs to this specific crew.
   const membership = await db
-    .prepare(`SELECT id FROM crew_members WHERE user_id = ?`)
-    .bind(userId)
+    .prepare(`SELECT id FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crewId, userId)
     .first();
 
-  if (membership) return { error: 'You are already a member of a crew' };
+  if (membership) return { error: 'You are already a member of this crew' };
 
   const now = nowISO();
 
@@ -1858,14 +1860,12 @@ export async function joinCrewByCode(inviteCode, clerkId, db) {
     .first();
   if (kicked) return { error: 'You were removed from this crew and need an invite from the captain to rejoin' };
 
-  const membership = await db
-    .prepare(`SELECT id FROM crew_members WHERE user_id = ?`)
-    .bind(userId)
+    const membership = await db
+    .prepare(`SELECT id FROM crew_members WHERE crew_id = ? AND user_id = ?`)
+    .bind(crew.id, userId)
     .first();
-  if (membership) {
-    if (membership.crew_id === crew.id) return { error: 'You are already a member of this crew' };
-    return { error: 'You are already a member of a crew' };
-  }
+
+  if (membership) return { error: 'You are already a member of this crew' };
 
   const now = nowISO();
 
@@ -2215,31 +2215,48 @@ export async function getCrewById(crewId, db) {
 // ── GET ALL CREWS ────────────────────────────────────────────
 
 export async function getCrews(limit, offset, clerkId, db) {
-  let myCrewId = null;
+  let userId = null;
+
   if (clerkId) {
-    const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
-    if (userRow) {
-      const membership = await db
-        .prepare(`SELECT crew_id FROM crew_members WHERE user_id = ?`)
-        .bind(userRow.id)
-        .first();
-      if (membership) myCrewId = membership.crew_id;
-    }
+    const userRow = await db
+      .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+      .bind(clerkId)
+      .first();
+
+    if (userRow) userId = userRow.id;
   }
 
-    const { results } = await db
+  const { results } = await db
     .prepare(`
-      SELECT id, name, description, member_count, created_at, is_locked
-      FROM crews
-      ORDER BY member_count DESC, created_at DESC
+      SELECT
+        c.id,
+        c.name,
+        c.description,
+        c.member_count,
+        c.created_at,
+        c.is_locked,
+        CASE
+          WHEN ? IS NOT NULL AND EXISTS (
+            SELECT 1
+            FROM crew_members cm
+            WHERE cm.crew_id = c.id
+              AND cm.user_id = ?
+          )
+          THEN 1
+          ELSE 0
+        END AS user_member
+      FROM crews c
+      ORDER BY c.member_count DESC, c.created_at DESC
       LIMIT ? OFFSET ?
     `)
-    .bind(limit ?? 20, offset ?? 0)
+    .bind(userId, userId, limit ?? 20, offset ?? 0)
     .all();
-	
-  return results.map(c => ({ ...c, user_member: c.id === myCrewId }));
-}
 
+  return results.map(c => ({
+    ...c,
+    user_member: Boolean(c.user_member),
+  }));
+}
 // ── GET ACTIVE CREW BATTLE (with live vote tally) ─────────────
 
 export async function getActiveCrewBattle(crewId, clerkId, db) {
