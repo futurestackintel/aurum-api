@@ -12,13 +12,7 @@
 
 import { requireAuth } from "../middleware/auth.js";
 import { PaymentService } from "../services/payments.js";
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
+import { jsonResponse } from '../http.js';
 
 const REFERRAL_SIGNUP_POINTS = 50;
 
