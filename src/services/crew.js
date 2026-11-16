@@ -305,7 +305,12 @@ export async function inviteToCrew(crewId, clerkId, targetUsername, db) {
     .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
     .bind(crewId, userId)
     .first();
-  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can send invites' };
+  if (
+  !membership ||
+  !(await hasCrewPermission(crewId, userId, 'manage_invites', db))
+) {
+  return { error: 'You do not have permission to send crew invites' };
+}
 
   if (!targetUsername || targetUsername.trim().length === 0) {
     return { error: 'target_username is required' };
@@ -436,7 +441,12 @@ export async function respondToJoinRequest(requestId, clerkId, accept, db) {
       .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
       .bind(jr.crew_id, userId)
       .first();
-    if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can approve join requests' };
+        if (
+      !membership ||
+      !(await hasCrewPermission(jr.crew_id, userId, 'manage_join_requests', db))
+    ) {
+      return { error: 'You do not have permission to manage join requests' };
+    }
   }
 
   const now = nowISO();
@@ -494,8 +504,11 @@ export async function getPendingJoinRequestsForCrew(crewId, clerkId, db) {
     .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
     .bind(crewId, userRow.id)
     .first();
-  if (!membership || membership.role !== 'captain') {
-    return { error: 'Only the crew captain can view join requests' };
+    if (
+    !membership ||
+    !(await hasCrewPermission(crewId, userRow.id, 'manage_join_requests', db))
+  ) {
+    return { error: 'You do not have permission to view join requests' };
   }
 
   const { results } = await db
