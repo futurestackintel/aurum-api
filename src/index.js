@@ -864,43 +864,57 @@ export default {
     }
   },
 
-  async scheduled(event, env, ctx) {
-	ctx.waitUntil(
-            processRegisteredEventDeliveries(env.DB)
-        .then((summary) => {
-          if (summary.attempted > 0) {
-            console.log('[event-dispatcher] Delivery summary:', {
-              consumers: summary.consumers,
-              attempted: summary.attempted,
-              succeeded: summary.succeeded,
-              failed: summary.failed,
-              deadLettered: summary.deadLettered,
-            });
-          }
-        })
+    async scheduled(event, env, ctx) {
+    const runCronTask = (name, task) =>
+      Promise.resolve()
+        .then(task)
         .catch((error) => {
           console.error(
-            '[event-dispatcher] Processing failed:',
-            error?.name || 'ProcessingError',
+            `[cron] ${name} failed:`,
+            error?.name || 'ScheduledTaskError',
           );
-        }),
+        });
+
+    ctx.waitUntil(
+      runCronTask('event-deliveries', async () => {
+        const summary = await processRegisteredEventDeliveries(env.DB);
+
+        if (summary.attempted > 0) {
+          console.log('[event-dispatcher] Delivery summary:', {
+            consumers: summary.consumers,
+            attempted: summary.attempted,
+            succeeded: summary.succeeded,
+            failed: summary.failed,
+            deadLettered: summary.deadLettered,
+          });
+        }
+      }),
     );
+
     if (event.cron === '*/15 * * * *') {
-      ctx.waitUntil(processDuelCron(env.DB));
-	  ctx.waitUntil(processCrewBattleCron(env.DB));
+      ctx.waitUntil(
+        runCronTask('duel', () => processDuelCron(env.DB)),
+      );
+      ctx.waitUntil(
+        runCronTask('crew-battle', () => processCrewBattleCron(env.DB)),
+      );
       return;
     }
+
+    const dailyTasks = [
+      ['leaderboard-snapshot', () => runLeaderboardSnapshot(env)],
+      ['exchange-rates', () => updateExchangeRates(env.DB)],
+      ['expired-appeals', () => finaliseExpiredAppeals(env.DB)],
+      ['expired-subscriptions', () => processExpiredSubscriptions(env.DB)],
+      ['expired-challenges', () => expireChallenges(env.DB)],
+    ];
+
     ctx.waitUntil(
-      Promise.all([
-        runLeaderboardSnapshot(env),
-        updateExchangeRates(env.DB),
-        finaliseExpiredAppeals(env.DB),
-        processExpiredSubscriptions(env.DB),
-        expireChallenges(env.DB),
-      ]),
+      Promise.all(
+        dailyTasks.map(([name, task]) => runCronTask(name, task)),
+      ),
     );
   },
-};
 
 // ── CORS helper ───────────────────────────────────────────────
 function withCors(response, cors) {
