@@ -140,6 +140,64 @@ export async function handleAdminRoutes(path, method, request, env) {
 
   const admin = await requireAdmin(request, env);
   if (admin.error) return json({ error: admin.error }, 403);
+    // ── GET /api/admin/event-deliveries/dead-letter ──────────
+  // Platform-admin-only, read-only inspection of failed event deliveries.
+  if (path === '/api/admin/event-deliveries/dead-letter' && method === 'GET') {
+    const url = new URL(request.url);
+    const rawLimit = Number(url.searchParams.get('limit') ?? 50);
+    const rawOffset = Number(url.searchParams.get('offset') ?? 0);
+
+    if (
+      !Number.isInteger(rawLimit) ||
+      rawLimit < 1 ||
+      rawLimit > 100 ||
+      !Number.isInteger(rawOffset) ||
+      rawOffset < 0
+    ) {
+      return json({ error: 'Invalid pagination parameters' }, 400);
+    }
+
+    try {
+      const countResult = await env.DB.prepare(`
+        SELECT COUNT(*) AS total
+        FROM domain_event_deliveries
+        WHERE status = 'dead_letter'
+      `).first();
+
+      const result = await env.DB.prepare(`
+        SELECT
+          d.id AS delivery_id,
+          d.event_id,
+          e.event_type,
+          d.consumer_key,
+          d.attempts,
+          d.last_error,
+          d.available_at,
+          d.processed_at,
+          d.created_at,
+          d.updated_at
+        FROM domain_event_deliveries d
+        INNER JOIN domain_events e
+          ON e.event_id = d.event_id
+        WHERE d.status = 'dead_letter'
+        ORDER BY d.updated_at DESC, d.id DESC
+        LIMIT ? OFFSET ?
+      `).bind(rawLimit, rawOffset).all();
+
+      return json({
+        dead_letters: result.results ?? [],
+        total: countResult?.total ?? 0,
+        limit: rawLimit,
+        offset: rawOffset,
+      });
+    } catch (err) {
+      console.error(
+        '[admin] Dead-letter retrieval failed:',
+        err?.name || 'DatabaseError',
+      );
+      return json({ error: 'Unable to retrieve dead-letter deliveries' }, 500);
+    }
+  }
     // ── GET /api/admin/audit-log ──────────────────────────────
   // Platform-admin-only, read-only security audit history.
   if (path === '/api/admin/audit-log' && method === 'GET') {
