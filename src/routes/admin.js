@@ -176,8 +176,10 @@ export async function handleAdminRoutes(path, method, request, env) {
   if (badgeApproveMatch && method === 'POST') {
     try {
      const result = await rejectBadgeRequest(badgeRejectMatch[1], admin.id, reason, env);
+
+await auditAdminAction(request, env, admin, 'badge_request.rejected', 'badge_request', badgeRejectMatch[1]);
+
 return json(result);
-       return json(result);
     } catch (err) {
       return json({ error: err.message }, 400);
     }
