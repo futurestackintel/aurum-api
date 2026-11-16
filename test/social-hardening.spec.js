@@ -133,7 +133,7 @@ describe('social authorization and privacy hardening', () => {
             return {
               async first() {
                 if (sql.includes('SELECT id, username, is_suspended')) return { id: viewerId, username: 'hardening_viewer', is_suspended: 0 };
-                if (sql.includes('SELECT id, profile_visibility')) return { id: viewerId, profile_visibility: 'public', stealth_mode: 0, is_suspended: 0 };
+                if (sql.includes('SELECT id, is_suspended')) return { id: viewerId, is_suspended: 0 };
                 if (sql.includes('CASE WHEN ? IS NULL')) return { following: 0, followers_count: 3, following_count: 4 };
                 throw new Error(`Unexpected query: ${sql} ${values}`);
               },
@@ -159,7 +159,7 @@ describe('social authorization and privacy hardening', () => {
             return {
               async first() {
                 if (sql.includes('SELECT id, username, is_suspended')) return { id: 'actual-follower-id', username: 'actual_follower', is_suspended: 0 };
-                if (sql.includes('SELECT id, profile_visibility')) return { id: 'recipient-id', profile_visibility: 'public', stealth_mode: 0, is_suspended: 0 };
+                if (sql.includes('SELECT id, is_suspended')) return { id: 'recipient-id', is_suspended: 0 };
                 if (sql.includes('SELECT EXISTS')) return { following: following ? 1 : 0, followers_count: following ? 1 : 0, following_count: 0 };
                 throw new Error(`Unexpected query: ${sql}`);
               },
