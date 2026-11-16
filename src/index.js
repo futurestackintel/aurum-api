@@ -36,6 +36,8 @@ import { processDuelCron }              from './services/duel.js';
 import { processCrewBattleCron }        from './services/crew.js';
 import { requireAuth }                   from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
+import './services/notificationEventConsumer.js';
+import { processRegisteredEventDeliveries } from './services/eventConsumerRegistry.js';
 export { CrewChatRoom } from './durableObjects/CrewChatRoom.js';
 export { DmRoom } from './durableObjects/DmRoom.js';
 
@@ -863,6 +865,14 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+	ctx.waitUntil(
+      processRegisteredEventDeliveries(env.DB).catch((error) => {
+        console.error(
+          '[event-dispatcher] Processing failed:',
+          error?.name || 'ProcessingError',
+        );
+      }),
+    );
     if (event.cron === '*/15 * * * *') {
       ctx.waitUntil(processDuelCron(env.DB));
 	  ctx.waitUntil(processCrewBattleCron(env.DB));
