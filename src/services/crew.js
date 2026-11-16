@@ -588,7 +588,12 @@ export async function kickMember(crewId, clerkId, targetUserId, db) {
     .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
     .bind(crewId, userId)
     .first();
-  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can remove a member' };
+    if (
+    !membership ||
+    !(await hasCrewPermission(crewId, userId, 'remove_members', db))
+  ) {
+    return { error: 'You do not have permission to remove crew members' };
+  }
   if (targetUserId === userId) return { error: 'Use leave-crew to remove yourself' };
 
   const target = await db
@@ -601,13 +606,17 @@ export async function kickMember(crewId, clerkId, targetUserId, db) {
 
     const kickedAt = nowISO();
 
-  await db.batch([
+    await db.batch([
     db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(target.id),
     db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`).bind(crewId),
     db.prepare(`
       INSERT INTO crew_kicks (id, crew_id, user_id, kicked_at)
       VALUES (?, ?, ?, ?)
     `).bind(crypto.randomUUID(), crewId, targetUserId, kickedAt),
+    db.prepare(`
+      DELETE FROM crew_role_delegations
+      WHERE crew_id = ? AND vice_captain_user_id = ?
+    `).bind(crewId, targetUserId),
   ]);
 
   if (await notificationEnabled(targetUserId, 'crew_updates', db)) await db.prepare(`
@@ -636,8 +645,12 @@ export async function setCrewLocked(crewId, clerkId, locked, db) {
     .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
     .bind(crewId, userId)
     .first();
-  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can lock or unlock the crew' };
-
+  if (
+    !membership ||
+    !(await hasCrewPermission(crewId, userId, 'manage_crew_lock', db))
+  ) {
+    return { error: 'You do not have permission to lock or unlock this crew' };
+  }
   await db.prepare(`UPDATE crews SET is_locked = ? WHERE id = ?`).bind(locked ? 1 : 0, crewId).run();
 
   return { crew_id: crewId, is_locked: !!locked };
