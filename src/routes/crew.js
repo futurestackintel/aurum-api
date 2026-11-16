@@ -47,6 +47,9 @@ import {
   getCrewMessages,
   getCrewWalletTransactions,
   getActiveCrewBattle,
+  getCrewRoleDelegations,
+  grantCrewRoleDelegation,
+  revokeCrewRoleDelegation,
 } from '../services/crew.js';
 import { notificationEnabled } from '../services/notifications.js';
 import { setReaction, removeReaction, getReactionsForMessages } from '../services/reactions.js';
@@ -551,6 +554,90 @@ if (roleMatch && method === 'POST') {
     } catch (err) {
       console.error('Disband crew error:', err);
       return jsonResponse({ error: 'Unable to disband crew. Please try again.' }, 500);
+    }
+  }
+
+	  // ── Vice Captain permission delegations — Captain only ──
+  const delegationMatch = path.match(/^\/api\/crews\/([^/]+)\/delegations$/);
+
+  if (delegationMatch && method === 'GET') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await getCrewRoleDelegations(
+        delegationMatch[1],
+        user.id,
+        db
+      );
+
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Get crew delegations error:', err);
+      return jsonResponse({ error: 'Unable to load delegations. Please try again.' }, 500);
+    }
+  }
+
+  if (delegationMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+
+      if (!body.target_user_id) {
+        return jsonResponse({ error: 'target_user_id is required' }, 400);
+      }
+
+      if (typeof body.permission !== 'string') {
+        return jsonResponse({ error: 'permission is required' }, 400);
+      }
+
+      const result = await grantCrewRoleDelegation(
+        delegationMatch[1],
+        user.id,
+        body.target_user_id,
+        body.permission,
+        db
+      );
+
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result, 201);
+    } catch (err) {
+      console.error('Grant crew delegation error:', err);
+      return jsonResponse({ error: 'Unable to grant permission. Please try again.' }, 500);
+    }
+  }
+
+  if (delegationMatch && method === 'DELETE') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+
+      if (!body.target_user_id) {
+        return jsonResponse({ error: 'target_user_id is required' }, 400);
+      }
+
+      if (typeof body.permission !== 'string') {
+        return jsonResponse({ error: 'permission is required' }, 400);
+      }
+
+      const result = await revokeCrewRoleDelegation(
+        delegationMatch[1],
+        user.id,
+        body.target_user_id,
+        body.permission,
+        db
+      );
+
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Revoke crew delegation error:', err);
+      return jsonResponse({ error: 'Unable to revoke permission. Please try again.' }, 500);
     }
   }
 
