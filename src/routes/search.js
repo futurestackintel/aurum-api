@@ -21,8 +21,6 @@ export async function handleSearchRoutes(path, method, request, env) {
           FROM users
           WHERE username LIKE ? || '%'
             AND account_deleted = 0
-            AND profile_visibility != 'private'
-            AND stealth_mode = 0
             AND is_suspended = 0
             AND deleted_at IS NULL
           ORDER BY username ASC
@@ -48,11 +46,9 @@ export async function handleSearchRoutes(path, method, request, env) {
             AND u.account_deleted = 0
             AND u.is_suspended = 0
             AND u.deleted_at IS NULL
-            AND (u.stealth_mode = 0 OR u.id = ?)
-            AND (COALESCE(u.profile_visibility, 'members') != 'private' OR u.id = ?)
           ORDER BY p.created_at DESC
           LIMIT 10
-        `).bind(q, viewer.id, viewer.id).all(),
+        `).bind(q).all(),
       ]);
 
       const users = usersResult.results.map(u => ({
@@ -74,7 +70,7 @@ export async function handleSearchRoutes(path, method, request, env) {
         id: p.id,
         content: p.content,
         created_at: p.created_at,
-        author_username: p.stealth_mode || !['public', 'members'].includes(p.profile_visibility) ? 'Anonymous' : p.username,
+        author_username: p.username,
       }));
 
       return jsonResponse({ users, crews, posts });
