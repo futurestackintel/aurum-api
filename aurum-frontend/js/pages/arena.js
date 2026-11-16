@@ -2107,7 +2107,7 @@ promoteBtn.style.display =
         ?.addEventListener('click', async () => {
           if (!confirm('Leave this crew?')) return;
           try {
-            await AURUM.CrewAPI.leaveCrew();
+            await AURUM.CrewAPI.leaveCrew(crewId);
             AURUM.showToast('You left the crew.', 'default');
             modal.style.display = 'none';
             this.loadCrews();
