@@ -401,6 +401,20 @@ const CrewAPI = {
     target_user_id: targetUserId,
     role,
   }),
+	  getRoleDelegations: (crewId) =>
+    apiRequest('GET', `/api/crews/${crewId}/delegations`),
+
+  grantRoleDelegation: (crewId, targetUserId, permission) =>
+    apiRequest('POST', `/api/crews/${crewId}/delegations`, {
+      target_user_id: targetUserId,
+      permission,
+    }),
+
+  revokeRoleDelegation: (crewId, targetUserId, permission) =>
+    apiRequest('DELETE', `/api/crews/${crewId}/delegations`, {
+      target_user_id: targetUserId,
+      permission,
+    }),
   getWalletTransactions: (crewId, limit = 30) =>
     apiRequest('GET', `/api/crews/${crewId}/wallet/transactions?limit=${limit}`),
   initiateSpend: (crewId, amountUsd, reason) =>
