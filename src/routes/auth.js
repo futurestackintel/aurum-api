@@ -37,14 +37,14 @@ export async function handleAuthRoutes(pathname, request, env) {
   // ── POST /auth/register ─────────────────────────────────────
   if (pathname === "/api/auth/register" && request.method === "POST") {
     const auth = await requireAuth(request, env);
-    if (auth.error) return json({ error: auth.error }, 401);
+    if (auth.error) return jsonResponse({ error: auth.error }, 401);
 
         const clerkUserId = auth.id;
     const body = await request.json();
     const { email, username, display_name, ref_code } = body;
 
     if (!email || !username) {
-      return json({ error: "email and username are required" }, 400);
+      return jsonResponse({ error: "email and username are required" }, 400);
     }
 
     try {
@@ -55,7 +55,7 @@ export async function handleAuthRoutes(pathname, request, env) {
         .first();
 
       if (existing) {
-        return json({ message: "User already registered", user_id: existing.id });
+        return jsonResponse({ message: "User already registered", user_id: existing.id });
       }
 
             const now    = new Date().toISOString();
@@ -137,7 +137,7 @@ export async function handleAuthRoutes(pathname, request, env) {
         console.error("Paystack customer creation failed (non-fatal):", err.message);
       }
 
-      return json(
+      return jsonResponse(
         { message: "User registered successfully", user_id: userId },
         201
       );
@@ -147,21 +147,21 @@ export async function handleAuthRoutes(pathname, request, env) {
       // Surface duplicate username/email constraint errors clearly
       if (err.message?.includes("UNIQUE constraint failed")) {
         if (err.message.includes("username")) {
-          return json({ error: "Username already taken" }, 409);
+          return jsonResponse({ error: "Username already taken" }, 409);
         }
         if (err.message.includes("email")) {
-          return json({ error: "Email already registered" }, 409);
+          return jsonResponse({ error: "Email already registered" }, 409);
         }
       }
 
-      return json({ error: "Registration failed. Please try again." }, 500);
+      return jsonResponse({ error: "Registration failed. Please try again." }, 500);
     }
   }
 
   // ── GET /auth/me ────────────────────────────────────────────
   if (pathname === "/api/auth/me" && request.method === "GET") {
     const auth = await requireAuth(request, env);
-   if (auth.error) return json({ error: auth.error }, 401);
+   if (auth.error) return jsonResponse({ error: auth.error }, 401);
     try {
       const user = await env.DB
         .prepare(`
@@ -181,7 +181,7 @@ export async function handleAuthRoutes(pathname, request, env) {
         .bind(auth.id)
         .first();
 
-            if (!user) return json({ error: "User not found" }, 404);
+            if (!user) return jsonResponse({ error: "User not found" }, 404);
 
       // Lazy-backfill: users created before the referral system shipped
       // won't have a referral_code yet. Generate one on first load.
@@ -212,10 +212,10 @@ export async function handleAuthRoutes(pathname, request, env) {
         messages: preferences ? !!preferences.messages : true,
         crew_updates: preferences ? !!preferences.crew_updates : true,
       };
-      return json({ user });
+      return jsonResponse({ user });
     } catch (err) {
       console.error("Auth me error:", err);
-      return json({ error: "Unable to load profile. Please try again." }, 500);
+      return jsonResponse({ error: "Unable to load profile. Please try again." }, 500);
     }
   }
 
