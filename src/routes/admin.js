@@ -76,6 +76,19 @@ import {
   getTopPerformers,
 }                                          from '../services/analytics.js';
 import { resolveCrewSpendFlag }           from '../services/crew.js';
+import { recordSecurityEvent } from '../services/securityAudit.js';
+
+async function auditAdminAction(request, env, admin, action, resourceType, resourceId) {
+  await recordSecurityEvent(env, {
+    actorId: admin.id,
+    actorType: 'platform_admin',
+    action,
+    resourceType,
+    resourceId: String(resourceId),
+    outcome: 'success',
+    request,
+  });
+}
 
 export async function handleAdminRoutes(path, method, request, env) {
 
