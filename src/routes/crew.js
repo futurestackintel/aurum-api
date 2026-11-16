@@ -462,9 +462,17 @@ export async function handleCrewRoutes(path, method, request, env) {
     const user = await requireAuth(request, env);
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
-    try {
-      const result = await leaveCrew(user.id, db);
+        try {
+      const body = await request.json();
+
+      if (!body.crew_id) {
+        return jsonResponse({ error: 'crew_id is required' }, 400);
+      }
+
+      const result = await leaveCrew(body.crew_id, user.id, db);
+
       if (result.error) return jsonResponse({ error: result.error }, 400);
+
       return jsonResponse(result);
     } catch (err) {
       console.error('Leave crew error:', err);
