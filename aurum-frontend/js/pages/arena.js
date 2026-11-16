@@ -424,7 +424,7 @@ window.ArenaPage = {
           <div class="modal-handle"></div>
           <h3 class="modal-title" id="member-action-title">Member</h3>
           <div style="display:flex;flex-direction:column;gap:var(--space-3);">
-            <button class="btn btn-outline btn-full" id="btn-action-promote" style="display:none;">Promote to Moderator</button>
+            <button class="btn btn-outline btn-full" id="btn-action-promote" style="display:none;">Manage Crew Role</button>
             <button class="btn btn-outline btn-full" id="btn-action-mute" style="display:none;">Mute in Crew Chat</button>
             <button class="btn btn-danger btn-full" id="btn-action-kick" style="display:none;">Remove from Crew</button>
           </div>
@@ -624,17 +624,52 @@ window.ArenaPage = {
           e.target.style.display = 'none';
       });
     document.getElementById('btn-action-promote')
-      ?.addEventListener('click', async (e) => {
-        const makeMod = e.currentTarget.dataset.makeMod === 'true';
-        try {
-          await AURUM.CrewAPI.setModerator(this.activeActionCrewId, this.activeActionUserId, makeMod);
-          document.getElementById('member-action-modal').style.display = 'none';
-          AURUM.showToast(makeMod ? 'Member promoted to moderator.' : 'Moderator demoted.', 'default');
-          this.openCrewDetail(this.activeActionCrewId);
-        } catch (err) {
-          AURUM.showToast(err.message || 'Could not update role.', 'error');
-        }
-      });
+  ?.addEventListener('click', async () => {
+    const currentRole = this.activeActionRole;
+
+    const availableRoles = [
+      'vice_captain',
+      'moderator',
+      'treasurer',
+      'member',
+    ];
+
+    const choices = availableRoles.filter(role => role !== currentRole);
+
+    const selectedRole = prompt(
+      `Current role: ${currentRole}\n\nChoose the new role:\n${choices.join('\n')}`,
+      choices[0]
+    );
+
+    if (!selectedRole) return;
+
+    if (!availableRoles.includes(selectedRole)) {
+      return AURUM.showToast('Invalid crew role.', 'error');
+    }
+
+    if (selectedRole === currentRole) {
+      return AURUM.showToast('That member already has this role.', 'error');
+    }
+
+    try {
+      await AURUM.CrewAPI.setRole(
+        this.activeActionCrewId,
+        this.activeActionUserId,
+        selectedRole
+      );
+
+      document.getElementById('member-action-modal').style.display = 'none';
+
+      AURUM.showToast(
+        `Member role updated to ${selectedRole.replace('_', ' ')}.`,
+        'default'
+      );
+
+      this.openCrewDetail(this.activeActionCrewId);
+    } catch (err) {
+      AURUM.showToast(err.message || 'Could not update role.', 'error');
+    }
+  });
     document.getElementById('btn-action-mute')
       ?.addEventListener('click', async () => {
         const reason = prompt(`Reason for muting ${this.activeActionUsername}:`);
@@ -2011,15 +2046,18 @@ window.ArenaPage = {
         });
       document.querySelectorAll('.btn-member-row').forEach(row => {
         row.addEventListener('click', () => {
-          this.activeActionCrewId  = crewId;
-          this.activeActionUserId  = row.dataset.userId;
-          this.activeActionUsername = row.dataset.username;
-          const isMod = row.dataset.role === 'moderator';
-          document.getElementById('member-action-title').textContent = row.dataset.username;
-          const promoteBtn = document.getElementById('btn-action-promote');
-          promoteBtn.style.display = row.dataset.canPromote === 'true' ? 'block' : 'none';
-          promoteBtn.textContent = isMod ? 'Demote to Member' : 'Promote to Moderator';
-          promoteBtn.dataset.makeMod = isMod ? 'false' : 'true';
+          this.activeActionCrewId = crewId;
+this.activeActionUserId = row.dataset.userId;
+this.activeActionUsername = row.dataset.username;
+this.activeActionRole = row.dataset.role;
+
+document.getElementById('member-action-title').textContent =
+  row.dataset.username;
+
+const promoteBtn = document.getElementById('btn-action-promote');
+
+promoteBtn.style.display =
+  row.dataset.canPromote === 'true' ? 'block' : 'none';
           document.getElementById('btn-action-mute').style.display = row.dataset.canMute === 'true' ? 'block' : 'none';
           document.getElementById('btn-action-kick').style.display = row.dataset.canKick === 'true' ? 'block' : 'none';
           document.getElementById('member-action-modal').style.display = 'flex';
