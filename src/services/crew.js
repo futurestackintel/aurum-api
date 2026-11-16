@@ -554,7 +554,6 @@ export async function leaveCrew(crewId, clerkId, db) {
     .first();
 
   if (!membership) return { error: 'You are not a member of this crew' };
-  const crewId = membership.crew_id;
   const now = nowISO();
 
   // Non-Captain member leaves.
