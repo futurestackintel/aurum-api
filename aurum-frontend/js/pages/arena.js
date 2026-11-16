@@ -2002,6 +2002,7 @@ window.ArenaPage = {
             <button class="btn btn-outline btn-sm btn-full" id="btn-copy-crew-invite-link" data-invite-code="${crew.invite_code || ''}">🔗 Copy Invite Link</button>
           </div>
           <div id="crew-detail-requests-section" style="margin-bottom:var(--space-3);"></div>
+		  <div id="crew-detail-delegations-section" style="margin-bottom:var(--space-3);"></div>
         ` : ''}
         <div style="margin-bottom:var(--space-3);">
           <p style="font-size:var(--text-xs);color:var(--color-text-muted);
@@ -2067,6 +2068,8 @@ promoteBtn.style.display =
       this.loadCrewBattleSection(crewId, me?.id);
       if (isCaptain) {
         this.loadCrewRequestsSection(crewId);
+		  this.loadCrewDelegationsSection(crewId, crew.members || []);
+		  
                 document.getElementById('btn-send-crew-invite')
           ?.addEventListener('click', async () => {
             const input = document.getElementById('crew-invite-username-input');
@@ -2226,7 +2229,119 @@ promoteBtn.style.display =
       container.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm);">Failed to load activity.</p>`;
     }
   },
+  async loadCrewDelegationsSection(crewId, members) {
+    const container = document.getElementById('crew-detail-delegations-section');
+    if (!container) return;
 
+    const viceCaptain = members.find(member => member.role === 'vice_captain');
+
+    container.innerHTML = `
+      <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+        text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-2);">
+        Vice Captain Permissions
+      </p>
+    `;
+
+    if (!viceCaptain) {
+      container.innerHTML += `
+        <p style="font-size:var(--text-sm);color:var(--color-text-muted);">
+          Appoint a Vice Captain before delegating administrative permissions.
+        </p>
+      `;
+      return;
+    }
+
+    const permissions = [
+      { id: 'manage_invites', label: 'Manage member invitations' },
+      { id: 'manage_join_requests', label: 'Manage join requests' },
+      { id: 'remove_members', label: 'Remove crew members' },
+      { id: 'manage_crew_lock', label: 'Lock and unlock the crew' },
+      { id: 'edit_crew_rules', label: 'Edit crew rules' },
+      { id: 'moderate_discussions', label: 'Moderate crew discussions' },
+    ];
+
+    try {
+      const { delegations = [] } =
+        await AURUM.CrewAPI.getRoleDelegations(crewId);
+
+      const granted = new Set(
+        delegations
+          .filter(item => item.vice_captain_user_id === viceCaptain.user_id)
+          .map(item => item.permission)
+      );
+
+      container.innerHTML = `
+        <p style="font-size:var(--text-xs);color:var(--color-text-muted);
+          text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--space-1);">
+          Vice Captain Permissions
+        </p>
+        <p style="font-size:var(--text-sm);margin-bottom:var(--space-2);">
+          Delegating to <strong>${this.escapeHTML(viceCaptain.username)}</strong>.
+          Each permission can be granted or revoked separately.
+        </p>
+        ${permissions.map(permission => {
+          const isGranted = granted.has(permission.id);
+
+          return `
+            <div class="card card-sm" style="display:flex;justify-content:space-between;
+              align-items:center;gap:var(--space-2);margin-bottom:var(--space-2);">
+              <div style="font-size:var(--text-sm);">
+                ${permission.label}
+                <p style="font-size:11px;color:var(--color-text-muted);">
+                  ${isGranted ? 'Currently delegated' : 'Not delegated'}
+                </p>
+              </div>
+              <button
+                class="btn ${isGranted ? 'btn-ghost' : 'btn-outline'} btn-sm btn-toggle-crew-delegation"
+                data-permission="${permission.id}"
+                data-granted="${isGranted}">
+                ${isGranted ? 'Revoke' : 'Grant'}
+              </button>
+            </div>
+          `;
+        }).join('')}
+      `;
+
+      container.querySelectorAll('.btn-toggle-crew-delegation').forEach(button => {
+        button.addEventListener('click', async () => {
+          const permission = button.dataset.permission;
+          const currentlyGranted = button.dataset.granted === 'true';
+
+          button.disabled = true;
+
+          try {
+            if (currentlyGranted) {
+              await AURUM.CrewAPI.revokeRoleDelegation(
+                crewId,
+                viceCaptain.user_id,
+                permission
+              );
+              AURUM.showToast('Delegated permission revoked.', 'default');
+            } else {
+              await AURUM.CrewAPI.grantRoleDelegation(
+                crewId,
+                viceCaptain.user_id,
+                permission
+              );
+              AURUM.showToast('Permission delegated.', 'gold');
+            }
+
+            this.loadCrewDelegationsSection(crewId, members);
+          } catch (err) {
+            button.disabled = false;
+            AURUM.showToast(err.message || 'Could not update delegation.', 'error');
+          }
+        });
+      });
+    } catch (err) {
+      container.innerHTML += `
+        <p style="font-size:var(--text-sm);color:var(--color-danger);">
+          Could not load delegation settings.
+        </p>
+      `;
+    }
+  },
+	
       async loadCrewRequestsSection(crewId) {
     const container = document.getElementById('crew-detail-requests-section');
     if (!container) return;
