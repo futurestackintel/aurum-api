@@ -6,6 +6,7 @@
 // upsert — see comment above that function.
 // ============================================================
 
+import { jsonResponse } from './http.js';
 import { handleWebhookRoutes }          from './routes/webhook.js';
 import { handleAuthRoutes }             from './routes/auth.js';
 import { handleTipsRoutes }             from './routes/tips.js';
