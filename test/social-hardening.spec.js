@@ -109,14 +109,20 @@ describe('social authorization and privacy hardening', () => {
     expect(cheerDb.statements[0]).toContain('is_suspended = 0');
   });
 
-  it("omits private and stealth authors' posts from search", async () => {
-    auth.requireAuth.mockResolvedValue({ id: viewerClerkId });
-    const response = await handleSearchRoutes('/api/search', 'GET',
-      new Request(`https://aurum.test/api/search?q=${searchTerm}`), { DB: env.DB });
-    expect(response.status).toBe(200);
-    const { posts } = await response.json();
-    expect(posts.map(post => post.id)).toEqual(['social-hardening-public-post']);
-  });
+  it('includes public posts regardless of legacy profile visibility or stealth flags', async () => {
+  auth.requireAuth.mockResolvedValue({ id: viewerClerkId });
+  const response = await handleSearchRoutes('/api/search', 'GET',
+    new Request(`https://aurum.test/api/search?q=${searchTerm}`), { DB: env.DB });
+
+  expect(response.status).toBe(200);
+  const { posts } = await response.json();
+
+  expect(posts.map(post => post.id).sort()).toEqual([
+    'social-hardening-private-post',
+    'social-hardening-public-post',
+    'social-hardening-stealth-post',
+  ].sort());
+});
 
   it('reports self relationship state so the profile hides Follow for its owner', async () => {
     auth.optionalAuth.mockResolvedValue({ id: viewerClerkId });
