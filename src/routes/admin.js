@@ -171,15 +171,30 @@ export async function handleAdminRoutes(path, method, request, env) {
     }
   }
 
-  // ── POST /api/admin/badge-requests/:id/approve ───────────
+    // ── POST /api/admin/badge-requests/:id/approve ───────────
   const badgeApproveMatch = path.match(/^\/api\/admin\/badge-requests\/([^/]+)\/approve$/);
   if (badgeApproveMatch && method === 'POST') {
     try {
-     const result = await rejectBadgeRequest(badgeRejectMatch[1], admin.id, reason, env);
+      const result = await approveBadgeRequest(badgeApproveMatch[1], admin.id, env);
 
-await auditAdminAction(request, env, admin, 'badge_request.rejected', 'badge_request', badgeRejectMatch[1]);
+      await auditAdminAction(request, env, admin, 'badge_request.approved', 'badge_request', badgeApproveMatch[1]);
 
-return json(result);
+      return json(result);
+    } catch (err) {
+      return json({ error: err.message }, 400);
+    }
+  }
+
+  // ── POST /api/admin/badge-requests/:id/reject ────────────
+  const badgeRejectMatch = path.match(/^\/api\/admin\/badge-requests\/([^/]+)\/reject$/);
+  if (badgeRejectMatch && method === 'POST') {
+    const { reason } = await request.json();
+    try {
+      const result = await rejectBadgeRequest(badgeRejectMatch[1], admin.id, reason, env);
+
+      await auditAdminAction(request, env, admin, 'badge_request.rejected', 'badge_request', badgeRejectMatch[1]);
+
+      return json(result);
     } catch (err) {
       return json({ error: err.message }, 400);
     }
