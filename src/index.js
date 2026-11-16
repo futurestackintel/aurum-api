@@ -723,13 +723,6 @@ async function checkKycGate(userId, db) {
   return { blocked: false };
 }
 
-// ── Helper ────────────────────────────────────────────────────
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
 
 // ── Main fetch handler ────────────────────────────────────────
 export default {
