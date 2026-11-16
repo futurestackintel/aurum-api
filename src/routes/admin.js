@@ -175,8 +175,9 @@ export async function handleAdminRoutes(path, method, request, env) {
   const badgeApproveMatch = path.match(/^\/api\/admin\/badge-requests\/([^/]+)\/approve$/);
   if (badgeApproveMatch && method === 'POST') {
     try {
-      const result = await approveBadgeRequest(badgeApproveMatch[1], admin.id, env);
-      return json(result);
+     const result = await rejectBadgeRequest(badgeRejectMatch[1], admin.id, reason, env);
+return json(result);
+       return json(result);
     } catch (err) {
       return json({ error: err.message }, 400);
     }
@@ -187,8 +188,7 @@ export async function handleAdminRoutes(path, method, request, env) {
   if (badgeRejectMatch && method === 'POST') {
     const { reason } = await request.json();
     try {
-      const result = await rejectBadgeRequest(badgeRejectMatch[1], admin.id, reason, env);
-      return json(result);
+      await auditAdminAction(request, env, admin, 'badge_request.rejected', 'badge_request', badgeRejectMatch[1]);
     } catch (err) {
       return json({ error: err.message }, 400);
     }
@@ -224,6 +224,7 @@ export async function handleAdminRoutes(path, method, request, env) {
   if (disputeVerifyMatch && method === 'POST') {
     try {
       const result = await verifyDisputedPost(disputeVerifyMatch[1], admin.id, env);
+	  await auditAdminAction(request, env, admin, 'dispute.verified', 'post', disputeVerifyMatch[1]);
       return json(result);
     } catch (err) {
       return json({ error: err.message }, 400);
@@ -236,6 +237,7 @@ export async function handleAdminRoutes(path, method, request, env) {
     const { reason } = await request.json();
     try {
       const result = await slashDisputedPost(disputeSlashMatch[1], admin.id, reason, env);
+      await auditAdminAction(request, env, admin, 'dispute.slashed', 'post', disputeSlashMatch[1]);
       return json(result);
     } catch (err) {
       return json({ error: err.message }, 400);
@@ -251,6 +253,7 @@ export async function handleAdminRoutes(path, method, request, env) {
     }
     try {
       const result = await decideAppeal(appealDecisionMatch[1], decision, admin.id, env);
+	  await auditAdminAction(request, env, admin, 'dispute.appeal_decided', 'post', appealDecisionMatch[1]);
       return json(result);
     } catch (err) {
       return json({ error: err.message }, 400);
@@ -277,6 +280,7 @@ export async function handleAdminRoutes(path, method, request, env) {
     const { decision, action_taken } = await request.json();
     try {
       const result = await resolveFlag(flagResolveMatch[1], admin.id, decision, action_taken, env);
+	  await auditAdminAction(request, env, admin, 'moderation.flag_resolved', 'moderation_flag', flagResolveMatch[1]);
       return json(result);
     } catch (err) {
       return json({ error: err.message }, 400);
@@ -355,7 +359,10 @@ export async function handleAdminRoutes(path, method, request, env) {
     try {
       const result = await resolveCrewSpendFlag(spendFlagResolveMatch[1], admin.id, decision, admin_notes, env.DB);
       if (result.error) return json({ error: result.error }, 400);
-      return json(result);
+
+await auditAdminAction(request, env, admin, 'crew_spend.flag_resolved', 'crew_spend_flag', spendFlagResolveMatch[1]);
+
+return json(result);
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
     }
@@ -436,7 +443,10 @@ export async function handleAdminRoutes(path, method, request, env) {
         UPDATE users SET is_suspended = 1, suspension_reason = ?
         WHERE id = ?
       `).bind(reason ?? null, banMatch[1]).run();
-      return json({ success: true, userId: banMatch[1], action: 'banned' });
+
+await auditAdminAction(request, env, admin, 'user.banned', 'user', banMatch[1]);
+
+return json({ success: true, userId: banMatch[1], action: 'banned' });
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
     }
@@ -450,7 +460,10 @@ export async function handleAdminRoutes(path, method, request, env) {
         UPDATE users SET is_suspended = 0, suspension_reason = NULL
         WHERE id = ?
       `).bind(unbanMatch[1]).run();
-      return json({ success: true, userId: unbanMatch[1], action: 'unbanned' });
+
+await auditAdminAction(request, env, admin, 'user.unbanned', 'user', unbanMatch[1]);
+
+return json({ success: true, userId: unbanMatch[1], action: 'unbanned' });
     } catch (err) {
       console.error(err); return json({ error: "Something went wrong" }, 500);
     }
@@ -504,6 +517,7 @@ export async function handleAdminRoutes(path, method, request, env) {
       await env.DB.prepare(`
         UPDATE users SET tier = ? WHERE id = ?
       `).bind(tier, userId).run();
+		await auditAdminAction(request, env, admin, 'user.tier_changed', 'user', userId);
 
       return json({ success: true, userId, tier });
     } catch (err) {
@@ -538,6 +552,7 @@ export async function handleAdminRoutes(path, method, request, env) {
         { note: reason ? `Admin adjustment: ${reason}` : `Admin adjustment by ${admin.id}` },
         env.DB,
       );
+		await auditAdminAction(request, env, admin, 'user.score_adjusted', 'user', userId);
 
       return json({ success: true, userId, delta, newScore });
     } catch (err) {
