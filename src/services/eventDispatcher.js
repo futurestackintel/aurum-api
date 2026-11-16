@@ -31,7 +31,25 @@ function createLeaseExpiry() {
 async function claimNextDelivery(db, consumerKey) {
   const now = new Date().toISOString();
   const leaseExpiry = createLeaseExpiry();
-
+  // Recover deliveries that expired during their final attempt.
+  await db.prepare(`
+    UPDATE domain_event_deliveries
+    SET
+      status = 'dead_letter',
+      locked_until = NULL,
+      last_error = 'MaxAttemptsExceeded',
+      updated_at = ?
+    WHERE consumer_key = ?
+      AND status = 'processing'
+      AND locked_until <= ?
+      AND attempts >= ?
+  `).bind(
+    now,
+    consumerKey,
+    now,
+    MAX_ATTEMPTS,
+  ).run();
+	
   return db.prepare(`
     UPDATE domain_event_deliveries
     SET
