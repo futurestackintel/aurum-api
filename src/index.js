@@ -852,14 +852,26 @@ export default {
 
       return withCors(response, cors);
 
-    } catch (err) {
-      console.error('Worker error:', err);
-      return new Response(
-        JSON.stringify({ error: 'Internal server error' }),
-        {
-          status: 500,
-          headers: { ...cors, 'Content-Type': 'application/json' },
-        },
+        } catch (err) {
+      const requestId =
+        request.headers.get('cf-ray') || crypto.randomUUID();
+
+      console.error('[request] Unhandled error:', {
+        requestId,
+        errorName: err?.name || 'RequestError',
+        pathname,
+        method: request.method,
+      });
+
+      return withCors(
+        jsonResponse(
+          {
+            error: 'Internal server error',
+            request_id: requestId,
+          },
+          500,
+        ),
+        cors,
       );
     }
   },
