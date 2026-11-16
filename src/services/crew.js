@@ -601,6 +601,9 @@ export async function kickMember(crewId, clerkId, targetUserId, db) {
     .bind(crewId, targetUserId)
     .first();
   if (!target) return { error: 'That user is not a member of this crew' };
+  if (target.role === 'captain') {
+  return { error: 'The crew captain cannot be removed by another member' };
+}
 
   const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
 
