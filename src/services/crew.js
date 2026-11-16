@@ -1017,8 +1017,12 @@ export async function setCrewRules(crewId, clerkId, rules, db) {
     .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
     .bind(crewId, userId)
     .first();
-  if (!membership || membership.role !== 'captain') return { error: 'Only the crew captain can edit crew rules' };
-
+  if (
+    !membership ||
+    !(await hasCrewPermission(crewId, userId, 'edit_crew_rules', db))
+  ) {
+    return { error: 'You do not have permission to edit crew rules' };
+  }
   if (rules && rules.length > 2000) return { error: 'Rules must be 2000 characters or less' };
 
   await db.prepare(`UPDATE crews SET rules = ? WHERE id = ?`).bind(rules?.trim() ?? null, crewId).run();
@@ -1037,8 +1041,17 @@ export async function muteMember(crewId, clerkId, targetUserId, durationHours, r
     .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
     .bind(crewId, userId)
     .first();
-  if (!membership || (membership.role !== 'captain' && membership.role !== 'moderator')) {
-    return { error: 'Only a crew captain or moderator can mute a member' };
+  if (
+    !membership ||
+    (
+      membership.role !== 'captain' &&
+      membership.role !== 'moderator' &&
+      !(await hasCrewPermission(crewId, userId, 'moderate_discussions', db))
+    )
+  ) {
+    return { error: 'You do not have permission to mute crew members' };
+  }    
+	return { error: 'Only a crew captain or moderator can mute a member' };
   }
 
   if (!durationHours || durationHours <= 0) return { error: 'durationHours must be a positive number' };
@@ -1099,8 +1112,17 @@ export async function deleteCrewMessage(messageId, clerkId, db) {
     .bind(message.crew_id, userId)
     .first();
 
-  if (!member || (member.role !== 'captain' && member.role !== 'moderator')) {
-    return { error: 'Only the Captain or a Moderator can delete crew messages' };
+  if (
+    !member ||
+    (
+      member.role !== 'captain' &&
+      member.role !== 'moderator' &&
+      !(await hasCrewPermission(message.crew_id, userId, 'moderate_discussions', db))
+    )
+  ) {
+    return { error: 'You do not have permission to delete crew messages' };
+  }
+	return { error: 'Only the Captain or a Moderator can delete crew messages' };
   }
 
     await db
