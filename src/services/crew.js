@@ -14,6 +14,44 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+const VICE_CAPTAIN_PERMISSIONS = [
+  'manage_invites',
+  'manage_join_requests',
+  'remove_members',
+  'manage_crew_lock',
+  'edit_crew_rules',
+  'moderate_discussions',
+];
+
+async function hasCrewPermission(crewId, userId, permission, db) {
+  const membership = await db
+    .prepare(`
+      SELECT role
+      FROM crew_members
+      WHERE crew_id = ? AND user_id = ?
+    `)
+    .bind(crewId, userId)
+    .first();
+
+  if (!membership) return false;
+  if (membership.role === 'captain') return true;
+
+  if (membership.role !== 'vice_captain') return false;
+
+  const delegation = await db
+    .prepare(`
+      SELECT id
+      FROM crew_role_delegations
+      WHERE crew_id = ?
+        AND vice_captain_user_id = ?
+        AND permission = ?
+    `)
+    .bind(crewId, userId, permission)
+    .first();
+
+  return !!delegation;
+}
+
 async function getOrCreateCrewWallet(crewId, db) {
   let wallet = await db
     .prepare(`SELECT * FROM crew_wallets WHERE crew_id = ?`)
@@ -590,6 +628,151 @@ export async function setCrewLocked(crewId, clerkId, locked, db) {
   await db.prepare(`UPDATE crews SET is_locked = ? WHERE id = ?`).bind(locked ? 1 : 0, crewId).run();
 
   return { crew_id: crewId, is_locked: !!locked };
+}
+
+export async function getCrewRoleDelegations(crewId, clerkId, db) {
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+
+  if (!userRow) return { error: 'User not found' };
+
+  const captain = await db
+    .prepare(`
+      SELECT role FROM crew_members
+      WHERE crew_id = ? AND user_id = ?
+    `)
+    .bind(crewId, userRow.id)
+    .first();
+
+  if (!captain || captain.role !== 'captain') {
+    return { error: 'Only the crew captain can view role delegations' };
+  }
+
+  const { results } = await db
+    .prepare(`
+      SELECT d.id, d.vice_captain_user_id, d.permission,
+             d.granted_by_user_id, d.created_at, u.username
+      FROM crew_role_delegations d
+      JOIN users u ON u.id = d.vice_captain_user_id
+      WHERE d.crew_id = ?
+      ORDER BY d.created_at ASC
+    `)
+    .bind(crewId)
+    .all();
+
+  return { delegations: results };
+}
+
+export async function grantCrewRoleDelegation(
+  crewId, clerkId, targetUserId, permission, db
+) {
+  if (!VICE_CAPTAIN_PERMISSIONS.includes(permission)) {
+    return { error: 'Invalid delegation permission' };
+  }
+
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+
+  if (!userRow) return { error: 'User not found' };
+
+  const captain = await db
+    .prepare(`
+      SELECT role FROM crew_members
+      WHERE crew_id = ? AND user_id = ?
+    `)
+    .bind(crewId, userRow.id)
+    .first();
+
+  if (!captain || captain.role !== 'captain') {
+    return { error: 'Only the crew captain can grant permissions' };
+  }
+
+  const target = await db
+    .prepare(`
+      SELECT role FROM crew_members
+      WHERE crew_id = ? AND user_id = ?
+    `)
+    .bind(crewId, targetUserId)
+    .first();
+
+  if (!target || target.role !== 'vice_captain') {
+    return { error: 'Delegations can only be granted to the current Vice Captain' };
+  }
+
+  const id = crypto.randomUUID();
+  const createdAt = nowISO();
+
+  try {
+    await db
+      .prepare(`
+        INSERT INTO crew_role_delegations
+          (id, crew_id, vice_captain_user_id, permission,
+           granted_by_user_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `)
+      .bind(id, crewId, targetUserId, permission, userRow.id, createdAt)
+      .run();
+  } catch (error) {
+    if (String(error?.message || '').includes('UNIQUE')) {
+      return { error: 'This permission has already been granted' };
+    }
+    throw error;
+  }
+
+  return { success: true, delegation: {
+    id,
+    crew_id: crewId,
+    vice_captain_user_id: targetUserId,
+    permission,
+    created_at: createdAt,
+  }};
+}
+
+export async function revokeCrewRoleDelegation(
+  crewId, clerkId, targetUserId, permission, db
+) {
+  if (!VICE_CAPTAIN_PERMISSIONS.includes(permission)) {
+    return { error: 'Invalid delegation permission' };
+  }
+
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+
+  if (!userRow) return { error: 'User not found' };
+
+  const captain = await db
+    .prepare(`
+      SELECT role FROM crew_members
+      WHERE crew_id = ? AND user_id = ?
+    `)
+    .bind(crewId, userRow.id)
+    .first();
+
+  if (!captain || captain.role !== 'captain') {
+    return { error: 'Only the crew captain can revoke permissions' };
+  }
+
+  const result = await db
+    .prepare(`
+      DELETE FROM crew_role_delegations
+      WHERE crew_id = ?
+        AND vice_captain_user_id = ?
+        AND permission = ?
+    `)
+    .bind(crewId, targetUserId, permission)
+    .run();
+
+  if (!result.meta?.changes) {
+    return { error: 'Delegation not found' };
+  }
+
+  return { success: true, revoked: true };
 }
 
 // ── PROMOTE / DEMOTE MODERATOR (captain only) ─────────────────
