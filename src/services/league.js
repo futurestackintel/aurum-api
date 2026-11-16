@@ -6,7 +6,8 @@
 // ============================================================
 
 import { scoreToLeague } from './aurumScore.js';
-import { notificationEnabled } from './notifications.js';
+import { createDomainEvent } from './eventContract.js';
+import { publishDomainEvent } from './eventPublisher.js';
 
 // League rank order — higher index = higher rank
 const LEAGUE_RANK = {
@@ -63,20 +64,23 @@ export async function assignLeague(userId, db) {
     const newRank      = LEAGUE_RANK[newLeague]      ?? -1;
     const isPromotion  = newRank > previousRank;
 
-    if (isPromotion && await notificationEnabled(userId, 'league_promotions', db)) {
-      await db
-        .prepare(`
-          INSERT INTO notifications
-            (id, user_id, type, title, body, action_url, created_at)
-          VALUES (?, ?, 'league_promoted', 'League Promotion 🏆', ?, '/leaderboard', ?)
-        `)
-        .bind(
-          crypto.randomUUID(),
-          userId,
-          `You've been promoted to ${newLeague} League. 🏆`,
-          new Date().toISOString(),
-        )
-        .run();
+        if (isPromotion) {
+      const event = createDomainEvent({
+        eventType: 'notification.requested',
+        actorType: 'system',
+        resourceType: 'user',
+        resourceId: userId,
+        payload: {
+          recipientUserId: userId,
+          type: 'league_promoted',
+          title: 'League Promotion 🏆',
+          body: `You've been promoted to ${newLeague} League. 🏆`,
+          actionUrl: '/leaderboard',
+          preference: 'league_promotions',
+        },
+      });
+
+      await publishDomainEvent(db, event, ['notifications']);
     }
   }
 
