@@ -44,7 +44,7 @@ if (sql.replace(/\s+/g, ' ').includes('SELECT role FROM crew_members')) {
             return targetExists ? { role: 'member' } : null;
           }
 
-          if (sql.includes('SELECT id FROM crew_role_delegations')) {
+          if (sql.replace(/\s+/g, ' ').includes('SELECT id FROM crew_role_delegations')) {
             state.delegationChecks++;
             return permission === this.values[2]
               ? { id: 'delegation-id' }
