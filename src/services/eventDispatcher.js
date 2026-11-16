@@ -226,12 +226,12 @@ export async function dispatchNextEvent(db, consumerKey, handler) {
       payload: JSON.parse(eventRow.payload_json),
     };
 
-    await handler(event, {
+        await handler(event, {
+      db,
       deliveryId: delivery.id,
       attempt: delivery.attempts,
       consumerKey,
     });
-
     const completed = await completeDelivery(db, delivery);
 
     return {
