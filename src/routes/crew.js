@@ -33,7 +33,7 @@ import {
   leaveCrew,
   kickMember,
   setCrewLocked,
-  setModeratorRole,
+  setCrewMemberRole,
   disbandCrew,
   setCrewRules,
   muteMember,
@@ -504,25 +504,40 @@ export async function handleCrewRoutes(path, method, request, env) {
     }
   }
 
-  // ── POST /api/crews/:id/moderator — captain promotes/demotes ──
-  const modMatch = path.match(/^\/api\/crews\/([^/]+)\/moderator$/);
-  if (modMatch && method === 'POST') {
-    const user = await requireAuth(request, env);
-    if (user.error) return jsonResponse({ error: user.error }, 401);
+  // ── POST /api/crews/:id/roles — captain manages crew roles ──
+const roleMatch = path.match(/^\/api\/crews\/([^/]+)\/roles$/);
 
-    try {
-      const body = await request.json();
-      if (!body.target_user_id) return jsonResponse({ error: 'target_user_id is required' }, 400);
-      if (typeof body.make_moderator !== 'boolean') return jsonResponse({ error: 'make_moderator (boolean) is required' }, 400);
-      const result = await setModeratorRole(modMatch[1], user.id, body.target_user_id, body.make_moderator, db);
-      if (result.error) return jsonResponse({ error: result.error }, 400);
-      return jsonResponse(result);
-    } catch (err) {
-      console.error('Set moderator role error:', err);
-      return jsonResponse({ error: 'Unable to update role. Please try again.' }, 500);
+if (roleMatch && method === 'POST') {
+  const user = await requireAuth(request, env);
+  if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  try {
+    const body = await request.json();
+
+    if (!body.target_user_id) {
+      return jsonResponse({ error: 'target_user_id is required' }, 400);
     }
-  }
 
+    if (typeof body.role !== 'string') {
+      return jsonResponse({ error: 'role is required' }, 400);
+    }
+
+    const result = await setCrewMemberRole(
+      roleMatch[1],
+      user.id,
+      body.target_user_id,
+      body.role,
+      db
+    );
+
+    if (result.error) return jsonResponse({ error: result.error }, 400);
+
+    return jsonResponse(result);
+  } catch (err) {
+    console.error('Set crew role error:', err);
+    return jsonResponse({ error: 'Unable to update crew role. Please try again.' }, 500);
+  }
+}
   // ── POST /api/crews/:id/disband — captain disbands crew ─────
   const disbandMatch = path.match(/^\/api\/crews\/([^/]+)\/disband$/);
   if (disbandMatch && method === 'POST') {
