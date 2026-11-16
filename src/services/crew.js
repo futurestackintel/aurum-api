@@ -527,54 +527,162 @@ export async function getPendingJoinRequestsForCrew(crewId, clerkId, db) {
 
 // ── LEAVE CREW (with captaincy succession) ───────────────────
 
+
 export async function leaveCrew(clerkId, db) {
-  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
+  const userRow = await db
+    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+    .bind(clerkId)
+    .first();
+
   if (!userRow) return { error: 'User not found' };
+
   const userId = userRow.id;
 
-  const membership = await db.prepare(`SELECT * FROM crew_members WHERE user_id = ?`).bind(userId).first();
+  const membership = await db
+    .prepare(`SELECT * FROM crew_members WHERE user_id = ?`)
+    .bind(userId)
+    .first();
+
   if (!membership) return { error: 'You are not in a crew' };
 
   const crewId = membership.crew_id;
   const now = nowISO();
 
+  // Non-Captain member leaves.
   if (membership.role !== 'captain') {
-    await db.batch([
-      db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(membership.id),
-      db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`).bind(crewId),
-    ]);
+    const statements = [
+      db.prepare(`DELETE FROM crew_members WHERE id = ?`)
+        .bind(membership.id),
+
+      db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`)
+        .bind(crewId),
+    ];
+
+    if (membership.role === 'vice_captain') {
+      statements.push(
+        db.prepare(`
+          DELETE FROM crew_role_delegations
+          WHERE crew_id = ? AND vice_captain_user_id = ?
+        `).bind(crewId, userId)
+      );
+    }
+
+    await db.batch(statements);
+
     return { left: true, crew_id: crewId };
   }
 
-  // Captain is leaving — find successor
+  // Captain is leaving. Apply the approved succession order.
   let successor = await db
-    .prepare(`SELECT * FROM crew_members WHERE crew_id = ? AND role = 'moderator' AND user_id != ? ORDER BY joined_at ASC LIMIT 1`)
+    .prepare(`
+      SELECT *
+      FROM crew_members
+      WHERE crew_id = ?
+        AND role = 'vice_captain'
+        AND user_id != ?
+      ORDER BY joined_at ASC
+      LIMIT 1
+    `)
     .bind(crewId, userId)
     .first();
 
   if (!successor) {
     successor = await db
-      .prepare(`SELECT * FROM crew_members WHERE crew_id = ? AND role = 'member' AND user_id != ? ORDER BY joined_at ASC LIMIT 1`)
+      .prepare(`
+        SELECT *
+        FROM crew_members
+        WHERE crew_id = ?
+          AND role = 'moderator'
+          AND user_id != ?
+        ORDER BY joined_at ASC
+        LIMIT 1
+      `)
       .bind(crewId, userId)
       .first();
   }
 
   if (!successor) {
-    // Captain was the only member
-    await db.batch([
-      db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(membership.id),
-      db.prepare(`UPDATE crews SET member_count = 0 WHERE id = ?`).bind(crewId),
-    ]);
-    return { left: true, crew_id: crewId, note: 'Crew now has no members' };
+    successor = await db
+      .prepare(`
+        SELECT *
+        FROM crew_members
+        WHERE crew_id = ?
+          AND role = 'member'
+          AND user_id != ?
+        ORDER BY joined_at ASC
+        LIMIT 1
+      `)
+      .bind(crewId, userId)
+      .first();
   }
 
-  await db.batch([
-    db.prepare(`DELETE FROM crew_members WHERE id = ?`).bind(membership.id),
-    db.prepare(`UPDATE crew_members SET role = 'captain' WHERE id = ?`).bind(successor.id),
-    db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`).bind(crewId),
-  ]);
+  // No eligible successor: crew becomes empty.
+  if (!successor) {
+    await db.batch([
+      db.prepare(`DELETE FROM crew_role_delegations WHERE crew_id = ? AND vice_captain_user_id = ?`)
+        .bind(crewId, userId),
 
-  return { left: true, crew_id: crewId, new_captain_id: successor.user_id };
+      db.prepare(`DELETE FROM crew_members WHERE id = ?`)
+        .bind(membership.id),
+
+      db.prepare(`UPDATE crews SET member_count = 0 WHERE id = ?`)
+        .bind(crewId),
+    ]);
+
+    return {
+      left: true,
+      crew_id: crewId,
+      note: 'Crew now has no members',
+    };
+  }
+
+  const historyId = crypto.randomUUID();
+
+  const statements = [
+    db.prepare(`DELETE FROM crew_role_delegations WHERE crew_id = ? AND vice_captain_user_id = ?`)
+      .bind(crewId, userId),
+
+    db.prepare(`DELETE FROM crew_members WHERE id = ?`)
+      .bind(membership.id),
+
+    db.prepare(`UPDATE crew_members SET role = 'captain' WHERE id = ?`)
+      .bind(successor.id),
+
+    db.prepare(`UPDATE crews SET member_count = member_count - 1 WHERE id = ?`)
+      .bind(crewId),
+
+    db.prepare(`
+      INSERT INTO crew_governance_history
+        (id, crew_id, actor_user_id, target_user_id, action,
+         previous_role, new_role, created_at)
+      VALUES (?, ?, ?, ?, 'role_changed', ?, 'captain', ?)
+    `).bind(
+      historyId,
+      crewId,
+      userId,
+      successor.user_id,
+      successor.role,
+      now
+    ),
+  ];
+
+  // The new Captain no longer needs Vice Captain delegations.
+  if (successor.role === 'vice_captain') {
+    statements.push(
+      db.prepare(`
+        DELETE FROM crew_role_delegations
+        WHERE crew_id = ? AND vice_captain_user_id = ?
+      `).bind(crewId, successor.user_id)
+    );
+  }
+
+  await db.batch(statements);
+
+  return {
+    left: true,
+    crew_id: crewId,
+    new_captain_id: successor.user_id,
+  };
 }
 
 // ── KICK MEMBER (captain only) ────────────────────────────────
