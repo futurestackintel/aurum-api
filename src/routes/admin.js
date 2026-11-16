@@ -140,6 +140,114 @@ export async function handleAdminRoutes(path, method, request, env) {
 
   const admin = await requireAdmin(request, env);
   if (admin.error) return json({ error: admin.error }, 403);
+    // ── GET /api/admin/audit-log ──────────────────────────────
+  // Platform-admin-only, read-only security audit history.
+  if (path === '/api/admin/audit-log' && method === 'GET') {
+    const url = new URL(request.url);
+
+    const rawLimit = Number(url.searchParams.get('limit') ?? 50);
+    const rawOffset = Number(url.searchParams.get('offset') ?? 0);
+
+    if (
+      !Number.isInteger(rawLimit) ||
+      rawLimit < 1 ||
+      rawLimit > 100 ||
+      !Number.isInteger(rawOffset) ||
+      rawOffset < 0
+    ) {
+      return json({ error: 'Invalid pagination parameters' }, 400);
+    }
+
+    const filters = [
+      ['action', 'action'],
+      ['actor_type', 'actor_type'],
+      ['actor_id', 'actor_id'],
+      ['outcome', 'outcome'],
+      ['resource_type', 'resource_type'],
+      ['request_id', 'request_id'],
+    ];
+
+    const conditions = [];
+    const values = [];
+
+    for (const [parameter, column] of filters) {
+      const value = url.searchParams.get(parameter)?.trim();
+
+      if (value) {
+        if (value.length > 120) {
+          return json({ error: `Invalid ${parameter} filter` }, 400);
+        }
+
+        conditions.push(`${column} = ?`);
+        values.push(value);
+      }
+    }
+
+    const whereClause = conditions.length
+      ? `WHERE ${conditions.join(' AND ')}`
+      : '';
+
+    try {
+      const countResult = await env.DB.prepare(`
+        SELECT COUNT(*) AS total
+        FROM security_audit_log
+        ${whereClause}
+      `).bind(...values).first();
+
+      const result = await env.DB.prepare(`
+        SELECT
+          id,
+          actor_id,
+          actor_type,
+          action,
+          resource_type,
+          resource_id,
+          outcome,
+          request_id,
+          metadata_json,
+          created_at
+        FROM security_audit_log
+        ${whereClause}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+      `).bind(...values, rawLimit, rawOffset).all();
+
+      const events = (result.results ?? []).map(event => {
+        let metadata = null;
+
+        if (event.metadata_json) {
+          try {
+            metadata = JSON.parse(event.metadata_json);
+          } catch {
+            metadata = null;
+          }
+        }
+
+        return {
+          id: event.id,
+          actor_id: event.actor_id,
+          actor_type: event.actor_type,
+          action: event.action,
+          resource_type: event.resource_type,
+          resource_id: event.resource_id,
+          outcome: event.outcome,
+          request_id: event.request_id,
+          metadata,
+          created_at: event.created_at,
+        };
+      });
+
+      return json({
+        events,
+        total: countResult?.total ?? 0,
+        limit: rawLimit,
+        offset: rawOffset,
+      });
+    } catch (err) {
+      console.error('Audit log retrieval failed:', err);
+      return json({ error: 'Unable to retrieve audit log' }, 500);
+    }
+  }
 
   // ── GET /api/admin/check — frontend admin-status probe ───
   if (path === '/api/admin/check' && method === 'GET') {
