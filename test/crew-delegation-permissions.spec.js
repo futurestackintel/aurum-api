@@ -37,8 +37,8 @@ function createPermissionDb({
             return { id: 'actor-id' };
           }
 
-          if (sql.includes('SELECT role FROM crew_members')) {
-            const userId = this.values[1];
+if (sql.replace(/\s+/g, ' ').includes('SELECT role FROM crew_members')) { 
+	 const userId = this.values[1];
 
             if (userId === 'actor-id') return { role };
             return targetExists ? { role: 'member' } : null;
