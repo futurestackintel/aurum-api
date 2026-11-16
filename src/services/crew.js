@@ -1578,8 +1578,18 @@ export async function processCrewBattleCron(db) {
     .bind(now)
     .all();
 
-  for (const b of toClose) {
-    await closeCrewBattleWindow(b.id, db);
+    for (const b of toClose) {
+    try {
+      const result = await closeCrewBattleWindow(b.id, db);
+      if (result?.error) {
+        console.error('[crew-battle-cron] Close failed:', result.error);
+      }
+    } catch (error) {
+      console.error(
+        '[crew-battle-cron] Close failed:',
+        error?.name || 'CrewBattleCloseError',
+      );
+    }
   }
 
   // Auto-release payouts for battles past their dispute deadline with no report
@@ -1593,15 +1603,34 @@ export async function processCrewBattleCron(db) {
 
   const released = [];
   for (const battle of toRelease) {
-    const result = await resolveCrewBattle(battle.id, battle.winner_crew_id, null, db);
-    if (!result.error) {
-      await db.prepare(`UPDATE crew_battles SET dispute_status = 'none' WHERE id = ?`).bind(battle.id).run();
+    try {
+      const result = await resolveCrewBattle(
+        battle.id,
+        battle.winner_crew_id,
+        null,
+        db,
+      );
+
+      if (result.error) {
+        console.error('[crew-battle-cron] Payout resolution failed:', result.error);
+        continue;
+      }
+
+      await db.prepare(`
+        UPDATE crew_battles SET dispute_status = 'none' WHERE id = ?
+      `).bind(battle.id).run();
+
       released.push(battle.id);
+    } catch (error) {
+      console.error(
+        '[crew-battle-cron] Payout resolution failed:',
+        error?.name || 'CrewBattlePayoutError',
+      );
     }
   }
 
   return { closed: toClose.length, released: released.length };
-}
+  }
 
 // ── FREEZE / UNFREEZE CREW (admin only) ───────────────────────
 
