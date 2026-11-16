@@ -134,16 +134,27 @@ export async function requireAuth(request, env) {
 export async function requireAuthFromQuery(request, env) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
+
   if (!token) {
+    await auditAuthDenial(request, env, {
+      category: 'missing_query_token',
+    });
+
     return { error: "Missing token query parameter" };
   }
+
   try {
     const payload = await verifyJWT(token);
+
     return {
-      id:    payload.sub,
+      id: payload.sub,
       email: payload.email ?? null,
     };
   } catch (err) {
+    await auditAuthDenial(request, env, {
+      category: 'invalid_or_expired_query_token',
+    });
+
     return { error: err.message };
   }
 }
