@@ -490,8 +490,7 @@
     <div class="settings-section-header">
       <p class="settings-section-title">Privacy &amp; Visibility</p>
     </div>
-
-    <!-- Profile visibility -->
+	  
     <div class="settings-row" style="border-radius:var(--radius-lg)
       var(--radius-lg) 0 0;">
       <div class="settings-row-left">
@@ -540,8 +539,7 @@
         </label>
       </div>
     </div>
-
-    <!-- Stealth Mode — Sovereign only -->
+	  
     <div class="settings-row" style="border-radius:0 0 var(--radius-lg)
       var(--radius-lg);">
       <div class="settings-row-left">
@@ -993,7 +991,6 @@
     setToggle('toggle-hide-score', !!user.hide_aurum_score);
     setToggle('toggle-hide-league', !!user.hide_league);
 
-    /* Stealth Mode — Sovereign only */
     const stealthInput = document.getElementById('toggle-stealth');
     const stealthSub   = document.getElementById('stealth-sub');
     const stealthBadge = document.getElementById('stealth-sovereign-badge');
@@ -1241,20 +1238,20 @@
      matching the backend contract in handleUpdateProfile.
   -------------------------------------------------- */
   const savePrivacy = debounce(async () => {
-    try {
-      const isPublic = getToggle('toggle-public-profile');
-      await AURUM.SettingsAPI.updateProfile({
-        hide_aurum_score: getToggle('toggle-hide-score'),
-        hide_league: getToggle('toggle-hide-league'),
-   });
-      AURUM.ProfileCache.clear();
-      AURUM.showToast('Privacy settings saved.', 'gold');
-    } catch (err) {
-      AURUM.showToast('Could not save settings.', 'error');
-    }
-  }, 800);
+  try {
+    await AURUM.SettingsAPI.updateProfile({
+      hide_aurum_score: getToggle('toggle-hide-score'),
+      hide_league: getToggle('toggle-hide-league'),
+    });
 
-  ['toggle-hide-score', 'toggle-hide-league'].forEach(id => {
+    AURUM.ProfileCache.clear();
+    AURUM.showToast('Privacy settings saved.', 'gold');
+  } catch (err) {
+    AURUM.showToast('Could not save settings.', 'error');
+  }
+}, 800);
+
+['toggle-hide-score', 'toggle-hide-league'].forEach(id => {
   document.getElementById(id)?.addEventListener('change', savePrivacy);
 });
 
