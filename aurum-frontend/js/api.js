@@ -390,8 +390,8 @@ const CrewAPI = {
     apiRequest('DELETE', `/api/crew-messages/${messageId}/reactions`),
   getReactions: (messageIds) =>
     apiRequest('POST', '/api/crew-messages/reactions/batch', { message_ids: messageIds }),
-  leaveCrew: () =>
-    apiRequest('POST', '/api/crews/leave'),
+    leaveCrew: (crewId) =>
+    apiRequest('POST', '/api/crews/leave', { crew_id: crewId }),
   kickMember: (crewId, targetUserId) =>
     apiRequest('POST', `/api/crews/${crewId}/kick`, { target_user_id: targetUserId }),
   setLocked: (crewId, locked) =>
