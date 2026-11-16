@@ -1,3 +1,4 @@
+import { recordSecurityEvent } from '../services/securityAudit.js';
 const JWKS_URL = "https://clerk.tryaurum.store/.well-known/jwks.json";
 
 async function getJWKS() {
@@ -62,7 +63,32 @@ async function verifyJWT(token) {
   if (!valid) throw new Error("Invalid JWT signature");
   return payload;
 }
-
+async function auditAuthDenial(request, env, {
+  actorId = null,
+  actorType = 'anonymous',
+  action = 'auth.authentication_denied',
+  statusCode = 401,
+  category,
+}) {
+  try {
+    await recordSecurityEvent(env, {
+      actorId,
+      actorType,
+      action,
+      resourceType: 'api_route',
+      resourceId: new URL(request.url).pathname,
+      outcome: 'denied',
+      request,
+      metadata: {
+        method: request.method,
+        status_code: statusCode,
+        category,
+      },
+    });
+  } catch (err) {
+    console.error('Authentication audit logging failed:', err.message);
+  }
+}
 /**
  * Verify Clerk JWT and return user object.
  * Returns { id, email } on success or { error } on failure.
@@ -70,17 +96,29 @@ async function verifyJWT(token) {
  */
 export async function requireAuth(request, env) {
   const authHeader = request.headers.get("Authorization");
+
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    await auditAuthDenial(request, env, {
+      category: 'missing_authorization_header',
+    });
+
     return { error: "Missing or invalid Authorization header" };
   }
+
   const token = authHeader.slice(7);
+
   try {
     const payload = await verifyJWT(token);
+
     return {
-      id:    payload.sub,
+      id: payload.sub,
       email: payload.email ?? null,
     };
   } catch (err) {
+    await auditAuthDenial(request, env, {
+      category: 'invalid_or_expired_token',
+    });
+
     return { error: err.message };
   }
 }
@@ -141,9 +179,20 @@ export async function requireAdmin(request, env) {
   const user = await requireAuth(request, env);
   if (user.error) return user;
 
-  const adminIds = (env.ADMIN_USER_IDS ?? "").split(",").map(s => s.trim()).filter(Boolean);
+  const adminIds = (env.ADMIN_USER_IDS ?? "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
 
   if (!adminIds.includes(user.id)) {
+    await auditAuthDenial(request, env, {
+      actorId: user.id,
+      actorType: 'member',
+      action: 'admin.access_denied',
+      statusCode: 403,
+      category: 'insufficient_role',
+    });
+
     return { error: "Admin access required" };
   }
 
