@@ -873,6 +873,14 @@ export async function setCrewMemberRole(crewId, clerkId, targetUserId, newRole, 
       newRole,
       now
     ),
+	  ...(previousRole === 'vice_captain' && newRole !== 'vice_captain'
+  ? [
+      db.prepare(`
+        DELETE FROM crew_role_delegations
+        WHERE crew_id = ? AND vice_captain_user_id = ?
+      `).bind(crewId, targetUserId),
+    ]
+  : []),
   ]);
 
   return {
