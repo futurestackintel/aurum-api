@@ -396,8 +396,11 @@ const CrewAPI = {
     apiRequest('POST', `/api/crews/${crewId}/kick`, { target_user_id: targetUserId }),
   setLocked: (crewId, locked) =>
     apiRequest('POST', `/api/crews/${crewId}/lock`, { locked }),
-  setModerator: (crewId, targetUserId, makeModerator) =>
-    apiRequest('POST', `/api/crews/${crewId}/moderator`, { target_user_id: targetUserId, make_moderator: makeModerator }),
+  setRole: (crewId, targetUserId, role) =>
+  apiRequest('POST', `/api/crews/${crewId}/roles`, {
+    target_user_id: targetUserId,
+    role,
+  }),
   getWalletTransactions: (crewId, limit = 30) =>
     apiRequest('GET', `/api/crews/${crewId}/wallet/transactions?limit=${limit}`),
   initiateSpend: (crewId, amountUsd, reason) =>
