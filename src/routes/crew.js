@@ -54,6 +54,7 @@ import {
 import { notificationEnabled } from '../services/notifications.js';
 import { setReaction, removeReaction, getReactionsForMessages } from '../services/reactions.js';
 import { requireAuth, requireAdmin, requireAuthFromQuery, optionalAuth } from '../middleware/auth.js';
+import { jsonResponse } from '../http.js';
 export async function handleCrewRoutes(path, method, request, env) {
   const db = env.DB;
 
@@ -1011,12 +1012,4 @@ if (roleMatch && method === 'POST') {
   }
 
   return null;
-}
-
-// ── Helper ──────────────────────────────────────────────────
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
