@@ -499,13 +499,6 @@
           Allow others to view your profile and Wealth Passport
         </span>
       </div>
-      <div class="settings-row-right">
-        <label class="toggle-wrap">
-          <input type="checkbox" class="toggle-input" id="toggle-public-profile"
-            checked />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
     </div>
 
     <!-- Hide Aurum Score -->
@@ -553,13 +546,6 @@
         <span class="settings-row-sub" id="stealth-sub">
           Appear as Anonymous on leaderboards and posts
         </span>
-      </div>
-      <div class="settings-row-right">
-        <label class="toggle-wrap">
-          <input type="checkbox" class="toggle-input" id="toggle-stealth"
-            disabled />
-          <span class="toggle-slider"></span>
-        </label>
       </div>
     </div>
 
@@ -984,30 +970,12 @@
     }
     renderStickerGrid(stickerId);
 
-    /* Privacy toggles
+    /* Privacy toggles */
        FIX: read the real backend field names now that GET /api/auth/me
        actually returns them — profile_visibility (enum) and
        hide_aurum_score, not profile_public / hide_score. */
     setToggle('toggle-hide-score', !!user.hide_aurum_score);
     setToggle('toggle-hide-league', !!user.hide_league);
-
-    const stealthInput = document.getElementById('toggle-stealth');
-    const stealthSub   = document.getElementById('stealth-sub');
-    const stealthBadge = document.getElementById('stealth-sovereign-badge');
-
-    if (tier === 'sovereign') {
-      if (stealthInput) stealthInput.disabled = false;
-      setToggle('toggle-stealth', !!user.stealth_mode);
-      if (stealthBadge) stealthBadge.style.display = 'inline-flex';
-    } else {
-      if (stealthInput) stealthInput.disabled = true;
-      if (stealthSub) {
-        stealthSub.textContent =
-          'Sovereign members only — upgrade to unlock stealth mode';
-        stealthSub.style.color = 'var(--color-gold-dim)';
-      }
-      if (stealthBadge) stealthBadge.style.display = 'inline-flex';
-    }
 
     /* Notification preferences come from the existing persisted
        notification_preferences contract included by /api/auth/me. */
