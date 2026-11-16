@@ -187,14 +187,18 @@ return json(result);
 
   // ── POST /api/admin/badge-requests/:id/reject ────────────
   const badgeRejectMatch = path.match(/^\/api\/admin\/badge-requests\/([^/]+)\/reject$/);
-  if (badgeRejectMatch && method === 'POST') {
-    const { reason } = await request.json();
-    try {
-      await auditAdminAction(request, env, admin, 'badge_request.rejected', 'badge_request', badgeRejectMatch[1]);
-    } catch (err) {
-      return json({ error: err.message }, 400);
-    }
+if (badgeRejectMatch && method === 'POST') {
+  const { reason } = await request.json();
+  try {
+    const result = await rejectBadgeRequest(badgeRejectMatch[1], admin.id, reason, env);
+
+    await auditAdminAction(request, env, admin, 'badge_request.rejected', 'badge_request', badgeRejectMatch[1]);
+
+    return json(result);
+  } catch (err) {
+    return json({ error: err.message }, 400);
   }
+}
 
   // ── GET /api/admin/disputes ──────────────────────────────
   if (path === '/api/admin/disputes' && method === 'GET') {
