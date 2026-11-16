@@ -1,4 +1,5 @@
 import { requireAuth } from '../middleware/auth.js';
+import { jsonResponse } from '../http.js';
 
 export async function handleSearchRoutes(path, method, request, env) {
   const db = env.DB;
@@ -80,11 +81,4 @@ export async function handleSearchRoutes(path, method, request, env) {
     }
   }
   return null;
-}
-
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
