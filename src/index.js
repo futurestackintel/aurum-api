@@ -927,6 +927,7 @@ export default {
       ),
     );
   },
+};
 
 // ── CORS helper ───────────────────────────────────────────────
 function withCors(response, cors) {
