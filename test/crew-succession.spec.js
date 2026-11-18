@@ -29,30 +29,35 @@ function createSuccessionDb({
         },
 
         async first() {
-          if (sql.includes('SELECT id FROM users')) {
+          const normalizedSql = sql.replace(/\s+/g, ' ').trim();
+
+          // Resolve the Clerk ID to the internal database user ID.
+          if (normalizedSql.includes('SELECT id FROM users')) {
             return { id: 'captain-id' };
           }
 
+          // Return the departing member's crew membership.
           if (
-            sql.includes('SELECT * FROM crew_members') &&
-            sql.includes('WHERE user_id = ?')
+            normalizedSql.includes('FROM crew_members') &&
+            normalizedSql.includes('WHERE crew_id = ? AND user_id = ?')
           ) {
             return actorMembership;
           }
 
-          if (sql.includes("role = 'vice_captain'")) {
+          // Find the highest-priority eligible successor.
+          if (normalizedSql.includes("role = 'vice_captain'")) {
             return candidates.vice_captain ?? null;
           }
 
-          if (sql.includes("role = 'moderator'")) {
+          if (normalizedSql.includes("role = 'moderator'")) {
             return candidates.moderator ?? null;
           }
 
-          if (sql.includes("role = 'member'")) {
+          if (normalizedSql.includes("role = 'member'")) {
             return candidates.member ?? null;
           }
 
-          throw new Error(`Unexpected query: ${sql}`);
+          throw new Error(`Unexpected query: ${normalizedSql}`);
         },
       };
     },
@@ -64,6 +69,7 @@ function createSuccessionDb({
           values: statement.values,
         })),
       );
+
       return [];
     },
   };
@@ -99,10 +105,12 @@ describe('Crew leadership succession', () => {
     expect(state.batchCalls).toHaveLength(1);
 
     const statements = state.batchCalls[0];
+
     const promotion = statements.find(statement =>
       statement.sql.includes("UPDATE crew_members SET role = 'captain'")
     );
 
+    expect(promotion).toBeDefined();
     expect(promotion.values).toEqual(['vice-membership']);
   });
 
@@ -200,6 +208,7 @@ describe('Crew leadership succession', () => {
     expect(result.new_captain_id).toBe('vice-id');
 
     const statements = state.batchCalls[0];
+
     const history = statements.find(statement =>
       statement.sql.includes('INSERT INTO crew_governance_history')
     );
