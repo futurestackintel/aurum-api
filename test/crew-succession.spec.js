@@ -93,7 +93,7 @@ describe('Crew leadership succession', () => {
       },
     });
 
-    const result = await leaveCrew('clerk-captain', db);
+    const result = await leaveCrew('crew-1', 'clerk-captain', db);
 
     expect(result.new_captain_id).toBe('vice-id');
     expect(state.batchCalls).toHaveLength(1);
@@ -122,7 +122,7 @@ describe('Crew leadership succession', () => {
       },
     });
 
-    const result = await leaveCrew('clerk-captain', db);
+    const result = await leaveCrew('crew-1', 'clerk-captain', db);
 
     expect(result.new_captain_id).toBe('moderator-id');
   });
@@ -138,7 +138,7 @@ describe('Crew leadership succession', () => {
       },
     });
 
-    const result = await leaveCrew('clerk-captain', db);
+    const result = await leaveCrew('crew-1', 'clerk-captain', db);
 
     expect(result.new_captain_id).toBe('member-id');
   });
@@ -146,7 +146,7 @@ describe('Crew leadership succession', () => {
   it('leaves the crew empty when no eligible successor exists', async () => {
     const { db, state } = createSuccessionDb();
 
-    const result = await leaveCrew('clerk-captain', db);
+    const result = await leaveCrew('crew-1', 'clerk-captain', db);
 
     expect(result.left).toBe(true);
     expect(result.note).toBe('Crew now has no members');
@@ -171,7 +171,7 @@ describe('Crew leadership succession', () => {
       actorRole: 'vice_captain',
     });
 
-    const result = await leaveCrew('clerk-captain', db);
+    const result = await leaveCrew('crew-1', 'clerk-captain', db);
 
     expect(result.left).toBe(true);
 
@@ -195,7 +195,7 @@ describe('Crew leadership succession', () => {
       },
     });
 
-    const result = await leaveCrew('clerk-captain', db);
+    const result = await leaveCrew('crew-1', 'clerk-captain', db);
 
     expect(result.new_captain_id).toBe('vice-id');
 
