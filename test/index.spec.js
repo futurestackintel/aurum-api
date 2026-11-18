@@ -10,8 +10,12 @@ import securityAuditMigration from "../migrations/0034_security_audit_log.sql?ra
 import worker from "../src";
 
 beforeAll(async () => {
-  // Apply the actual security audit migration to the isolated test database.
-  await env.DB.exec(securityAuditMigration);
+  // Remove SQL comment-only lines before applying the migration in the test database.
+  const migrationSql = securityAuditMigration
+    .replace(/^\s*--.*$/gm, "")
+    .trim();
+
+  await env.DB.exec(migrationSql);
 });
 
 async function expectAuthDenial(path) {
