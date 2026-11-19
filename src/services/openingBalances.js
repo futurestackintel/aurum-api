@@ -449,34 +449,34 @@ export class OpeningBalanceService {
       throw new Error('Every item must be classified before review');
     }
 
-    if (result.meta?.changes !== 1) {
-      throw new Error('Opening-balance batch review failed');
-    }
 		
-    await this.db.prepare(`
-      UPDATE financial_opening_balance_batches
-      SET
-        status = 'reviewed',
-        total_items = ?,
-        verified_items = ?,
-        disputed_items = ?,
-        excluded_items = ?,
-        reviewed_by_type = ?,
-        reviewed_by_id = ?,
-        reviewed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-      WHERE id = ?
-        AND status = 'draft'
-    `).bind(
-      counts.total_items,
-      counts.verified_items,
-      counts.disputed_items,
-      counts.excluded_items,
-      reviewer.type,
-      reviewer.id,
-      batchId
-    ).run();
+    const result = await this.db.prepare(`
+  UPDATE financial_opening_balance_batches
+  SET
+    status = 'reviewed',
+    total_items = ?,
+    verified_items = ?,
+    disputed_items = ?,
+    excluded_items = ?,
+    reviewed_by_type = ?,
+    reviewed_by_id = ?,
+    reviewed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  WHERE id = ?
+    AND status = 'draft'
+`).bind(
+  counts.total_items,
+  counts.verified_items,
+  counts.disputed_items,
+  counts.excluded_items,
+  reviewer.type,
+  reviewer.id,
+  batchId
+).run();
 
+if (result.meta?.changes !== 1) {
+  throw new Error('Opening-balance batch review failed');
+}
     return this.getBatch(batchId);
   }
 
@@ -518,25 +518,27 @@ export class OpeningBalanceService {
       throw new Error('Batch has no verified opening-balance items');
     }
 
-    if (result.meta?.changes !== 1) {
-      throw new Error('Opening-balance batch approval failed');
-    }
+    
 		
-    await this.db.prepare(`
-      UPDATE financial_opening_balance_batches
-      SET
-        status = 'approved',
-        approved_by_type = ?,
-        approved_by_id = ?,
-        approved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-      WHERE id = ?
-        AND status = 'reviewed'
-    `).bind(
-      approver.type,
-      approver.id,
-      batchId
-    ).run();
+    const result = await this.db.prepare(`
+  UPDATE financial_opening_balance_batches
+  SET
+    status = 'approved',
+    approved_by_type = ?,
+    approved_by_id = ?,
+    approved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  WHERE id = ?
+    AND status = 'reviewed'
+`).bind(
+  approver.type,
+  approver.id,
+  batchId
+).run();
+
+if (result.meta?.changes !== 1) {
+  throw new Error('Opening-balance batch approval failed');
+}
 
     return this.getBatch(batchId);
   }
