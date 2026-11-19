@@ -31,6 +31,7 @@ export class PaystackAdapter {
 
     this.provider = new PaystackProvider(secretKey);
     this.providerName = 'paystack';
+  }
 		  /**
    * Verify a transfer using its provider reference.
    */
@@ -187,5 +188,4 @@ export class PaystackAdapter {
       currencyCode,
       status: result.status || 'pending',
     };
-  }
   }
