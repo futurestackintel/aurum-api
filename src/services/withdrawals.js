@@ -53,7 +53,6 @@ export class WithdrawalService {
     );
 
     currencyCode = validateCurrencyCode(currencyCode);
-
     assertSafeMinorUnits(amountMinor);
 
     if (amountMinor === 0) {
@@ -64,10 +63,7 @@ export class WithdrawalService {
       throw new Error('Bank withdrawals currently support NGN only');
     }
 
-    if (
-      !bankDetails ||
-      typeof bankDetails !== 'object'
-    ) {
+    if (!bankDetails || typeof bankDetails !== 'object') {
       throw new Error('Saved bank details are required');
     }
 
@@ -98,6 +94,10 @@ export class WithdrawalService {
       accountName,
     });
 
+    // ----------------------------------------------------------
+    // IDEMPOTENCY
+    // ----------------------------------------------------------
+
     const existing = await this.db
       .prepare(`
         SELECT *
@@ -123,68 +123,89 @@ export class WithdrawalService {
       };
     }
 
-    // Create the provider recipient from the user's saved bank details.
-    const recipient = await this.payments.createTransferRecipient({
-      name: accountName,
-      account_number: accountNumber,
-      bank_code: bankCode,
-      currency: currencyCode,
-    });
-
-    const recipientCode = recipient?.recipient_code;
-
-    if (
-      typeof recipientCode !== 'string' ||
-      recipientCode.trim() === ''
-    ) {
-      throw new Error(
-        'Payment provider returned an invalid transfer recipient'
-      );
-    }
-
     const operationId = crypto.randomUUID();
     const reference = `aurum_withdrawal_${operationId}`;
 
-    // Store only the provider recipient code, not the bank account number.
-    await this.db
-      .prepare(`
-        INSERT INTO financial_payment_operations (
-          id,
-          user_id,
-          operation_type,
-          status,
-          amount_minor,
-          currency_code,
-          provider,
-          idempotency_scope,
-          idempotency_key,
-          request_fingerprint,
-          provider_reference,
-          metadata_json
-        )
-        VALUES (
-          ?, ?, 'withdrawal', 'reserved', ?, ?, ?,
-          ?, ?, ?, ?, ?
-        )
-      `)
-      .bind(
-        operationId,
-        userId,
-        amountMinor,
-        currencyCode,
-        this.provider,
-        scope,
-        idempotencyKey,
-        fingerprint,
-        reference,
-        JSON.stringify({
-          request_id: requestId,
-          recipient_code: recipientCode,
-        })
-      )
-      .run();
+    // ----------------------------------------------------------
+    // CREATE DURABLE OPERATION BEFORE EXTERNAL PROVIDER CALLS
+    // ----------------------------------------------------------
 
     try {
+      await this.db
+        .prepare(`
+          INSERT INTO financial_payment_operations (
+            id,
+            user_id,
+            operation_type,
+            status,
+            amount_minor,
+            currency_code,
+            provider,
+            idempotency_scope,
+            idempotency_key,
+            request_fingerprint,
+            provider_reference,
+            metadata_json
+          )
+          VALUES (
+            ?, ?, 'withdrawal', 'reserved', ?, ?, ?,
+            ?, ?, ?, ?, ?
+          )
+        `)
+        .bind(
+          operationId,
+          userId,
+          amountMinor,
+          currencyCode,
+          this.provider,
+          scope,
+          idempotencyKey,
+          fingerprint,
+          reference,
+          JSON.stringify({
+            request_id: requestId,
+          })
+        )
+        .run();
+    } catch (error) {
+      // Another concurrent request may have won the idempotency race.
+      const racedOperation = await this.db
+        .prepare(`
+          SELECT *
+          FROM financial_payment_operations
+          WHERE idempotency_scope = ?
+            AND idempotency_key = ?
+        `)
+        .bind(scope, idempotencyKey)
+        .first();
+
+      if (racedOperation) {
+        if (
+          racedOperation.request_fingerprint !== fingerprint
+        ) {
+          throw new Error(
+            'Idempotency key was already used for a different withdrawal'
+          );
+        }
+
+        return {
+          operationId: racedOperation.id,
+          reference: racedOperation.provider_reference,
+          status: racedOperation.status,
+          alreadyCreated: true,
+        };
+      }
+
+      throw error;
+    }
+
+    let transferAttempted = false;
+
+    try {
+      // --------------------------------------------------------
+      // PROVISION WALLET ACCOUNTS
+      // --------------------------------------------------------
+
       const userAccounts =
         await this.accounts.provisionUserAccounts(
           userId,
@@ -214,7 +235,10 @@ export class WithdrawalService {
         throw new Error('User wallet ledger accounts are not active');
       }
 
-      // Reserve funds before contacting the transfer endpoint.
+      // --------------------------------------------------------
+      // RESERVE WITHDRAWAL FUNDS
+      // --------------------------------------------------------
+
       const reservation = await this.ledger.postTransaction({
         idempotencyScope: 'wallet-withdrawal-reservation',
         idempotencyKey: operationId,
@@ -245,7 +269,7 @@ export class WithdrawalService {
         ],
       });
 
-      await this.db
+      const reservationUpdate = await this.db
         .prepare(`
           UPDATE financial_payment_operations
           SET
@@ -261,6 +285,60 @@ export class WithdrawalService {
         )
         .run();
 
+      if (reservationUpdate.meta?.changes !== 1) {
+        throw new Error(
+          'Unable to record withdrawal reservation'
+        );
+      }
+
+      // --------------------------------------------------------
+      // CREATE PROVIDER RECIPIENT
+      // --------------------------------------------------------
+
+      const recipient = await this.payments.createTransferRecipient({
+        name: accountName,
+        account_number: accountNumber,
+        bank_code: bankCode,
+        currency: currencyCode,
+      });
+
+      const recipientCode = recipient?.recipient_code;
+
+      if (
+        typeof recipientCode !== 'string' ||
+        recipientCode.trim() === ''
+      ) {
+        throw new Error(
+          'Payment provider returned an invalid transfer recipient'
+        );
+      }
+
+      // Persist recipient code. Never persist the bank account number.
+      const metadata = {
+        request_id: requestId,
+        recipient_code: recipientCode,
+      };
+
+      await this.db
+        .prepare(`
+          UPDATE financial_payment_operations
+          SET
+            metadata_json = ?,
+            updated_at = ?
+          WHERE id = ?
+            AND status = 'reserved'
+        `)
+        .bind(
+          JSON.stringify(metadata),
+          new Date().toISOString(),
+          operationId
+        )
+        .run();
+
+      // --------------------------------------------------------
+      // MOVE OPERATION INTO PROCESSING
+      // --------------------------------------------------------
+
       const processingUpdate = await this.db
         .prepare(`
           UPDATE financial_payment_operations
@@ -270,17 +348,24 @@ export class WithdrawalService {
           WHERE id = ?
             AND status = 'reserved'
         `)
-        .bind(new Date().toISOString(), operationId)
+        .bind(
+          new Date().toISOString(),
+          operationId
+        )
         .run();
 
       if (processingUpdate.meta?.changes !== 1) {
         throw new Error(
-          'Withdrawal reservation requires reconciliation'
+          'Withdrawal requires reconciliation before transfer'
         );
       }
 
-      // Use a stable reference so the provider operation can be investigated
-      // if the network response is lost.
+      // --------------------------------------------------------
+      // INITIATE PROVIDER TRANSFER
+      // --------------------------------------------------------
+
+      transferAttempted = true;
+
       let transfer;
 
       try {
@@ -304,6 +389,10 @@ export class WithdrawalService {
         );
       }
 
+      // --------------------------------------------------------
+      // VALIDATE PROVIDER RESPONSE
+      // --------------------------------------------------------
+
       if (
         transfer.reference !== reference ||
         transfer.amountMinor !== amountMinor ||
@@ -312,7 +401,9 @@ export class WithdrawalService {
         await this.markReconciliationRequired(
           operationId,
           'TRANSFER_RESPONSE_MISMATCH',
-          new Error('Provider transfer response did not match the request')
+          new Error(
+            'Provider transfer response did not match the withdrawal'
+          )
         );
 
         throw new Error(
@@ -320,13 +411,14 @@ export class WithdrawalService {
         );
       }
 
-      await this.db
+      const transferCodeUpdate = await this.db
         .prepare(`
           UPDATE financial_payment_operations
           SET
             provider_transfer_code = ?,
             updated_at = ?
           WHERE id = ?
+            AND status = 'processing'
         `)
         .bind(
           transfer.transferCode || null,
@@ -334,6 +426,22 @@ export class WithdrawalService {
           operationId
         )
         .run();
+
+      if (transferCodeUpdate.meta?.changes !== 1) {
+        await this.markReconciliationRequired(
+          operationId,
+          'TRANSFER_CODE_PERSISTENCE_FAILED',
+          new Error('Could not persist provider transfer code')
+        );
+
+        throw new Error(
+          'Transfer requires reconciliation'
+        );
+      }
+
+      // --------------------------------------------------------
+      // VERIFY PROVIDER TRANSFER
+      // --------------------------------------------------------
 
       let verification;
 
@@ -362,7 +470,9 @@ export class WithdrawalService {
         await this.markReconciliationRequired(
           operationId,
           'TRANSFER_VERIFICATION_MISMATCH',
-          new Error('Verified transfer details did not match the withdrawal')
+          new Error(
+            'Verified transfer details did not match the withdrawal'
+          )
         );
 
         throw new Error(
@@ -370,9 +480,11 @@ export class WithdrawalService {
         );
       }
 
-      if (
-        verification.status === 'success'
-      ) {
+      // --------------------------------------------------------
+      // VERIFIED SUCCESS
+      // --------------------------------------------------------
+
+      if (verification.status === 'success') {
         return await this.settleWithdrawal({
           operationId,
           userId,
@@ -382,6 +494,10 @@ export class WithdrawalService {
           requestId,
         });
       }
+
+      // --------------------------------------------------------
+      // VERIFIED FAILURE
+      // --------------------------------------------------------
 
       if (
         verification.status === 'failed' ||
@@ -398,10 +514,16 @@ export class WithdrawalService {
         });
       }
 
+      // --------------------------------------------------------
+      // NON-FINAL PROVIDER STATUS
+      // --------------------------------------------------------
+
       await this.markReconciliationRequired(
         operationId,
         'TRANSFER_NOT_FINAL',
-        new Error(`Provider transfer status: ${verification.status}`)
+        new Error(
+          `Provider transfer status: ${verification.status}`
+        )
       );
 
       return {
@@ -409,7 +531,11 @@ export class WithdrawalService {
         reference,
         status: 'reconciliation_required',
       };
-        } catch (error) {
+    } catch (error) {
+      // --------------------------------------------------------
+      // RECOVERY
+      // --------------------------------------------------------
+
       const latest = await this.db
         .prepare(`
           SELECT
@@ -422,10 +548,7 @@ export class WithdrawalService {
         .first();
 
       if (latest?.status === 'reserved') {
-        // The ledger may have posted even if saving its transaction
-        // ID to the payment operation failed. Check the ledger's
-        // idempotency record before deciding the operation failed.
-        const reservation = await this.db
+        const reservationRecord = await this.db
           .prepare(`
             SELECT id, status
             FROM ledger_transactions
@@ -438,7 +561,7 @@ export class WithdrawalService {
           )
           .first();
 
-        if (reservation?.status === 'posted') {
+        if (reservationRecord?.status === 'posted') {
           await this.db
             .prepare(`
               UPDATE financial_payment_operations
@@ -452,7 +575,7 @@ export class WithdrawalService {
                 AND status = 'reserved'
             `)
             .bind(
-              reservation.id,
+              reservationRecord.id,
               'Ledger reservation posted; withdrawal requires recovery.',
               new Date().toISOString(),
               operationId
@@ -479,10 +602,33 @@ export class WithdrawalService {
             )
             .run();
         }
+      } else if (latest?.status === 'processing') {
+        if (transferAttempted) {
+          await this.markReconciliationRequired(
+            operationId,
+            'WITHDRAWAL_OUTCOME_UNKNOWN',
+            error
+          );
+        } else {
+          await this.releaseWithdrawal({
+            operationId,
+            userId,
+            amountMinor,
+            currencyCode,
+            reference,
+            requestId,
+            reason: 'Transfer was not initiated',
+          });
+        }
       }
 
       throw error;
     }
+  }
+
+  // ============================================================
+  // SETTLE VERIFIED SUCCESSFUL WITHDRAWAL
+  // ============================================================
 
   async settleWithdrawal({
     operationId,
@@ -551,7 +697,7 @@ export class WithdrawalService {
 
     const now = new Date().toISOString();
 
-    await this.db
+    const update = await this.db
       .prepare(`
         UPDATE financial_payment_operations
         SET
@@ -574,6 +720,29 @@ export class WithdrawalService {
       )
       .run();
 
+    if (update.meta?.changes !== 1) {
+      const current = await this.db
+        .prepare(`
+          SELECT
+            status,
+            settlement_ledger_transaction_id
+          FROM financial_payment_operations
+          WHERE id = ?
+        `)
+        .bind(operationId)
+        .first();
+
+      if (
+        current?.status !== 'succeeded' ||
+        current.settlement_ledger_transaction_id !==
+          posting.transaction.id
+      ) {
+        throw new Error(
+          'Withdrawal ledger settlement posted but operation update requires reconciliation'
+        );
+      }
+    }
+
     return {
       operationId,
       reference,
@@ -581,6 +750,10 @@ export class WithdrawalService {
       ledgerTransactionId: posting.transaction.id,
     };
   }
+
+  // ============================================================
+  // RELEASE FAILED WITHDRAWAL FUNDS
+  // ============================================================
 
   async releaseWithdrawal({
     operationId,
@@ -615,7 +788,9 @@ export class WithdrawalService {
       availableAccount.status !== 'active' ||
       heldAccount.status !== 'active'
     ) {
-      throw new Error('User wallet accounts are unavailable for release');
+      throw new Error(
+        'User wallet accounts are unavailable for release'
+      );
     }
 
     const posting = await this.ledger.postTransaction({
@@ -651,7 +826,7 @@ export class WithdrawalService {
 
     const now = new Date().toISOString();
 
-    await this.db
+    const update = await this.db
       .prepare(`
         UPDATE financial_payment_operations
         SET
@@ -673,6 +848,29 @@ export class WithdrawalService {
       )
       .run();
 
+    if (update.meta?.changes !== 1) {
+      const current = await this.db
+        .prepare(`
+          SELECT
+            status,
+            settlement_ledger_transaction_id
+          FROM financial_payment_operations
+          WHERE id = ?
+        `)
+        .bind(operationId)
+        .first();
+
+      if (
+        current?.status !== 'failed' ||
+        current.settlement_ledger_transaction_id !==
+          posting.transaction.id
+      ) {
+        throw new Error(
+          'Withdrawal funds released but operation update requires reconciliation'
+        );
+      }
+    }
+
     return {
       operationId,
       reference,
@@ -682,7 +880,15 @@ export class WithdrawalService {
     };
   }
 
-    async markReconciliationRequired(operationId, code, error) {
+  // ============================================================
+  // RECONCILIATION
+  // ============================================================
+
+  async markReconciliationRequired(
+    operationId,
+    code,
+    error
+  ) {
     await this.db
       .prepare(`
         UPDATE financial_payment_operations
@@ -702,4 +908,4 @@ export class WithdrawalService {
       )
       .run();
   }
-}
+				}
