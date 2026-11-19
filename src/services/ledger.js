@@ -18,6 +18,14 @@ const ACCOUNT_CLASSES = [
 
 const BALANCE_TYPES = ['debit', 'credit'];
 
+const NATURAL_BALANCES = {
+  asset: 'debit',
+  expense: 'debit',
+  liability: 'credit',
+  equity: 'credit',
+  revenue: 'credit',
+};
+
 const OWNER_TYPES = [
   'user',
   'crew',
@@ -169,9 +177,14 @@ export class LedgerService {
     }
 
     if (!BALANCE_TYPES.includes(normalBalance)) {
-      throw new Error('Invalid normal balance');
-    }
+  throw new Error('Invalid normal balance');
+}
 
+if (NATURAL_BALANCES[accountClass] !== normalBalance) {
+  throw new Error(
+    'Normal balance does not match the ledger account class'
+  );
+}
     if (!OWNER_TYPES.includes(ownerType)) {
       throw new Error('Invalid ledger account owner type');
     }
@@ -326,7 +339,7 @@ export class LedgerService {
     return transaction || null;
   }
 
-  async validateAccounts(entries) {
+    async validateAccounts(entries, allowInactiveAccounts = false) {
     const accountIds = [
       ...new Set(entries.map(entry => entry.accountId)),
     ];
@@ -364,13 +377,13 @@ export class LedgerService {
         );
       }
 
-      if (account.status !== 'active') {
+            if (!allowInactiveAccounts && account.status !== 'active') {
         throw new Error(
           `Ledger account is not active: ${entry.accountId}`
         );
       }
 
-      if (account.is_enabled !== 1) {
+      if (!allowInactiveAccounts && account.is_enabled !== 1) {
         throw new Error(
           `Currency is not enabled: ${account.currency_code}`
         );
@@ -384,7 +397,11 @@ export class LedgerService {
     }
   }
 
-  async postTransaction({
+    async postTransaction(input) {
+    return this._postTransaction(input, false);
+  }
+
+  async _postTransaction({
     idempotencyScope,
     idempotencyKey,
     sourceModule,
@@ -396,8 +413,8 @@ export class LedgerService {
     reference = null,
     metadata = {},
     entries,
-    reversalOfTransactionId = null,
-  }) {
+        reversalOfTransactionId = null,
+  }, allowInactiveAccounts = false) {
     idempotencyScope = requireText(
       idempotencyScope,
       'Idempotency scope'
@@ -489,7 +506,10 @@ export class LedgerService {
     }
 
     // Check every account before attempting the atomic posting batch.
-    await this.validateAccounts(normalizedEntries);
+        await this.validateAccounts(
+      normalizedEntries,
+      allowInactiveAccounts
+    );
 
     const transactionId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -654,7 +674,7 @@ export class LedgerService {
       reversalEntries
     );
 
-    return this.postTransaction({
+      return this._postTransaction({
       idempotencyScope,
       idempotencyKey,
       sourceModule: original.source_module,
@@ -669,6 +689,6 @@ export class LedgerService {
       },
       entries: reversalEntries,
       reversalOfTransactionId: transactionId,
-    });
+    }, true);
   }
 }
