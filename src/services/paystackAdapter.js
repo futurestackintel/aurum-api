@@ -31,7 +31,36 @@ export class PaystackAdapter {
 
     this.provider = new PaystackProvider(secretKey);
     this.providerName = 'paystack';
-  }
+		  /**
+   * Verify a transfer using its provider reference.
+   */
+  async verifyTransfer(reference) {
+    reference = requireText(reference, 'Transfer reference');
+
+    const result = await this.provider.request(
+      'GET',
+      `/transfer/verify/${encodeURIComponent(reference)}`
+    );
+
+    const amountMinor = Number(result.amount);
+
+    if (
+      !Number.isSafeInteger(amountMinor) ||
+      amountMinor < 0
+    ) {
+      throw new Error('Paystack returned an invalid transfer amount');
+    }
+
+    return {
+      provider: this.providerName,
+      reference: result.reference,
+      transferCode: result.transfer_code || null,
+      amountMinor,
+      currencyCode: validateCurrencyCode(result.currency),
+      status: result.status,
+      completedAt: result.completed_at || null,
+    };
+	}
 
   /**
    * Initialize a payment using integer minor units.
