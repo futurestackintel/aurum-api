@@ -257,13 +257,11 @@ describe('LedgerService transaction posting', () => {
 
     input.entries[0].currencyCode = 'USD';
 
-    await expect(
+        await expect(
       service.postTransaction(input)
-        ).rejects.toThrow(
+    ).rejects.toThrow(
       'Entry currency does not match account'
     );
-    );
-  });
 
   it('rejects posting to a frozen account', async () => {
     const debitAccount = await createAccount({
