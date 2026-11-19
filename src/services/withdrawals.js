@@ -409,10 +409,12 @@ export class WithdrawalService {
         reference,
         status: 'reconciliation_required',
       };
-    } catch (error) {
+        } catch (error) {
       const latest = await this.db
         .prepare(`
-          SELECT status
+          SELECT
+            status,
+            reserve_ledger_transaction_id
           FROM financial_payment_operations
           WHERE id = ?
         `)
@@ -420,30 +422,67 @@ export class WithdrawalService {
         .first();
 
       if (latest?.status === 'reserved') {
-        await this.db
+        // The ledger may have posted even if saving its transaction
+        // ID to the payment operation failed. Check the ledger's
+        // idempotency record before deciding the operation failed.
+        const reservation = await this.db
           .prepare(`
-            UPDATE financial_payment_operations
-            SET
-              status = 'failed',
-              failure_code = 'WITHDRAWAL_RESERVATION_FAILED',
-              failure_message = ?,
-              updated_at = ?,
-              completed_at = ?
-            WHERE id = ?
-              AND status = 'reserved'
+            SELECT id, status
+            FROM ledger_transactions
+            WHERE idempotency_scope = ?
+              AND idempotency_key = ?
           `)
           .bind(
-            String(error.message || 'Reservation failed').slice(0, 500),
-            new Date().toISOString(),
-            new Date().toISOString(),
+            'wallet-withdrawal-reservation',
             operationId
           )
-          .run();
+          .first();
+
+        if (reservation?.status === 'posted') {
+          await this.db
+            .prepare(`
+              UPDATE financial_payment_operations
+              SET
+                reserve_ledger_transaction_id = ?,
+                status = 'reconciliation_required',
+                failure_code = 'RESERVATION_RECOVERY_REQUIRED',
+                failure_message = ?,
+                updated_at = ?
+              WHERE id = ?
+                AND status = 'reserved'
+            `)
+            .bind(
+              reservation.id,
+              'Ledger reservation posted; withdrawal requires recovery.',
+              new Date().toISOString(),
+              operationId
+            )
+            .run();
+        } else {
+          await this.db
+            .prepare(`
+              UPDATE financial_payment_operations
+              SET
+                status = 'failed',
+                failure_code = 'WITHDRAWAL_RESERVATION_FAILED',
+                failure_message = ?,
+                updated_at = ?,
+                completed_at = ?
+              WHERE id = ?
+                AND status = 'reserved'
+            `)
+            .bind(
+              String(error.message || 'Reservation failed').slice(0, 500),
+              new Date().toISOString(),
+              new Date().toISOString(),
+              operationId
+            )
+            .run();
+        }
       }
 
       throw error;
     }
-  }
 
   async settleWithdrawal({
     operationId,
