@@ -95,7 +95,7 @@ function createEvent(operation) {
   return {
     event: 'charge.success',
     data: {
-      id: 987654321,
+      id: operation.operationId,
       reference: operation.reference,
       amount: 500000,
       currency: 'NGN',
