@@ -353,6 +353,68 @@ BEGIN
 
 END;
 
+-- ============================================================
+-- 6. INITIAL STATE AND SIGNATURE VERIFICATION PROTECTIONS
+-- ============================================================
+
+-- Deposits must begin pending.
+-- Withdrawals must begin reserved.
+-- No payment can be inserted directly as completed.
+CREATE TRIGGER validate_financial_payment_initial_status
+BEFORE INSERT ON financial_payment_operations
+BEGIN
+
+  SELECT CASE
+    WHEN NEW.operation_type = 'deposit'
+      AND NEW.status != 'pending'
+    THEN RAISE(
+      ABORT,
+      'New deposits must begin in pending status'
+    )
+  END;
+
+  SELECT CASE
+    WHEN NEW.operation_type = 'withdrawal'
+      AND NEW.status != 'reserved'
+    THEN RAISE(
+      ABORT,
+      'New withdrawals must begin in reserved status'
+    )
+  END;
+
+END;
+
+
+-- Provider events must enter the inbox as received.
+CREATE TRIGGER validate_financial_provider_event_initial_status
+BEFORE INSERT ON financial_provider_events
+WHEN NEW.processing_status != 'received'
+BEGIN
+  SELECT RAISE(
+    ABORT,
+    'New provider events must begin in received status'
+  );
+END;
+
+
+-- An event cannot enter processing unless its signature
+-- has already been verified.
+CREATE TRIGGER require_verified_signature_for_event_processing
+BEFORE UPDATE OF processing_status ON financial_provider_events
+WHEN NEW.processing_status = 'processing'
+  AND OLD.processing_status != 'processing'
+  AND NEW.signature_verified != 1
+BEGIN
+  SELECT RAISE(
+    ABORT,
+    'Provider event signature must be verified before processing'
+  );
+END;
+
+
+-- ============================================================
+-- END MIGRATION 0040
+-- ============================================================
 
 -- ============================================================
 -- END MIGRATION 0040
