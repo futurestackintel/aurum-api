@@ -487,3 +487,148 @@ describe('LedgerService reversals', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('LedgerService negative liability protection', () => {
+  async function createLiabilityAccount() {
+    return createAccount({
+      accountClass: 'liability',
+    });
+  }
+
+  async function createAssetAccount() {
+    return createAccount({
+      accountClass: 'asset',
+    });
+  }
+
+  async function postLiabilityCredit({
+    liabilityAccount,
+    amountMinor,
+  }) {
+    const assetAccount = await createAssetAccount();
+
+    return service.postTransaction(
+      transactionInput({
+        entries: [
+          {
+            accountId: assetAccount.id,
+            currencyCode: 'NGN',
+            side: 'debit',
+            amountMinor,
+          },
+          {
+            accountId: liabilityAccount.id,
+            currencyCode: 'NGN',
+            side: 'credit',
+            amountMinor,
+          },
+        ],
+      })
+    );
+  }
+
+  async function postLiabilityDebit({
+    liabilityAccount,
+    amountMinor,
+  }) {
+    const assetAccount = await createAssetAccount();
+
+    return service.postTransaction(
+      transactionInput({
+        entries: [
+          {
+            accountId: liabilityAccount.id,
+            currencyCode: 'NGN',
+            side: 'debit',
+            amountMinor,
+          },
+          {
+            accountId: assetAccount.id,
+            currencyCode: 'NGN',
+            side: 'credit',
+            amountMinor,
+          },
+        ],
+      })
+    );
+  }
+
+  it('rejects debiting a liability account with zero balance', async () => {
+    const liabilityAccount = await createLiabilityAccount();
+
+    await expect(
+      postLiabilityDebit({
+        liabilityAccount,
+        amountMinor: 1,
+      })
+    ).rejects.toThrow(
+      'Transaction would create a negative liability account balance'
+    );
+  });
+
+  it('allows a liability account to reach exactly zero', async () => {
+    const liabilityAccount = await createLiabilityAccount();
+
+    await postLiabilityCredit({
+      liabilityAccount,
+      amountMinor: 5000,
+    });
+
+    const result = await postLiabilityDebit({
+      liabilityAccount,
+      amountMinor: 5000,
+    });
+
+    expect(result.created).toBe(true);
+    expect(result.transaction.status).toBe('posted');
+  });
+
+  it('rejects spending beyond the available liability balance', async () => {
+    const liabilityAccount = await createLiabilityAccount();
+
+    await postLiabilityCredit({
+      liabilityAccount,
+      amountMinor: 5000,
+    });
+
+    await postLiabilityDebit({
+      liabilityAccount,
+      amountMinor: 4000,
+    });
+
+    await expect(
+      postLiabilityDebit({
+        liabilityAccount,
+        amountMinor: 1001,
+      })
+    ).rejects.toThrow(
+      'Transaction would create a negative liability account balance'
+    );
+  });
+
+  it('rejects reversing a credit after the credited funds have been spent', async () => {
+    const liabilityAccount = await createLiabilityAccount();
+
+    const deposit = await postLiabilityCredit({
+      liabilityAccount,
+      amountMinor: 5000,
+    });
+
+    await postLiabilityDebit({
+      liabilityAccount,
+      amountMinor: 5000,
+    });
+
+    await expect(
+      service.reverseTransaction({
+        transactionId: deposit.transaction.id,
+        idempotencyScope: 'ledger-negative-balance-reversal',
+        idempotencyKey: crypto.randomUUID(),
+        actorType: 'system',
+        reason: 'Negative balance protection test',
+      })
+    ).rejects.toThrow(
+      'Transaction would create a negative liability account balance'
+    );
+  });
+});
