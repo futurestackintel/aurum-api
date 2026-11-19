@@ -10,11 +10,11 @@ env.DB.prepare("INSERT INTO financial_currencies ( currency_code, minor_unit_exp
 }
 
 async function createUser() {
-const id = "deposit-user-${crypto.randomUUID()}";
+const id = `deposit-user-${crypto.randomUUID()}`;
 
 await env.DB.prepare("INSERT INTO users ( id, clerk_id, username, display_name, email ) VALUES (?, ?, ?, ?, ?)").bind(
 id,
-"clerk-${id}",
+`clerk-${id}`,
 "user-${crypto.randomUUID()}",
 'Deposit Test User',
 "${id}@example.com"
@@ -22,7 +22,7 @@ id,
 
 return {
 id,
-email: "${id}@example.com",
+email: `${id}@example.com`,
 };
 }
 
@@ -58,7 +58,7 @@ let currentUserId;
 
 async function getAvailableBalance(userId) {
 const result = await env.DB.prepare("SELECT COALESCE( SUM( CASE WHEN entries.entry_side = 'credit' THEN entries.amount_minor ELSE -entries.amount_minor END ), 0 ) AS balance FROM ledger_entries AS entries JOIN ledger_accounts AS accounts ON accounts.id = entries.account_id JOIN ledger_transactions AS transactions ON transactions.id = entries.transaction_id WHERE accounts.account_code = ? AND transactions.status = 'posted'").bind(
-"USER:AVAILABLE:${userId}:NGN"
+`USER:AVAILABLE:${userId}:NGN`
 ).first();
 
 return result.balance;
