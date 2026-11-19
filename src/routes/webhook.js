@@ -105,37 +105,65 @@ async function processWalletDepositWebhook({
       )
       .run();
     } catch (error) {
-    const existing = await env.DB
-      .prepare(`
-        SELECT id, processing_status
-        FROM financial_provider_events
-        WHERE provider = 'paystack'
-          AND (
-            event_fingerprint = ?
-            OR (
-              ? IS NOT NULL
-              AND provider_event_id = ?
-            )
-          )
-        LIMIT 1
-      `)
-      .bind(
-        fingerprint,
-        data.id ? String(data.id) : null,
-        data.id ? String(data.id) : null
+const providerEventId = data.id ? String(data.id) : null;
+
+const existing = await env.DB
+  .prepare(`
+    SELECT
+      id,
+      processing_status,
+      event_type,
+      provider_event_id,
+      provider_reference,
+      payment_operation_id,
+      event_fingerprint
+    FROM financial_provider_events
+    WHERE provider = 'paystack'
+      AND (
+        event_fingerprint = ?
+        OR (
+          ? IS NOT NULL
+          AND provider_event_id = ?
+        )
       )
-      .first();
+    LIMIT 1
+  `)
+  .bind(
+    fingerprint,
+    providerEventId,
+    providerEventId
+  )
+  .first();
 
-    if (!existing) {
-      throw error;
-    }
+if (!existing) {
+  throw error;
+}
 
-    if (existing.processing_status !== 'failed') {
-      return {
-        duplicate: true,
-        status: existing.processing_status,
-      };
-    }
+// Never reuse an event record for different payment evidence.
+const identityMatches =
+  existing.event_type === event.event &&
+  existing.provider_event_id === providerEventId &&
+  existing.provider_reference === reference &&
+  existing.payment_operation_id === operation.id &&
+  existing.event_fingerprint === fingerprint;
+
+if (!identityMatches) {
+  throw new Error(
+    'Paystack event identity conflict; manual reconciliation required'
+  );
+}
+
+if (existing.processing_status !== 'failed') {
+  return {
+    duplicate: true,
+    status: existing.processing_status,
+  };
+}
+
+// Retry only the exact same previously failed event.
+eventId = existing.id;
+
+}
 
     // Retry the existing failed event record.
     eventId = existing.id;
