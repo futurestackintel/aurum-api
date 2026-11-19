@@ -221,28 +221,43 @@ describe('Paystack wallet deposit webhook', () => {
     expect(stored.total).toBe(1);
   });
 
-  it('records a failed processing attempt and returns 500 for provider retry', async () => {
-    const operation = await createDepositOperation();
-    const event = createEvent(operation);
+  it('retries a failed webhook event and processes it successfully', async () => {
+  const operation = await createDepositOperation();
+  const event = createEvent(operation);
 
-    confirmDeposit.mockRejectedValueOnce(
-      new Error('Simulated deposit settlement failure')
-    );
+  confirmDeposit.mockRejectedValueOnce(
+    new Error('Simulated deposit settlement failure')
+  );
 
-    const response = await sendWebhook(event);
+  const firstResponse = await sendWebhook(event);
 
-    expect(response.status).toBe(500);
+  expect(firstResponse.status).toBe(500);
 
-    const stored = await env.DB.prepare(`
-      SELECT processing_status, attempt_count, last_error
-      FROM financial_provider_events
-      WHERE provider_reference = ?
-    `).bind(operation.reference).first();
+  const failed = await env.DB.prepare(`
+    SELECT processing_status, attempt_count, last_error
+    FROM financial_provider_events
+    WHERE provider_reference = ?
+  `).bind(operation.reference).first();
 
-    expect(stored.processing_status).toBe('failed');
-    expect(stored.attempt_count).toBe(1);
-    expect(stored.last_error).toContain(
-      'Simulated deposit settlement failure'
-    );
-  });
+  expect(failed.processing_status).toBe('failed');
+  expect(failed.attempt_count).toBe(1);
+  expect(failed.last_error).toContain(
+    'Simulated deposit settlement failure'
+  );
+
+  // Retry the exact same provider event.
+  const retryResponse = await sendWebhook(event);
+
+  expect(retryResponse.status).toBe(200);
+  expect(confirmDeposit).toHaveBeenCalledTimes(2);
+
+  const retried = await env.DB.prepare(`
+    SELECT processing_status, attempt_count, last_error
+    FROM financial_provider_events
+    WHERE provider_reference = ?
+  `).bind(operation.reference).first();
+
+  expect(retried.processing_status).toBe('processed');
+  expect(retried.attempt_count).toBe(2);
+  expect(retried.last_error).toBeNull();
 });
