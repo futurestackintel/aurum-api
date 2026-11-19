@@ -392,5 +392,88 @@ END;
 
 
 -- ============================================================
+-- FINAL OPENING-BALANCE INTEGRITY CORRECTIONS
+-- ============================================================
+
+-- Apply the account/currency check to inserts as well as updates.
+CREATE TRIGGER validate_opening_balance_item_account_currency_insert
+BEFORE INSERT ON financial_opening_balance_items
+WHEN NEW.item_status = 'verified'
+BEGIN
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM ledger_accounts a
+      WHERE a.id = NEW.account_id
+        AND a.currency_code = NEW.currency_code
+    )
+    THEN RAISE(
+      ABORT,
+      'Verified opening balance account currency mismatch'
+    )
+  END;
+END;
+
+
+-- The creator cannot review their own batch.
+CREATE TRIGGER validate_opening_balance_reviewer_separation
+BEFORE UPDATE OF status ON financial_opening_balance_batches
+WHEN OLD.status = 'draft'
+  AND NEW.status = 'reviewed'
+BEGIN
+  SELECT CASE
+    WHEN NEW.created_by_type = NEW.reviewed_by_type
+      AND NEW.created_by_id = NEW.reviewed_by_id
+    THEN RAISE(
+      ABORT,
+      'Batch creator cannot review their own batch'
+    )
+  END;
+END;
+
+
+-- Prevent unrelated batch fields from being changed during
+-- approval or cancellation transitions.
+CREATE TRIGGER protect_opening_balance_batch_transition_fields
+BEFORE UPDATE ON financial_opening_balance_batches
+WHEN OLD.status = 'reviewed'
+  AND NEW.status IN ('approved', 'cancelled')
+BEGIN
+  SELECT CASE
+    WHEN NEW.id != OLD.id
+      OR NEW.source_scope != OLD.source_scope
+      OR NEW.created_by_type != OLD.created_by_type
+      OR NEW.created_by_id IS NOT OLD.created_by_id
+      OR NEW.reviewed_by_type IS NOT OLD.reviewed_by_type
+      OR NEW.reviewed_by_id IS NOT OLD.reviewed_by_id
+      OR NEW.reviewed_at IS NOT OLD.reviewed_at
+      OR NEW.total_items != OLD.total_items
+      OR NEW.verified_items != OLD.verified_items
+      OR NEW.disputed_items != OLD.disputed_items
+      OR NEW.excluded_items != OLD.excluded_items
+      OR NEW.metadata_json IS NOT OLD.metadata_json
+      OR NEW.created_at != OLD.created_at
+    THEN RAISE(
+      ABORT,
+      'Reviewed opening-balance batch evidence is immutable'
+    )
+  END;
+
+  SELECT CASE
+    WHEN NEW.status = 'cancelled'
+      AND (
+        NEW.approved_by_type IS NOT OLD.approved_by_type
+        OR NEW.approved_by_id IS NOT OLD.approved_by_id
+        OR NEW.approved_at IS NOT OLD.approved_at
+      )
+    THEN RAISE(
+      ABORT,
+      'Cancellation cannot alter approval evidence'
+    )
+  END;
+END;
+
+
+-- ============================================================
 -- END MIGRATION 0039
 -- ============================================================
