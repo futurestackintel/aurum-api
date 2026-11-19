@@ -1,8 +1,9 @@
 import { env } from 'cloudflare:test';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WithdrawalService } from '../src/services/withdrawals.js';
-
+import { AccountProvisioningService } from '../src/services/accountProvisioning.js';
+import { LedgerService } from '../src/services/ledger.js';
 async function seedCurrencies() {
   await env.DB.prepare(`
     INSERT INTO financial_currencies (
@@ -71,6 +72,120 @@ async function createWithdrawal(status = 'processing') {
   }
 
   return operationId;
+}
+
+async function createFundedUserWallet(amountMinor = 100000) {
+  const userId = `withdrawal-funded-${crypto.randomUUID()}`;
+
+  await env.DB.prepare(`
+    INSERT INTO users (
+      id,
+      clerk_id,
+      username,
+      display_name,
+      email
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `).bind(
+    userId,
+    `clerk-${userId}`,
+    `user-${crypto.randomUUID()}`,
+    'Funded Withdrawal User',
+    `${userId}@example.com`
+  ).run();
+
+  const accounts = new AccountProvisioningService(env.DB);
+  const ledger = new LedgerService(env.DB);
+
+  const userAccounts = await accounts.provisionUserAccounts(
+    userId,
+    'NGN'
+  );
+
+  const availableAccount = userAccounts.accounts.find(
+    account => account.account_code ===
+      `USER:AVAILABLE:${userId}:NGN`
+  );
+
+  const operatingAccount = await accounts.provisionPlatformAccount({
+    accountType: 'operating',
+    currencyCode: 'NGN',
+  });
+
+  await ledger.postTransaction({
+    idempotencyScope: 'withdrawal-test-funding',
+    idempotencyKey: userId,
+    sourceModule: 'withdrawal_test',
+    transactionType: 'test_wallet_funding',
+    actorType: 'system',
+    description: 'Fund withdrawal test wallet',
+    entries: [
+      {
+        accountId: operatingAccount.id,
+        currencyCode: 'NGN',
+        side: 'debit',
+        amountMinor,
+      },
+      {
+        accountId: availableAccount.id,
+        currencyCode: 'NGN',
+        side: 'credit',
+        amountMinor,
+      },
+    ],
+  });
+
+  return userId;
+}
+
+async function getAccountBalance(accountCode) {
+  const result = await env.DB.prepare(`
+    SELECT COALESCE(
+      SUM(
+        CASE
+          WHEN entries.entry_side = 'credit'
+          THEN entries.amount_minor
+          ELSE -entries.amount_minor
+        END
+      ),
+      0
+    ) AS balance
+    FROM ledger_entries AS entries
+    JOIN ledger_accounts AS accounts
+      ON accounts.id = entries.account_id
+    JOIN ledger_transactions AS transactions
+      ON transactions.id = entries.transaction_id
+    WHERE accounts.account_code = ?
+      AND transactions.status = 'posted'
+  `).bind(accountCode).first();
+
+  return result.balance;
+}
+
+function createWithdrawalPayments(status = 'success') {
+  return {
+    createTransferRecipient: vi.fn(async () => ({
+      recipient_code: 'RCP_TEST_123',
+    })),
+
+    createTransfer: vi.fn(async ({
+      reference,
+      amountMinor,
+      currencyCode,
+    }) => ({
+      reference,
+      amountMinor,
+      currencyCode,
+      transferCode: 'TRF_TEST_123',
+    })),
+
+    verifyTransfer: vi.fn(async reference => ({
+      reference,
+      amountMinor: 25000,
+      currencyCode: 'NGN',
+      status,
+    })),
+  };
 }
 
 beforeEach(async () => {
@@ -267,5 +382,117 @@ describe('WithdrawalService finalization claims', () => {
         WHERE payment_operation_id = ?
       `).bind(operationId).run()
     ).rejects.toThrow();
+  });
+});
+
+describe('WithdrawalService ledger integration', () => {
+  it('reserves and settles a successful withdrawal exactly once', async () => {
+    const userId = await createFundedUserWallet();
+    const payments = createWithdrawalPayments('success');
+
+    const service = new WithdrawalService(
+      {
+        DB: env.DB,
+        PAYMENT_PROVIDER: 'paystack',
+      },
+      { payments }
+    );
+
+    const idempotencyKey = crypto.randomUUID();
+
+    const input = {
+      userId,
+      amountMinor: 25000,
+      currencyCode: 'NGN',
+      idempotencyKey,
+      bankDetails: {
+        account_name: 'Test Account',
+        account_number: '0123456789',
+        bank_code: '058',
+      },
+    };
+
+    const first = await service.initiateWithdrawal(input);
+
+    expect(first.status).toBe('succeeded');
+
+    expect(await getAccountBalance(
+      `USER:AVAILABLE:${userId}:NGN`
+    )).toBe(75000);
+
+    expect(await getAccountBalance(
+      `USER:HELD:${userId}:NGN`
+    )).toBe(0);
+
+    const retry = await service.initiateWithdrawal(input);
+
+    expect(retry.operationId).toBe(first.operationId);
+    expect(retry.alreadyCreated).toBe(true);
+    expect(retry.status).toBe('succeeded');
+
+    expect(payments.createTransfer).toHaveBeenCalledOnce();
+    expect(payments.createTransferRecipient).toHaveBeenCalledOnce();
+
+    const settlements = await env.DB.prepare(`
+      SELECT COUNT(*) AS total
+      FROM ledger_transactions
+      WHERE idempotency_scope = 'wallet-withdrawal-settlement'
+        AND idempotency_key = ?
+    `).bind(first.operationId).first();
+
+    const reservations = await env.DB.prepare(`
+      SELECT COUNT(*) AS total
+      FROM ledger_transactions
+      WHERE idempotency_scope = 'wallet-withdrawal-reservation'
+        AND idempotency_key = ?
+    `).bind(first.operationId).first();
+
+    expect(settlements.total).toBe(1);
+    expect(reservations.total).toBe(1);
+  });
+
+  it('releases reserved funds after a verified failed withdrawal', async () => {
+    const userId = await createFundedUserWallet();
+    const payments = createWithdrawalPayments('failed');
+
+    const service = new WithdrawalService(
+      {
+        DB: env.DB,
+        PAYMENT_PROVIDER: 'paystack',
+      },
+      { payments }
+    );
+
+    const result = await service.initiateWithdrawal({
+      userId,
+      amountMinor: 25000,
+      currencyCode: 'NGN',
+      idempotencyKey: crypto.randomUUID(),
+      bankDetails: {
+        account_name: 'Test Account',
+        account_number: '0123456789',
+        bank_code: '058',
+      },
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.fundsReleased).toBe(true);
+
+    expect(await getAccountBalance(
+      `USER:AVAILABLE:${userId}:NGN`
+    )).toBe(100000);
+
+    expect(await getAccountBalance(
+      `USER:HELD:${userId}:NGN`
+    )).toBe(0);
+
+    const releases = await env.DB.prepare(`
+      SELECT COUNT(*) AS total
+      FROM ledger_transactions
+      WHERE idempotency_scope = 'wallet-withdrawal-release'
+        AND idempotency_key = ?
+    `).bind(result.operationId).first();
+
+    expect(releases.total).toBe(1);
   });
 });
