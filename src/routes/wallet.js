@@ -91,7 +91,7 @@ export async function handleWalletRoutes(pathname, request, env) {
         amountMinor: body.amount_minor,
         currencyCode: body.currency_code,
         idempotencyKey,
-        callbackUrl: body.callback_url,
+        callbackUrl: env.WALLET_DEPOSIT_CALLBACK_URL,
         requestId: request.headers.get("cf-ray"),
       });
 
