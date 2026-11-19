@@ -228,3 +228,4 @@ export class PaystackAdapter {
       status: result.status || 'pending',
     };
   }
+}
