@@ -643,7 +643,7 @@ export class WithdrawalService {
     };
   }
 
-  async markReconciliationRequired(operationId, code, error) {
+    async markReconciliationRequired(operationId, code, error) {
     await this.db
       .prepare(`
         UPDATE financial_payment_operations
@@ -663,4 +663,4 @@ export class WithdrawalService {
       )
       .run();
   }
-  }
+}
