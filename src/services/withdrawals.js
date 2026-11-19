@@ -740,6 +740,22 @@ export class WithdrawalService {
       };
     }
 
+      }) {
+    const finalization = await this.claimWithdrawalFinalization(
+      operationId,
+      'settle'
+    );
+
+    if (finalization.alreadyFinalized) {
+      return {
+        operationId,
+        reference,
+        status: 'succeeded',
+        ledgerTransactionId:
+          finalization.ledgerTransactionId,
+      };
+    }
+
     const userAccounts =
       await this.accounts.provisionUserAccounts(
         userId,
@@ -882,8 +898,25 @@ export class WithdrawalService {
       };
     }
 
+      }) {
+    const finalization = await this.claimWithdrawalFinalization(
+      operationId,
+      'release'
+    );
+
+    if (finalization.alreadyFinalized) {
+      return {
+        operationId,
+        reference,
+        status: 'failed',
+        fundsReleased: true,
+        ledgerTransactionId:
+          finalization.ledgerTransactionId,
+      };
+    }
+
     const userAccounts =
-      await this.accounts.provisionUserAccounts((
+      await this.accounts.provisionUserAccounts(
         userId,
         currencyCode
       );
