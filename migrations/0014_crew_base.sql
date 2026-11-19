@@ -16,8 +16,7 @@ CREATE TABLE IF NOT EXISTS crews (
   is_frozen INTEGER NOT NULL DEFAULT 0,
   freeze_reason TEXT,
   frozen_by TEXT REFERENCES users(id),
-  frozen_at TEXT,
-  invite_code TEXT
+  frozen_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS crew_members (
