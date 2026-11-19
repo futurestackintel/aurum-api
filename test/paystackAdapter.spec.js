@@ -194,3 +194,25 @@ describe('PaystackAdapter', () => {
     ).rejects.toThrow('Payment reference is required');
   });
 });
+
+it('verifies a transfer and normalizes its status', async () => {
+  mockPaystackResponse({
+    reference: 'withdrawal_002',
+    transfer_code: 'TRF_456',
+    amount: 75000,
+    currency: 'NGN',
+    status: 'success',
+    completed_at: '2026-11-19T11:00:00.000Z',
+  });
+
+  const result = await adapter.verifyTransfer(
+    'withdrawal_002'
+  );
+
+  expect(result.provider).toBe('paystack');
+  expect(result.reference).toBe('withdrawal_002');
+  expect(result.transferCode).toBe('TRF_456');
+  expect(result.amountMinor).toBe(75000);
+  expect(result.currencyCode).toBe('NGN');
+  expect(result.status).toBe('success');
+});
