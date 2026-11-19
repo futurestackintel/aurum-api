@@ -1,35 +1,103 @@
 // ============================================================
 // AURUM Payment Service
-// Wrapper around PaystackProvider.
-// All payment logic goes through here — never call
-// PaystackProvider directly from routes.
+// Provider-independent payment orchestration.
+// Provider-specific API operations belong in adapters.
 // ============================================================
 
-import { PaystackProvider } from "./paystack.js";
+import { PaystackAdapter } from "./paystackAdapter.js";
 
 export class PaymentService {
-  constructor(env) {
-    this.provider = new PaystackProvider(env.PAYSTACK_SECRET_KEY);
+  constructor(env, options = {}) {
+    this.adapters = options.adapters || {
+      paystack: new PaystackAdapter(env.PAYSTACK_SECRET_KEY),
+    };
+
+    this.defaultProvider = env.PAYMENT_PROVIDER || "paystack";
+    this.currency = env.PAYMENT_CURRENCY || env.PAYSTACK_CURRENCY || "NGN";
+
+    // Preserved for legacy callers during migration.
     this.PLATFORM_FEE_PERCENT = 0.05;
-    this.currency = env.PAYSTACK_CURRENCY || "NGN";
     this.usdToNgnRate = parseFloat(env.USD_TO_NGN_RATE) || 1600;
   }
 
-  /**
-   * Converts a USD amount into whatever currency the Paystack
-   * account is currently charging in. When USD becomes enabled
-   * on the account, set PAYSTACK_CURRENCY=USD and this becomes
-   * a no-op passthrough — no code changes needed anywhere else.
-   */
+  getProvider(providerName = this.defaultProvider) {
+    const provider = this.adapters[providerName];
+
+    if (!provider) {
+      throw new Error(`Unsupported payment provider: ${providerName}`);
+    }
+
+    return provider;
+  }
+
+  // ----------------------------------------------------------
+  // Provider-independent payment operations
+  // ----------------------------------------------------------
+
+  async initializePayment({
+    provider,
+    email,
+    amountMinor,
+    currencyCode,
+    reference,
+    callbackUrl,
+    metadata,
+  }) {
+    return this.getProvider(provider).initializePayment({
+      email,
+      amountMinor,
+      currencyCode,
+      reference,
+      callbackUrl,
+      metadata,
+    });
+  }
+
+  async verifyPayment(reference, provider) {
+    return this.getProvider(provider).verifyPayment(reference);
+  }
+
+  async createTransfer({
+    provider,
+    amountMinor,
+    currencyCode,
+    recipientCode,
+    reference,
+    reason,
+  }) {
+    return this.getProvider(provider).createTransfer({
+      amountMinor,
+      currencyCode,
+      recipientCode,
+      reference,
+      reason,
+    });
+  }
+
+  async verifyTransfer(reference, provider) {
+    return this.getProvider(provider).verifyTransfer(reference);
+  }
+
+  // ----------------------------------------------------------
+  // Legacy compatibility helpers
+  // ----------------------------------------------------------
+
   toChargeAmount(usdAmount) {
-    if (this.currency === "USD") return usdAmount;
+    if (this.currency === "USD") {
+      return usdAmount;
+    }
+
     return Math.round(usdAmount * this.usdToNgnRate * 100) / 100;
   }
 
-  // ── Customers ───────────────────────────────────────────────
-
   async createCustomer({ email, firstName, lastName, userId }) {
-    return this.provider.createCustomer({
+    const provider = this.getProvider();
+
+    if (typeof provider.createCustomer !== "function") {
+      throw new Error("Selected payment provider does not support customer creation");
+    }
+
+    return provider.createCustomer({
       email,
       first_name: firstName,
       last_name: lastName,
@@ -37,22 +105,20 @@ export class PaymentService {
     });
   }
 
-  // ── Verification ────────────────────────────────────────────
-
-  async verifyPayment(reference) {
-    return this.provider.verifyTransaction(reference);
-  }
-
-  // ── Wallet ──────────────────────────────────────────────────
-
-  async initializeWalletDeposit({ email, amount, userId, callbackUrl }) {
+  async initializeWalletDeposit({
+    email,
+    amount,
+    userId,
+    callbackUrl,
+  }) {
     const reference = `wallet_${userId}_${Date.now()}`;
 
-    const result = await this.provider.initializeTransaction({
+    const result = await this.getProvider().initializePayment({
       email,
-      amount: this.toChargeAmount(amount),
-      currency: this.currency,
-      callback_url: callbackUrl,
+      amountMinor: Math.round(this.toChargeAmount(amount) * 100),
+      currencyCode: this.currency,
+      reference,
+      callbackUrl,
       metadata: {
         type: "wallet_deposit",
         user_id: userId,
@@ -62,13 +128,24 @@ export class PaymentService {
     });
 
     return {
-      authorization_url: result.authorization_url,
+      authorization_url: result.authorizationUrl,
       reference: result.reference || reference,
     };
   }
 
-  async createTransferRecipient({ name, account_number, bank_code, currency = "NGN" }) {
-    return this.provider.createTransferRecipient({
+  async createTransferRecipient({
+    name,
+    account_number,
+    bank_code,
+    currency = "NGN",
+  }) {
+    const provider = this.getProvider();
+
+    if (typeof provider.createTransferRecipient !== "function") {
+      throw new Error("Selected payment provider does not support transfer recipients");
+    }
+
+    return provider.createTransferRecipient({
       name,
       account_number,
       bank_code,
@@ -76,24 +153,39 @@ export class PaymentService {
     });
   }
 
-  async initiateWithdrawal({ amount, recipientCode, userId }) {
-    return this.provider.transfer({
+  async initiateWithdrawal({
+    amount,
+    recipientCode,
+    userId,
+  }) {
+    const provider = this.getProvider();
+
+    if (typeof provider.transfer !== "function") {
+      throw new Error("Selected payment provider does not support legacy transfers");
+    }
+
+    return provider.transfer({
       amount,
       recipient: recipientCode,
       reason: `AURUM wallet withdrawal for user ${userId}`,
     });
   }
 
-  // ── Subscriptions ────────────────────────────────────────────
-
-  async initializeSubscriptionPayment({ email, amount, tier, userId, callbackUrl }) {
+  async initializeSubscriptionPayment({
+    email,
+    amount,
+    tier,
+    userId,
+    callbackUrl,
+  }) {
     const reference = `sub_${tier}_${userId}_${Date.now()}`;
 
-    const result = await this.provider.initializeTransaction({
+    const result = await this.getProvider().initializePayment({
       email,
-      amount: this.toChargeAmount(amount),
-      currency: this.currency,
-      callback_url: callbackUrl,
+      amountMinor: Math.round(this.toChargeAmount(amount) * 100),
+      currencyCode: this.currency,
+      reference,
+      callbackUrl,
       metadata: {
         type: "subscription",
         tier,
@@ -104,22 +196,27 @@ export class PaymentService {
     });
 
     return {
-      authorization_url: result.authorization_url,
+      authorization_url: result.authorizationUrl,
       reference: result.reference || reference,
       tier,
     };
   }
 
-  // ── Challenges ────────────────────────────────────────────
-	
-	async initializeChallengePayment({ email, amount, challengeId, userId, callbackUrl }) {
+  async initializeChallengePayment({
+    email,
+    amount,
+    challengeId,
+    userId,
+    callbackUrl,
+  }) {
     const reference = `challenge_${userId}_${challengeId}_${Date.now()}`;
 
-    const result = await this.provider.initializeTransaction({
+    const result = await this.getProvider().initializePayment({
       email,
-      amount: this.toChargeAmount(amount),
-      currency: this.currency,
-      callback_url: callbackUrl,
+      amountMinor: Math.round(this.toChargeAmount(amount) * 100),
+      currencyCode: this.currency,
+      reference,
+      callbackUrl,
       metadata: {
         type: "challenge_entry",
         challenge_id: challengeId,
@@ -130,32 +227,39 @@ export class PaymentService {
     });
 
     return {
-      authorization_url: result.authorization_url,
+      authorization_url: result.authorizationUrl,
       reference: result.reference || reference,
     };
   }
 
-  async payoutWinner({ amount, recipientCode, challengeId }) {
-    const fee    = parseFloat((amount * this.PLATFORM_FEE_PERCENT).toFixed(2));
+  async payoutWinner({
+    amount,
+    recipientCode,
+    challengeId,
+  }) {
+    const fee = parseFloat(
+      (amount * this.PLATFORM_FEE_PERCENT).toFixed(2)
+    );
+
     const payout = amount - fee;
 
-    return this.provider.transfer({
+    return this.initiateWithdrawal({
       amount: payout,
-      recipient: recipientCode,
-      reason: `AURUM Challenge #${challengeId} winnings`,
+      recipientCode,
+      userId: `challenge_${challengeId}`,
     });
   }
 
-  // ── Helpers ──────────────────────────────────────────────────
-
   calculateFee(amount) {
-    return parseFloat((amount * this.PLATFORM_FEE_PERCENT).toFixed(2));
+    return parseFloat(
+      (amount * this.PLATFORM_FEE_PERCENT).toFixed(2)
+    );
   }
 
   getSubscriptionPlans() {
     return {
       contender: "PLN_pro_contender",
-      sovereign:  "PLN_sovereign",
+      sovereign: "PLN_sovereign",
     };
   }
 }
