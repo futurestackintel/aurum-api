@@ -261,3 +261,4 @@ describe('Paystack wallet deposit webhook', () => {
   expect(retried.attempt_count).toBe(2);
   expect(retried.last_error).toBeNull();
 });
+});
