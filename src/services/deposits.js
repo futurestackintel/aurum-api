@@ -100,12 +100,21 @@ export class DepositService {
       }
 
       if (existing.provider_reference) {
-        return {
-          operationId: existing.id,
-          reference: existing.provider_reference,
-          status: existing.status,
-        };
-      }
+  let metadata = {};
+
+  try {
+    metadata = JSON.parse(existing.metadata_json || '{}');
+  } catch {
+    throw new Error('Stored deposit metadata is invalid');
+  }
+
+  return {
+    operationId: existing.id,
+    reference: existing.provider_reference,
+    authorizationUrl: metadata.authorization_url || null,
+    status: existing.status,
+  };
+}
     }
 
     const operationId = crypto.randomUUID();
@@ -160,19 +169,46 @@ export class DepositService {
         },
       });
 
-      return {
-        operationId,
-        reference: result.reference || reference,
-        authorizationUrl: result.authorizationUrl,
-        status: 'pending',
-      };
+      if (
+  result.reference !== reference ||
+  typeof result.authorizationUrl !== 'string' ||
+  result.authorizationUrl.trim() === ''
+) {
+  throw new Error('Provider returned an invalid payment initialization response');
+}
+
+await this.db
+  .prepare(`
+    UPDATE financial_payment_operations
+    SET
+      metadata_json = ?,
+      updated_at = ?
+    WHERE id = ?
+      AND status = 'pending'
+  `)
+  .bind(
+    JSON.stringify({
+      request_id: requestId,
+      authorization_url: result.authorizationUrl,
+    }),
+    new Date().toISOString(),
+    operationId
+  )
+  .run();
+
+return {
+  operationId,
+  reference,
+  authorizationUrl: result.authorizationUrl,
+  status: 'pending',
+};
     } catch (error) {
       await this.db
         .prepare(`
           UPDATE financial_payment_operations
           SET
-            status = 'failed',
-            failure_code = 'PROVIDER_INITIALIZATION_FAILED',
+            status = 'reconciliation_required',
+            failure_code = 'PROVIDER_INITIALIZATION_OUTCOME_UNKNOWN',
             failure_message = ?,
             updated_at = ?
           WHERE id = ?
