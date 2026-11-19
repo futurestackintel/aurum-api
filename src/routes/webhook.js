@@ -56,8 +56,8 @@ async function processWalletDepositWebhook({
     .map(byte => byte.toString(16).padStart(2, '0'))
     .join('');
 
-  const eventId = crypto.randomUUID();
-
+ let eventId = crypto.randomUUID();
+	
   const payload = {
     event: event.event,
     data: {
@@ -104,26 +104,41 @@ async function processWalletDepositWebhook({
         JSON.stringify(payload)
       )
       .run();
-  } catch (error) {
-    // A duplicate event must never create another wallet credit.
+    } catch (error) {
     const existing = await env.DB
       .prepare(`
         SELECT id, processing_status
         FROM financial_provider_events
         WHERE provider = 'paystack'
-          AND event_fingerprint = ?
+          AND (
+            event_fingerprint = ?
+            OR (
+              ? IS NOT NULL
+              AND provider_event_id = ?
+            )
+          )
+        LIMIT 1
       `)
-      .bind(fingerprint)
+      .bind(
+        fingerprint,
+        data.id ? String(data.id) : null,
+        data.id ? String(data.id) : null
+      )
       .first();
 
-    if (existing) {
+    if (!existing) {
+      throw error;
+    }
+
+    if (existing.processing_status !== 'failed') {
       return {
         duplicate: true,
         status: existing.processing_status,
       };
     }
 
-    throw error;
+    // Retry the existing failed event record.
+    eventId = existing.id;
   }
 
   // Atomically claim this event for processing.
