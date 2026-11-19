@@ -366,7 +366,8 @@ export class OpeningBalanceService {
       throw new Error('Only pending items can be classified');
     }
 
-    await this.db.prepare(`
+    
+    const result = await this.db.prepare(`
       UPDATE financial_opening_balance_items
       SET
         item_status = ?,
@@ -379,6 +380,11 @@ export class OpeningBalanceService {
       verificationNote.trim(),
       itemId
     ).run();
+
+    if (result.meta?.changes !== 1) {
+      throw new Error('Opening-balance item classification failed');
+    }
+
 
     return this.getBatch(item.batch_id);
   }
@@ -443,6 +449,10 @@ export class OpeningBalanceService {
       throw new Error('Every item must be classified before review');
     }
 
+    if (result.meta?.changes !== 1) {
+      throw new Error('Opening-balance batch review failed');
+    }
+		
     await this.db.prepare(`
       UPDATE financial_opening_balance_batches
       SET
@@ -508,6 +518,10 @@ export class OpeningBalanceService {
       throw new Error('Batch has no verified opening-balance items');
     }
 
+    if (result.meta?.changes !== 1) {
+      throw new Error('Opening-balance batch approval failed');
+    }
+		
     await this.db.prepare(`
       UPDATE financial_opening_balance_batches
       SET
