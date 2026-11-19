@@ -99,6 +99,43 @@ describe('WithdrawalService finalization claims', () => {
     expect(claim.outcome).toBe('settle');
   });
 
+	  it('allows only one outcome when settlement and release compete', async () => {
+    const operationId = await createWithdrawal();
+
+    const firstService = new WithdrawalService({ DB: env.DB });
+    const secondService = new WithdrawalService({ DB: env.DB });
+
+    const results = await Promise.allSettled([
+      firstService.claimWithdrawalFinalization(
+        operationId,
+        'settle'
+      ),
+      secondService.claimWithdrawalFinalization(
+        operationId,
+        'release'
+      ),
+    ]);
+
+    const successful = results.filter(
+      result => result.status === 'fulfilled'
+    );
+
+    const rejected = results.filter(
+      result => result.status === 'rejected'
+    );
+
+    expect(successful).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const claim = await env.DB.prepare(`
+      SELECT outcome
+      FROM financial_withdrawal_finalization_claims
+      WHERE payment_operation_id = ?
+    `).bind(operationId).first();
+
+    expect(['settle', 'release']).toContain(claim.outcome);
+  });
+
   it('allows retries with the same finalization outcome', async () => {
     const operationId = await createWithdrawal();
 
