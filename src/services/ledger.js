@@ -398,10 +398,10 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
   }
 
     async postTransaction(input) {
-    return this._postTransaction(input, false);
-  }
+  return this.#postTransaction(input, false);
+}
 
-  async _postTransaction({
+  async #postTransaction({
     idempotencyScope,
     idempotencyKey,
     sourceModule,
@@ -413,7 +413,7 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
     reference = null,
     metadata = {},
     entries,
-        reversalOfTransactionId = null,
+    reversalOfTransactionId = null,
   }, allowInactiveAccounts = false) {
     idempotencyScope = requireText(
       idempotencyScope,
@@ -674,7 +674,7 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
       reversalEntries
     );
 
-      return this._postTransaction({
+      return this.#postTransaction({
       idempotencyScope,
       idempotencyKey,
       sourceModule: original.source_module,
