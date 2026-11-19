@@ -319,7 +319,7 @@ export class WithdrawalService {
         recipient_code: recipientCode,
       };
 
-      await this.db
+            const metadataUpdate = await this.db
         .prepare(`
           UPDATE financial_payment_operations
           SET
@@ -334,6 +334,12 @@ export class WithdrawalService {
           operationId
         )
         .run();
+
+      if (metadataUpdate.meta?.changes !== 1) {
+        throw new Error(
+          'Unable to persist withdrawal recipient details'
+        );
+      }
 
       // --------------------------------------------------------
       // MOVE OPERATION INTO PROCESSING
