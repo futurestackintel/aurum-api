@@ -17,7 +17,7 @@ id,
 `clerk-${id}`,
 "user-${crypto.randomUUID()}",
 'Deposit Test User',
-"${id}@example.com"
+`${id}@example.com`
 ).run();
 
 return {
