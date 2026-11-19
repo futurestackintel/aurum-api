@@ -3,7 +3,7 @@ import { validateCurrencyCode } from './money.js';
 
 function requireId(value, fieldName) {
 if (typeof value !== 'string' || value.trim() === '') {
-throw new Error("${fieldName} is required");
+throw new Error(`${fieldName} is required`);
 }
 
 return value.trim();
@@ -13,7 +13,7 @@ function accountDefinitions(ownerType, ownerId, currencyCode) {
 const definitions = {
 user: [
 {
-accountCode: "USER:AVAILABLE:${ownerId}:${currencyCode}",
+accountCode: `USER:AVAILABLE:${ownerId}:${currencyCode}`,
 accountName: 'User Available Wallet',
 accountClass: 'liability',
 normalBalance: 'credit',
@@ -22,7 +22,7 @@ ownerId,
 currencyCode,
 },
 {
-accountCode: "USER:HELD:${ownerId}:${currencyCode}",
+accountCode: `USER:HELD:${ownerId}:${currencyCode}`,
 accountName: 'User Held Wallet',
 accountClass: 'liability',
 normalBalance: 'credit',
@@ -255,25 +255,25 @@ currencyCode,
 }) {
 const definitions = {
 operating: {
-accountCode: "PLATFORM:OPERATING:${currencyCode}",
+accountCode: `PLATFORM:OPERATING:${currencyCode}`,
 accountName: 'Platform Operating Funds',
 accountClass: 'asset',
 normalBalance: 'debit',
 },
 fee_revenue: {
-accountCode: "PLATFORM:FEE_REVENUE:${currencyCode}",
+accountCode: `PLATFORM:FEE_REVENUE:${currencyCode}`,
 accountName: 'Platform Fee Revenue',
 accountClass: 'revenue',
 normalBalance: 'credit',
 },
 expenses: {
-accountCode: "PLATFORM:EXPENSES:${currencyCode}",
+accountCode: `PLATFORM:EXPENSES:${currencyCode}`,
 accountName: 'Platform Expenses',
 accountClass: 'expense',
 normalBalance: 'debit',
 },
 equity: {
-accountCode: "PLATFORM:EQUITY:${currencyCode}",
+accountCode: `PLATFORM:EQUITY:${currencyCode}`,
 accountName: 'Platform Equity',
 accountClass: 'equity',
 normalBalance: 'credit',
