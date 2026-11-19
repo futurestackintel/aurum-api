@@ -268,52 +268,11 @@ export async function handleWebhookRoutes(pathname, request, env) {
 
         // ── wallet_deposit ────────────────────────────────
         if (type === 'wallet_deposit') {
-  await processWalletDepositWebhook({
-    event,
-    rawBody,
-    env,
-  });
-
-          // Idempotency check
-          const existing = await env.DB
-            .prepare(`SELECT id FROM wallet_transactions WHERE reference = ?`)
-            .bind(reference)
-            .first();
-
-          if (!existing) {
-            const wallet = await env.DB
-              .prepare(`SELECT id, balance_usd FROM wallets WHERE user_id = ?`)
-              .bind(user_id)
-              .first();
-
-            if (wallet) {
-              const newBalance = wallet.balance_usd + amountUsd;
-
-              await env.DB
-                .prepare(`
-                  UPDATE wallets
-                  SET balance_usd = ?,
-                      total_deposited_usd = total_deposited_usd + ?,
-                      updated_at = ?
-                  WHERE user_id = ?
-                `)
-                .bind(newBalance, amountUsd, now, user_id)
-                .run();
-
-              await env.DB
-                .prepare(`
-                  INSERT INTO wallet_transactions
-                    (id, wallet_id, user_id, type, amount_usd,
-                     balance_after_usd, reference, description, created_at)
-                  VALUES (?, ?, ?, 'deposit', ?, ?, ?, 'Wallet deposit via Paystack', ?)
-                `)
-                .bind(
-                  crypto.randomUUID(), wallet.id, user_id,
-                  amountUsd, newBalance, reference, now,
-                )
-                .run();
-            }
-          }
+        await processWalletDepositWebhook({
+          event,
+          rawBody,
+          env,
+          });
 
         // ── challenge_entry ───────────────────────────────
         } else if (type === 'challenge_entry') {
