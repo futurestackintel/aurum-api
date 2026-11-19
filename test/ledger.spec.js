@@ -259,8 +259,9 @@ describe('LedgerService transaction posting', () => {
 
     await expect(
       service.postTransaction(input)
-    ).rejects.toThrow(
-      'Ledger entry currency does not match account'
+        ).rejects.toThrow(
+      'Entry currency does not match account'
+    );
     );
   });
 
