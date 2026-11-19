@@ -38,9 +38,8 @@ export function assertSafeMinorUnits(amountMinor) {
 /**
  * Convert a decimal amount into integer minor units.
  *
- * Accepts decimal strings or numbers.
+ * Accepts decimal strings only to avoid floating-point precision loss.
  * Rejects excess decimal places instead of silently rounding.
- *
  * Examples:
  * toMinorUnits('125.50', 2) => 12550
  * toMinorUnits('500', 0) => 500
@@ -49,20 +48,9 @@ export function assertSafeMinorUnits(amountMinor) {
 export function toMinorUnits(amount, exponent) {
   validateMinorUnitExponent(exponent);
 
-  if (
-    typeof amount !== 'string' &&
-    typeof amount !== 'number'
-  ) {
-    throw new Error('Amount must be a string or number');
+    if (typeof amount !== 'string') {
+    throw new Error('Amount must be provided as a decimal string');
   }
-
-  if (
-    typeof amount === 'number' &&
-    !Number.isFinite(amount)
-  ) {
-    throw new Error('Amount must be finite');
-  }
-
   const value = String(amount).trim();
 
   if (!/^(0|[1-9]\d*)(\.\d+)?$/.test(value)) {
