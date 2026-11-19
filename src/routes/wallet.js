@@ -13,8 +13,8 @@
 
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { PaymentService } from "../services/payments.js";
+import { DepositService } from "../services/deposits.js";
 import { buildBalanceDisplay, SUPPORTED_CURRENCIES } from "../services/currency.js";
-
 // ── Helpers ──────────────────────────────────────────────────
 
 function json(data, status = 200) {
@@ -62,23 +62,14 @@ async function getWallet(userId, db) {
 
 export async function handleWalletRoutes(pathname, request, env) {
 
-  // ── POST /api/wallet/deposit ────────────────────────────────
+    // ── POST /api/wallet/deposit ────────────────────────────────
   if (pathname === "/api/wallet/deposit" && request.method === "POST") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
-    const body = await request.json();
-    const { amount_usd, callback_url } = body;
-
-    if (!amount_usd || amount_usd < 5) {
-      return json({ error: "Minimum deposit is $5" }, 400);
-    }
-
-    if (!callback_url) {
-      return json({ error: "callback_url required" }, 400);
-    }
-
     try {
+      const body = await request.json();
+
       const user = await env.DB
         .prepare(`SELECT id, email FROM users WHERE clerk_id = ?`)
         .bind(auth.id)
@@ -86,110 +77,74 @@ export async function handleWalletRoutes(pathname, request, env) {
 
       if (!user) return json({ error: "User not found" }, 404);
 
-      const payments = new PaymentService(env);
-      const result = await payments.initializeWalletDeposit({
-        email: user.email,
-        amount: amount_usd,
+      const idempotencyKey = request.headers.get("Idempotency-Key");
+
+      if (!idempotencyKey) {
+        return json({ error: "Idempotency-Key header required" }, 400);
+      }
+
+      const deposits = new DepositService(env);
+
+      const result = await deposits.initializeDeposit({
         userId: user.id,
-        callbackUrl: callback_url,
+        email: user.email,
+        amountMinor: body.amount_minor,
+        currencyCode: body.currency_code,
+        idempotencyKey,
+        callbackUrl: body.callback_url,
+        requestId: request.headers.get("cf-ray"),
       });
 
       return json({
-        authorization_url: result.authorization_url,
+        operation_id: result.operationId,
+        authorization_url: result.authorizationUrl,
         reference: result.reference,
+        status: result.status,
       });
     } catch (err) {
-      console.error("Wallet deposit init error:", err);
-      return json({ error: "Unable to initialize deposit. Please try again." }, 500);
-    }
-  }
+      console.error("Wallet deposit initialization error:", err);
 
+      return json({
+        error: "Unable to initialize deposit.",
+      }, 400);
+    }
+	}
+
+  // ── POST /api/wallet/deposit/confirm ───────────────────────
   // ── POST /api/wallet/deposit/confirm ───────────────────────
   if (pathname === "/api/wallet/deposit/confirm" && request.method === "POST") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
-    const body = await request.json();
-    const { reference } = body;
-
-    if (!reference) return json({ error: "reference required" }, 400);
-
     try {
+      const body = await request.json();
+
+      if (!body.reference) {
+        return json({ error: "reference required" }, 400);
+      }
+
       const user = await env.DB
-        .prepare(`SELECT id, email FROM users WHERE clerk_id = ?`)
+        .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
         .bind(auth.id)
         .first();
 
       if (!user) return json({ error: "User not found" }, 404);
 
-      // Idempotency — check if this reference already credited
-      const existing = await env.DB
-        .prepare(`SELECT id FROM wallet_transactions WHERE reference = ?`)
-        .bind(reference)
-        .first();
+      const deposits = new DepositService(env);
 
-      if (existing) {
-        const wallet = await getWallet(user.id, env.DB);
-        const display = await buildBalanceDisplay(
-          wallet.balance_usd,
-          wallet.currency_preference,
-          env.DB
-        );
-        return json({ message: "Already credited", ...display });
-      }
+      const result = await deposits.confirmDeposit({
+        userId: user.id,
+        reference: body.reference,
+        requestId: request.headers.get("cf-ray"),
+      });
 
-      // Verify payment with Paystack
-      const payments = new PaymentService(env);
-      const transaction = await payments.verifyPayment(reference);
-
-      if (transaction.status !== "success") {
-        return json({ error: "Payment not successful" }, 400);
-      }
-
-      // Confirm this payment was intended as a wallet deposit
-      if (transaction.metadata?.type !== "wallet_deposit") {
-        return json({ error: "Invalid payment type for wallet deposit" }, 400);
-      }
-
-      // Confirm it belongs to this user
-      if (transaction.metadata?.user_id !== user.id) {
-        return json({ error: "Payment does not belong to this account" }, 403);
-      }
-
-      const amountUsd = transaction.metadata?.usd_amount ?? (transaction.amount / 100);
-      const now = new Date().toISOString();
-      const wallet = await getWallet(user.id, env.DB);
-      const newBalance = wallet.balance_usd + amountUsd;
-
-      await env.DB
-        .prepare(`
-          UPDATE wallets
-          SET balance_usd = ?,
-              total_deposited_usd = total_deposited_usd + ?,
-              updated_at = ?
-          WHERE user_id = ?
-        `)
-        .bind(newBalance, amountUsd, now, user.id)
-        .run();
-
-      await env.DB
-        .prepare(`
-          INSERT INTO wallet_transactions
-            (id, wallet_id, user_id, type, amount_usd,
-             balance_after_usd, reference, description, created_at)
-          VALUES (?, ?, ?, 'deposit', ?, ?, ?, 'Wallet deposit via Paystack', ?)
-        `)
-        .bind(
-          crypto.randomUUID(), wallet.id, user.id,
-          amountUsd, newBalance, reference, now
-        )
-        .run();
-
-      const display = await buildBalanceDisplay(newBalance, wallet.currency_preference, env.DB);
-      return json({ message: "Deposit confirmed", ...display });
+      return json(result);
     } catch (err) {
-      console.error("Wallet deposit confirm error:", err);
-      return json({ error: "Unable to confirm deposit. Please try again." }, 500);
+      console.error("Wallet deposit confirmation error:", err);
+
+      return json({
+        error: "Unable to confirm deposit. Please try again.",
+      }, 400);
     }
   }
 
