@@ -162,12 +162,7 @@ if (existing.processing_status !== 'failed') {
 
 // Retry only the exact same previously failed event.
 eventId = existing.id;
-
 }
-
-    // Retry the existing failed event record.
-    eventId = existing.id;
-  }
 
   // Atomically claim this event for processing.
   const claim = await env.DB
