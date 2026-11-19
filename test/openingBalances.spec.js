@@ -41,14 +41,24 @@ async function createBatch(creatorId = 'creator-001') {
 }
 
 async function addPendingItem(batchId, overrides = {}) {
-  return service.addItem({
+  const sourceRecordId =
+    overrides.sourceRecordId || crypto.randomUUID();
+
+  const result = await service.addItem({
     batchId,
     sourceTable: 'wallets',
-    sourceRecordId: crypto.randomUUID(),
+    sourceRecordId,
     sourceAmountText: '125.50',
     sourceCurrencyCode: 'NGN',
     ...overrides,
   });
+
+  return {
+    ...result,
+    stagedItem: result.items.find(
+      item => item.source_record_id === sourceRecordId
+    ),
+  };
 }
 
 async function createAccount(currencyCode = 'NGN') {
@@ -67,7 +77,7 @@ async function verifyItem(batchId, overrides = {}) {
   const account = await createAccount('NGN');
   const result = await addPendingItem(batchId);
 
-  const item = result.items[result.items.length - 1];
+  const item = result.stagedItem;
 
   return service.verifyItem({
     itemId: item.id,
@@ -401,14 +411,14 @@ describe('Opening-balance batch review and approval', () => {
     await verifyItem(batch.id);
     const disputed = await addPendingItem(batch.id);
     await service.classifyItem({
-      itemId: disputed.items[1].id,
+      itemId: disputed.stagedItem.id,
       itemStatus: 'disputed',
       verificationNote: 'Source currency requires investigation.',
     });
 
     const excluded = await addPendingItem(batch.id);
     await service.classifyItem({
-      itemId: excluded.items[2].id,
+      itemId: excluded.stagedItem.id,
       itemStatus: 'excluded',
       verificationNote: 'Not a customer cash balance.',
     });
