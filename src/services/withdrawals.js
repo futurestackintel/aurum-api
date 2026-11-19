@@ -724,23 +724,7 @@ export class WithdrawalService {
     currencyCode,
     reference,
     requestId = null,
-    }) {
-    const finalization = await this.claimWithdrawalFinalization(
-      operationId,
-      'settle'
-    );
-
-    if (finalization.alreadyFinalized) {
-      return {
-        operationId,
-        reference,
-        status: 'succeeded',
-        ledgerTransactionId:
-          finalization.ledgerTransactionId,
-      };
-    }
-
-      }) {
+  }) {
     const finalization = await this.claimWithdrawalFinalization(
       operationId,
       'settle'
@@ -881,24 +865,7 @@ export class WithdrawalService {
     reference,
     requestId = null,
     reason,
-    }) {
-    const finalization = await this.claimWithdrawalFinalization(
-      operationId,
-      'release'
-    );
-
-    if (finalization.alreadyFinalized) {
-      return {
-        operationId,
-        reference,
-        status: 'failed',
-        fundsReleased: true,
-        ledgerTransactionId:
-          finalization.ledgerTransactionId,
-      };
-    }
-
-      }) {
+  }) {
     const finalization = await this.claimWithdrawalFinalization(
       operationId,
       'release'
