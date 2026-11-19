@@ -397,9 +397,22 @@ export async function handleWebhookRoutes(pathname, request, env) {
           console.warn('Webhook received unknown payment type:', type, reference);
         }
 
-      } catch (err) {
+     } catch (err) {
         console.error('Webhook processing error:', err);
-        // Always return 200 — prevent Paystack infinite retries
+
+        if (type === 'wallet_deposit') {
+          return new Response(
+            JSON.stringify({
+              error: 'Wallet deposit processing failed',
+            }),
+            {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        }
+
+        // Preserve legacy acknowledgement behavior for other handlers.
       }
     }
 
