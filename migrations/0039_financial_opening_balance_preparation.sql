@@ -255,5 +255,142 @@ END;
 
 
 -- ============================================================
+-- ADDITIONAL OPENING-BALANCE INTEGRITY CONTROLS
+-- ============================================================
+
+-- A legacy source record must never be staged twice,
+-- even if someone creates another batch.
+CREATE UNIQUE INDEX idx_opening_balance_unique_source
+ON financial_opening_balance_items(source_table, source_record_id);
+
+
+-- Verified items must map to an account with the same currency.
+CREATE TRIGGER validate_opening_balance_item_account_currency
+BEFORE UPDATE OF
+  item_status,
+  account_id,
+  currency_code,
+  amount_minor,
+  opening_side
+ON financial_opening_balance_items
+WHEN NEW.item_status = 'verified'
+BEGIN
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM ledger_accounts a
+      WHERE a.id = NEW.account_id
+        AND a.currency_code = NEW.currency_code
+    )
+    THEN RAISE(
+      ABORT,
+      'Verified opening balance account currency mismatch'
+    )
+  END;
+END;
+
+
+-- A batch cannot enter review until every item has been
+-- classified and the recorded counters match the evidence.
+CREATE TRIGGER validate_opening_balance_review
+BEFORE UPDATE OF status ON financial_opening_balance_batches
+WHEN OLD.status = 'draft'
+  AND NEW.status = 'reviewed'
+BEGIN
+  SELECT CASE
+    WHEN NEW.reviewed_by_type IS NULL
+      OR NEW.reviewed_by_id IS NULL
+      OR NEW.reviewed_at IS NULL
+    THEN RAISE(
+      ABORT,
+      'Reviewer identity and timestamp are required'
+    )
+  END;
+
+  SELECT CASE
+    WHEN NEW.total_items != (
+      SELECT COUNT(*)
+      FROM financial_opening_balance_items
+      WHERE batch_id = NEW.id
+    )
+    THEN RAISE(
+      ABORT,
+      'Opening-balance total item count mismatch'
+    )
+  END;
+
+  SELECT CASE
+    WHEN NEW.verified_items != (
+      SELECT COUNT(*)
+      FROM financial_opening_balance_items
+      WHERE batch_id = NEW.id
+        AND item_status = 'verified'
+    )
+    OR NEW.disputed_items != (
+      SELECT COUNT(*)
+      FROM financial_opening_balance_items
+      WHERE batch_id = NEW.id
+        AND item_status = 'disputed'
+    )
+    OR NEW.excluded_items != (
+      SELECT COUNT(*)
+      FROM financial_opening_balance_items
+      WHERE batch_id = NEW.id
+        AND item_status = 'excluded'
+    )
+    THEN RAISE(
+      ABORT,
+      'Opening-balance item counters do not match evidence'
+    )
+  END;
+
+  SELECT CASE
+    WHEN NEW.total_items = 0
+      OR NEW.verified_items + NEW.disputed_items
+        + NEW.excluded_items != NEW.total_items
+    THEN RAISE(
+      ABORT,
+      'All opening-balance items must be classified'
+    )
+  END;
+END;
+
+
+-- Approval requires a different reviewer and approver.
+CREATE TRIGGER validate_opening_balance_approval
+BEFORE UPDATE OF status ON financial_opening_balance_batches
+WHEN OLD.status = 'reviewed'
+  AND NEW.status = 'approved'
+BEGIN
+  SELECT CASE
+    WHEN NEW.approved_by_type IS NULL
+      OR NEW.approved_by_id IS NULL
+      OR NEW.approved_at IS NULL
+    THEN RAISE(
+      ABORT,
+      'Approver identity and timestamp are required'
+    )
+  END;
+
+  SELECT CASE
+    WHEN NEW.approved_by_type = OLD.reviewed_by_type
+      AND NEW.approved_by_id = OLD.reviewed_by_id
+    THEN RAISE(
+      ABORT,
+      'Reviewer cannot approve their own opening-balance batch'
+    )
+  END;
+
+  SELECT CASE
+    WHEN OLD.verified_items = 0
+    THEN RAISE(
+      ABORT,
+      'Batch has no verified opening-balance items'
+    )
+  END;
+END;
+
+
+-- ============================================================
 -- END MIGRATION 0039
 -- ============================================================
