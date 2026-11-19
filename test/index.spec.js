@@ -4,18 +4,13 @@ import {
   createExecutionContext,
   waitOnExecutionContext,
   SELF,
+	applyD1Migrations,
 } from "cloudflare:test";
 import { beforeAll, describe, it, expect } from "vitest";
-import securityAuditMigration from "../migrations/0034_security_audit_log.sql?raw";
 import worker from "../src";
 
 beforeAll(async () => {
-  // Remove SQL comment-only lines before applying the migration in the test database.
-  const migrationSql = securityAuditMigration
-    .replace(/^\s*--.*$/gm, "")
-    .trim();
-
-  await env.DB.exec(migrationSql);
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
 });
 
 async function expectAuthDenial(path) {
