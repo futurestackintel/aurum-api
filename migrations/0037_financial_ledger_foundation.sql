@@ -458,3 +458,79 @@ END;
 -- ============================================================
 -- END OF MIGRATION 0037
 -- ============================================================
+
+
+-- ============================================================
+-- 7. ADDITIONAL LEDGER INTEGRITY PROTECTIONS
+-- ============================================================
+
+-- A transaction must never be inserted directly as posted.
+-- All transactions must pass through the validated draft-to-posted
+-- transition.
+CREATE TRIGGER prevent_direct_posted_ledger_transaction_insert
+BEFORE INSERT ON ledger_transactions
+WHEN NEW.status != 'draft'
+BEGIN
+  SELECT RAISE(
+    ABORT,
+    'Ledger transactions must be created as drafts'
+  );
+END;
+
+
+-- Entry updates must preserve account/currency consistency and
+-- must never move an entry into an already-posted transaction.
+CREATE TRIGGER validate_ledger_entry_before_update
+BEFORE UPDATE ON ledger_entries
+BEGIN
+
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM ledger_accounts
+      WHERE id = NEW.account_id
+        AND currency_code = NEW.currency_code
+    )
+    THEN RAISE(
+      ABORT,
+      'Ledger entry currency must match its account currency'
+    )
+  END;
+
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1
+      FROM ledger_transactions
+      WHERE id = NEW.transaction_id
+        AND status = 'posted'
+    )
+    THEN RAISE(
+      ABORT,
+      'Cannot move or modify an entry in a posted transaction'
+    )
+  END;
+
+END;
+
+
+-- A reversal reference must remain valid if a draft transaction
+-- is edited after its initial insertion.
+CREATE TRIGGER validate_ledger_reversal_before_update
+BEFORE UPDATE OF reversal_of_transaction_id ON ledger_transactions
+WHEN NEW.reversal_of_transaction_id IS NOT NULL
+BEGIN
+
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM ledger_transactions
+      WHERE id = NEW.reversal_of_transaction_id
+        AND status = 'posted'
+    )
+    THEN RAISE(
+      ABORT,
+      'A reversal must reference a posted transaction'
+    )
+  END;
+
+END;
