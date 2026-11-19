@@ -632,6 +632,87 @@ export class WithdrawalService {
     }
   }
 
+	  async claimWithdrawalFinalization(operationId, outcome) {
+    const operation = await this.db
+      .prepare(`
+        SELECT
+          id,
+          operation_type,
+          status,
+          settlement_ledger_transaction_id
+        FROM financial_payment_operations
+        WHERE id = ?
+      `)
+      .bind(operationId)
+      .first();
+
+    if (!operation || operation.operation_type !== 'withdrawal') {
+      throw new Error('Withdrawal operation not found');
+    }
+
+    if (
+      operation.status === 'succeeded' ||
+      operation.status === 'failed'
+    ) {
+      const expectedStatus =
+        outcome === 'settle' ? 'succeeded' : 'failed';
+
+      if (operation.status !== expectedStatus) {
+        throw new Error(
+          'Withdrawal was already finalized with a different outcome'
+        );
+      }
+
+      return {
+        alreadyFinalized: true,
+        status: operation.status,
+        ledgerTransactionId:
+          operation.settlement_ledger_transaction_id,
+      };
+    }
+
+    if (
+      operation.status !== 'processing' &&
+      operation.status !== 'reconciliation_required'
+    ) {
+      throw new Error(
+        'Withdrawal is not eligible for finalization'
+      );
+    }
+
+    await this.db
+      .prepare(`
+        INSERT OR IGNORE INTO financial_withdrawal_finalization_claims (
+          payment_operation_id,
+          outcome
+        )
+        VALUES (?, ?)
+      `)
+      .bind(operationId, outcome)
+      .run();
+
+    const claim = await this.db
+      .prepare(`
+        SELECT outcome
+        FROM financial_withdrawal_finalization_claims
+        WHERE payment_operation_id = ?
+      `)
+      .bind(operationId)
+      .first();
+
+    if (!claim || claim.outcome !== outcome) {
+      throw new Error(
+        'Withdrawal finalization is already claimed by a different outcome'
+      );
+    }
+
+    return {
+      alreadyFinalized: false,
+      status: operation.status,
+      ledgerTransactionId: null,
+    };
+	  }
+
   // ============================================================
   // SETTLE VERIFIED SUCCESSFUL WITHDRAWAL
   // ============================================================
@@ -643,7 +724,22 @@ export class WithdrawalService {
     currencyCode,
     reference,
     requestId = null,
-  }) {
+    }) {
+    const finalization = await this.claimWithdrawalFinalization(
+      operationId,
+      'settle'
+    );
+
+    if (finalization.alreadyFinalized) {
+      return {
+        operationId,
+        reference,
+        status: 'succeeded',
+        ledgerTransactionId:
+          finalization.ledgerTransactionId,
+      };
+    }
+
     const userAccounts =
       await this.accounts.provisionUserAccounts(
         userId,
@@ -769,9 +865,25 @@ export class WithdrawalService {
     reference,
     requestId = null,
     reason,
-  }) {
+    }) {
+    const finalization = await this.claimWithdrawalFinalization(
+      operationId,
+      'release'
+    );
+
+    if (finalization.alreadyFinalized) {
+      return {
+        operationId,
+        reference,
+        status: 'failed',
+        fundsReleased: true,
+        ledgerTransactionId:
+          finalization.ledgerTransactionId,
+      };
+    }
+
     const userAccounts =
-      await this.accounts.provisionUserAccounts(
+      await this.accounts.provisionUserAccounts((
         userId,
         currencyCode
       );
