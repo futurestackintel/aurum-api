@@ -153,20 +153,34 @@ export class PaymentService {
     });
   }
 
-  async initiateWithdrawal({
+    async initiateWithdrawal({
     amount,
     recipientCode,
     userId,
   }) {
     const provider = this.getProvider();
 
-    if (typeof provider.transfer !== "function") {
-      throw new Error("Selected payment provider does not support legacy transfers");
+    if (typeof provider.createTransfer !== 'function') {
+      throw new Error(
+        'Selected payment provider does not support transfers'
+      );
     }
 
-    return provider.transfer({
-      amount,
-      recipient: recipientCode,
+    if (
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      throw new Error('Withdrawal amount must be positive');
+    }
+
+    const amountMinor = Math.round(amount * 100);
+
+    return provider.createTransfer({
+      amountMinor,
+      currencyCode: this.currency,
+      recipientCode,
+      reference: `withdrawal_${userId}_${Date.now()}`,
       reason: `AURUM wallet withdrawal for user ${userId}`,
     });
   }
