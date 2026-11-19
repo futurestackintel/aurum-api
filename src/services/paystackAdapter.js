@@ -32,6 +32,22 @@ export class PaystackAdapter {
     this.provider = new PaystackProvider(secretKey);
     this.providerName = 'paystack';
   }
+	
+    async createCustomer({
+    email,
+    first_name,
+    last_name,
+    metadata = {},
+  }) {
+    email = requireText(email, 'Customer email');
+
+    return this.provider.createCustomer({
+      email,
+      first_name,
+      last_name,
+      metadata,
+    });
+	  }
 		  /**
    * Verify a transfer using its provider reference.
    */
@@ -63,6 +79,28 @@ export class PaystackAdapter {
     };
 	}
 
+	  async createTransferRecipient({
+    name,
+    account_number,
+    bank_code,
+    currency = 'NGN',
+  }) {
+    name = requireText(name, 'Recipient name');
+    account_number = requireText(
+      account_number,
+      'Account number'
+    );
+    bank_code = requireText(bank_code, 'Bank code');
+    currency = validateCurrencyCode(currency);
+
+    return this.provider.createTransferRecipient({
+      name,
+      account_number,
+      bank_code,
+      currency,
+    });
+	  }
+	
   /**
    * Initialize a payment using integer minor units.
    * No major-unit conversion is performed here.
@@ -134,17 +172,18 @@ export class PaystackAdapter {
     }
 
     return {
-      provider: this.providerName,
-      reference: result.reference,
-      providerReference: result.id
-        ? String(result.id)
-        : null,
-      amountMinor,
-      currencyCode: validateCurrencyCode(result.currency),
-      status: result.status,
-      paidAt: result.paid_at || null,
-      gatewayResponse: result.gateway_response || null,
-    };
+  provider: this.providerName,
+  reference: result.reference,
+  providerReference: result.id
+    ? String(result.id)
+    : null,
+  amountMinor,
+  currencyCode: validateCurrencyCode(result.currency),
+  status: result.status,
+  paidAt: result.paid_at || null,
+  gatewayResponse: result.gateway_response || null,
+  metadata: result.metadata || {},
+  };
   }
 
   /**
