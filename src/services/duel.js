@@ -464,79 +464,43 @@ export async function acceptDuel(duelId, clerkId, db) {
   // 2. Activate the Duel only if it is still pending and fully funded.
   //
   // A retry reuses post_id and INSERT OR IGNORE, preventing duplicate posts.
-  await db.batch([
-    db.prepare(`
-      INSERT OR IGNORE INTO posts (
-        id,
-        user_id,
-        content,
-        achievement_category,
-        stake_amount_cents,
-        duel_id,
-        created_at,
-        updated_at
-      )
-      SELECT
-        ?,
-        ?,
-        ?,
-        'challenge_win',
-        ?,
-        ?,
-        ?,
-        ?
-      WHERE EXISTS (
-        SELECT 1
-        FROM duels
-        WHERE id = ?
-          AND status = 'pending'
-          AND post_id = ?
-          AND challenger_stake_funded_minor = stake_amount_minor
-          AND target_stake_funded_minor = stake_amount_minor
-    )
-    `).bind(
-      postId,
-      duel.challenger_id,
-      postContent,
-      Math.round(
-        Number(fromMinorUnits(
-          duel.stake_amount_minor,
-          duel.currency_code === 'USD' ? 2 : 2
-        )) * 100
-      ),
-      duelId,
-      now.toISOString(),
-      now.toISOString(),
-      duelId,
-      postId
-    ),
-
-    db.prepare(`
-      UPDATE duels
-      SET
-        status = 'active',
-        accepted_at = ?,
-        ends_at = ?,
-        dispute_status = 'none'
-      WHERE id = ?
-        AND status = 'pending'
-        AND post_id = ?
-        AND challenger_stake_funded_minor = stake_amount_minor
-        AND target_stake_funded_minor = stake_amount_minor
-        AND EXISTS (
-          SELECT 1
-          FROM posts
-          WHERE posts.id = ?
-            AND posts.duel_id = duels.id
-        )
-    `).bind(
-      now.toISOString(),
-      endsAt.toISOString(),
-      duelId,
-      postId,
-      postId
-    ),
-  ]);
+  await db.prepare(`
+  INSERT OR IGNORE INTO posts (
+    id,
+    user_id,
+    content,
+    achievement_category,
+    duel_id,
+    created_at,
+    updated_at
+  )
+  SELECT
+    ?,
+    ?,
+    ?,
+    'challenge_win',
+    ?,
+    ?,
+    ?
+  WHERE EXISTS (
+    SELECT 1
+    FROM duels
+    WHERE id = ?
+      AND status = 'pending'
+      AND post_id = ?
+      AND challenger_stake_funded_minor = stake_amount_minor
+      AND target_stake_funded_minor = stake_amount_minor
+  )
+`).bind(
+  postId,
+  duel.challenger_id,
+  postContent,
+  duelId,
+  now.toISOString(),
+  now.toISOString(),
+  duelId,
+  postId
+),
 
   // Verify the final state instead of assuming the batch succeeded.
   const finalDuel = await db.prepare(`
