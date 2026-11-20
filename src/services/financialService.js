@@ -155,7 +155,6 @@ export class FinancialService {
     });
 
     return this.ledger.postTransaction({
-			const transactionId = crypto.randomUUID();
       idempotencyScope: `financial-escrow-fund:${escrowType.toLowerCase()}`,
       idempotencyKey,
       sourceModule: 'financial_service',
@@ -219,6 +218,8 @@ export class FinancialService {
     currencyCode = validateCurrencyCode(currencyCode);
     assertSafeMinorUnits(grossAmountMinor);
     actorType = validateActorType(actorType);
+	escrowType = validateEscrowType(escrowType);
+    metadata = validateFinancialMetadata(metadata);
 
     if (grossAmountMinor === 0) {
       throw new Error('Settlement amount must be greater than zero');
@@ -279,7 +280,29 @@ export class FinancialService {
       });
     }
 
+            const transactionId = crypto.randomUUID();
+
     return this.ledger.postTransaction({
+      transactionId,
+      atomicStatements: [
+        this.db.prepare(`
+          INSERT INTO financial_escrow_terminal_operations (
+            id,
+            escrow_type,
+            escrow_id,
+            currency_code,
+            outcome,
+            ledger_transaction_id
+          )
+          VALUES (?, ?, ?, ?, 'settlement', ?)
+        `).bind(
+          crypto.randomUUID(),
+          escrowType,
+          escrowId,
+          currencyCode,
+          transactionId
+        ),
+      ],
       idempotencyScope: `financial-escrow-settle:${escrowType.toLowerCase()}`,
       idempotencyKey,
       sourceModule: 'financial_service',
