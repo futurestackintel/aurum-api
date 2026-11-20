@@ -1210,62 +1210,127 @@ export async function reportDuelCheating(duelId, clerkId, reason, db) {
 // original loser and release escrow to them) or 'rejected' (report
 // was invalid — release escrow to the original winner as normal).
 // Mirrors the shape of decideAppeal() in disputeResolution.js.
-
-export async function decideDuelDispute(duelId, decision, adminId, db, winnerId = null) {
-  const duel = await db
-    .prepare(`SELECT * FROM duels WHERE id = ?`)
-    .bind(duelId)
-    .first();
-
-  if (!duel) return { error: 'Duel not found' };
-
-  // Tied duel: admin must supply an explicit winner_id — 'upheld'/'rejected' don't apply
-  if (duel.status === 'tied') {
-    if (!winnerId) {
-      return { error: 'winner_id is required to resolve a tied duel' };
-    }
-    if (winnerId !== duel.challenger_id && winnerId !== duel.target_id) {
-      return { error: 'winner_id must be one of the two duel participants' };
-    }
-    const payout = await releaseDuelEscrow(duelId, winnerId, duel, db);
-    if (payout.error) return payout;
-
-    await db.prepare(`
-      UPDATE duels
-      SET winner_id = ?, dispute_status = 'resolved', status = 'resolved', resolved_at = ?
-      WHERE id = ?
-    `).bind(winnerId, nowISO(), duelId).run();
-
-    return { resolved: true, duel_id: duelId, winner_id: winnerId, decision: 'tie_resolved' };
+export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
+  if (duel.payout_released) {
+    return { error: 'Payout already released for this duel' };
   }
 
-  // Reported-cheating dispute path (not a tie)
-  if (!['upheld', 'rejected'].includes(decision)) {
-    return { error: 'decision must be upheld or rejected' };
-  }
-  if (duel.dispute_status !== 'reported') {
-    return { error: 'This duel has no pending dispute' };
+  if (winnerId !== duel.challenger_id && winnerId !== duel.target_id) {
+    return { error: 'Winner must be a Duel participant' };
   }
 
-  let finalWinnerId = duel.winner_id;
-
-  if (decision === 'upheld') {
-    // Report was valid — flip winner to whoever was NOT the original winner
-    finalWinnerId = duel.winner_id === duel.challenger_id
-      ? duel.target_id
-      : duel.challenger_id;
+  if (duel.financial_status !== 'funded') {
+    return {
+      error: 'Duel financial state is not ready for settlement',
+    };
   }
 
-  const payout = await releaseDuelEscrow(duelId, finalWinnerId, duel, db);
-  if (payout.error) return payout;
+  const stakeAmount = duel.stake_amount_minor;
+  const challengerFunded = duel.challenger_stake_funded_minor;
+  const targetFunded = duel.target_stake_funded_minor;
 
-  await db.prepare(`
+  if (
+    !Number.isSafeInteger(stakeAmount) ||
+    stakeAmount <= 0 ||
+    challengerFunded !== stakeAmount ||
+    targetFunded !== stakeAmount
+  ) {
+    return {
+      error: 'Duel stake funding requires reconciliation',
+    };
+  }
+
+  const audienceTips =
+    duel.audience_tips_challenger_minor +
+    duel.audience_tips_target_minor;
+
+  const grossAmountMinor = (stakeAmount * 2) + audienceTips;
+  const feeableAmountMinor = stakeAmount * 2;
+
+  if (
+    !Number.isSafeInteger(grossAmountMinor) ||
+    grossAmountMinor <= 0
+  ) {
+    return { error: 'Invalid Duel settlement amount' };
+  }
+
+  const loserId = winnerId === duel.challenger_id
+    ? duel.target_id
+    : duel.challenger_id;
+
+  const financial = new FinancialService(db);
+
+  // Settle the complete escrow. Only the two stakes are feeable.
+  const settlement = await financial.settleEscrow({
+    escrowType: 'DUEL',
+    escrowId: duelId,
+    currencyCode: duel.currency_code,
+    grossAmountMinor,
+    feeableAmountMinor,
+    recipientType: 'user',
+    recipientId: winnerId,
+    idempotencyKey: `duel-settlement:${duelId}`,
+    actorType: 'system',
+    reference: duelId,
+    metadata: {
+      duel_id: duelId,
+      winner_id: winnerId,
+      stake_amount_minor: stakeAmount,
+      audience_tips_minor: audienceTips,
+      reason: 'duel_completed',
+    },
+  });
+
+  if (settlement?.error) {
+    throw new Error(settlement.error);
+  }
+
+  // Mark the Duel settled only after its ledger settlement succeeds.
+  const result = await db.prepare(`
     UPDATE duels
-    SET winner_id = ?, dispute_status = 'resolved', status = 'resolved', resolved_at = ?
+    SET
+      payout_released = 1,
+      financial_status = 'settled'
     WHERE id = ?
-  `).bind(finalWinnerId, nowISO(), duelId).run();
+      AND payout_released = 0
+      AND financial_status = 'funded'
+  `).bind(duelId).run();
 
-  return { resolved: true, duel_id: duelId, winner_id: finalWinnerId, decision };
+  if (result.meta?.changes !== 1) {
+    const current = await db.prepare(`
+      SELECT payout_released, financial_status
+      FROM duels
+      WHERE id = ?
+    `).bind(duelId).first();
+
+    if (current?.payout_released) {
+      return { error: 'Payout already released for this duel' };
+    }
+
+    throw new Error(
+      'Ledger settlement posted but Duel finalization requires reconciliation'
+    );
+  }
+
+  await addScoreEvent(
+    winnerId,
+    'challenge_win',
+    null,
+    {
+      challenge_id: duelId,
+      note: `Won duel: ${duel.title}`,
+    },
+    db,
+  );
+
+  return {
+    winner_id: winnerId,
+    loser_id: loserId,
+    gross_payout_minor: grossAmountMinor,
+    feeable_amount_minor: feeableAmountMinor,
+    currency_code: duel.currency_code,
+    settled: true,
+  };
 }
 
 // ── SHARED PAYOUT LOGIC ───────────────────────────────────────
