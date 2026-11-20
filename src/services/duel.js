@@ -1331,23 +1331,120 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
 export async function processDuelCron(db) {
   const now = nowISO();
 
-  // Job 0 — refund and expire pending duels nobody ever accepted/declined
+    // Job 0 — safely expire pending Duels and refund the challenger's stake.
+  // The conditional status update claims the Duel before any refund.
+  // If acceptance wins the race, this claim cannot succeed.
+  // If expiration wins, the database stake-operation guards prevent
+  // a concurrent target funding operation from posting.
+
   const { results: toExpire } = await db
-    .prepare(`SELECT id, challenger_id, duel_tip_amount FROM duels WHERE status = 'pending' AND expires_at <= ?`)
+    .prepare(`
+      SELECT
+        id,
+        currency_code,
+        stake_amount_minor,
+        challenger_stake_funded_minor,
+        target_stake_funded_minor,
+        financial_status,
+        challenger_id
+      FROM duels
+      WHERE status = 'pending'
+        AND expires_at <= ?
+        AND financial_status IN ('pending', 'partially_funded')
+    `)
     .bind(now)
     .all();
 
-  for (const row of toExpire) {
+  const financial = new FinancialService(db);
+
+  for (const duel of toExpire) {
     try {
-      await db.batch([
-        db.prepare(`UPDATE duels SET status = 'expired' WHERE id = ?`).bind(row.id),
-        db.prepare(`
-          UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
-          WHERE user_id = ?
-        `).bind(row.duel_tip_amount, now, row.challenger_id),
-      ]);
+      // Only the expected one-sided funding state is safe to refund.
+      // Any unexpected funding state requires manual reconciliation.
+      const safelyRefundable =
+        duel.challenger_stake_funded_minor === duel.stake_amount_minor &&
+        duel.target_stake_funded_minor === 0 &&
+        duel.stake_amount_minor > 0;
+
+      if (!safelyRefundable) {
+        await db.prepare(`
+          UPDATE duels
+          SET
+            status = 'expired',
+            financial_status = 'reconciliation_required'
+          WHERE id = ?
+            AND status = 'pending'
+            AND expires_at <= ?
+        `).bind(duel.id, now).run();
+
+        console.error(
+          `Duel ${duel.id} expired with an unexpected funding state; reconciliation required`
+        );
+
+        continue;
+      }
+
+      // Claim expiration first. Only one concurrent worker can win.
+      const claim = await db.prepare(`
+        UPDATE duels
+        SET status = 'expired'
+        WHERE id = ?
+          AND status = 'pending'
+          AND expires_at <= ?
+          AND financial_status IN ('pending', 'partially_funded')
+          AND challenger_stake_funded_minor = stake_amount_minor
+          AND target_stake_funded_minor = 0
+      `).bind(duel.id, now).run();
+
+      if (claim.meta?.changes !== 1) {
+        // Another process accepted, declined, or expired this Duel.
+        continue;
+      }
+
+      try {
+        // Refund the challenger's exact funded amount.
+        // Refunds never generate platform revenue.
+        await financial.refundEscrow({
+          ownerType: 'user',
+          ownerId: duel.challenger_id,
+          escrowType: 'DUEL',
+          escrowId: duel.id,
+          currencyCode: duel.currency_code,
+          amountMinor: duel.challenger_stake_funded_minor,
+          idempotencyKey: `duel-expiry-refund:${duel.id}`,
+          actorType: 'system',
+          reference: duel.id,
+          metadata: {
+            reason: 'duel_invitation_expired',
+            duel_id: duel.id,
+          },
+        });
+
+        await db.prepare(`
+          UPDATE duels
+          SET financial_status = 'refunded'
+          WHERE id = ?
+            AND status = 'expired'
+            AND financial_status = 'partially_funded'
+        `).bind(duel.id).run();
+
+      } catch (refundError) {
+        await db.prepare(`
+          UPDATE duels
+          SET financial_status = 'reconciliation_required'
+          WHERE id = ?
+            AND status = 'expired'
+            AND financial_status != 'refunded'
+        `).bind(duel.id).run();
+
+        throw refundError;
+      }
+
     } catch (err) {
-      console.error(`processDuelCron: expire+refund failed for ${row.id}:`, err);
+      console.error(
+        `processDuelCron: ledger expiry/refund failed for ${duel.id}:`,
+        err
+      );
     }
   }
 
