@@ -115,13 +115,16 @@ export async function addScoreEvent(userId, eventType, delta, meta = {}, db) {
 
   if (points === 0) return await recalculateScore(userId, db);
 
-  await db
+    const eventId = meta.event_id || crypto.randomUUID();
+
+  const insertResult = await db
     .prepare(`
-      INSERT INTO aurum_score_events
-        (user_id, event_type, delta, post_id, challenge_id, tip_id, note, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO aurum_score_events
+        (id, user_id, event_type, delta, post_id, challenge_id, tip_id, note, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .bind(
+      eventId,
       userId,
       eventType,
       points,
@@ -132,6 +135,10 @@ export async function addScoreEvent(userId, eventType, delta, meta = {}, db) {
       new Date().toISOString(),
     )
     .run();
+
+  if (insertResult.meta?.changes === 0) {
+    return await recalculateScore(userId, db);
+  }
 
   const newScore = await recalculateScore(userId, db);
 
