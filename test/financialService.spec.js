@@ -233,22 +233,23 @@ describe('FinancialService internal transfers', () => {
 
 describe('FinancialService escrow terminal operations', () => {
   async function fundTestEscrow({
-    ownerId,
-    escrowId,
-    amountMinor = 5000,
-    key = crypto.randomUUID(),
-  }) {
-    return financial.fundEscrow({
-      ownerType: 'user',
-      ownerId,
-      escrowType: 'DUEL',
-      escrowId,
-      currencyCode: 'NGN',
-      amountMinor,
-      idempotencyKey: key,
-    });
-  }
+  ownerId,
+  escrowId,
+  amountMinor = 5000,
+  key = crypto.randomUUID(),
+}) {
+  await fundUser(ownerId, amountMinor);
 
+  return financial.fundEscrow({
+    ownerType: 'user',
+    ownerId,
+    escrowType: 'DUEL',
+    escrowId,
+    currencyCode: 'NGN',
+    amountMinor,
+    idempotencyKey: key,
+  });
+}
   async function getEscrowBalance(escrowId) {
     const result = await env.DB.prepare(`
       SELECT
