@@ -1,4 +1,4 @@
-
+	
 import { FinancialService } from './financialService.js';
 import {
   assertSafeMinorUnits,
@@ -253,9 +253,8 @@ export class DuelFinancialService {
         this.db.prepare(`
           UPDATE duels
           SET
-            ${role.fundedColumn} = ?,
-            financial_status = ?,
-            updated_at = ?
+				  ${role.fundedColumn} = ?,
+ 				  financial_status = ?
           WHERE id = ?
             AND currency_code = ?
             AND stake_amount_minor = ?
@@ -264,7 +263,6 @@ export class DuelFinancialService {
         `).bind(
           amountMinor,
           nextFinancialStatus,
-          new Date().toISOString(),
           duelId,
           currencyCode,
           amountMinor
