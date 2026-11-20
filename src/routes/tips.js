@@ -24,6 +24,129 @@ async function fingerprint(value) {
 function validText(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
+async function applyTipEffects(operation, db, requestId = null) {
+  const eventId = `tip:${operation.id}`;
+  const now = new Date().toISOString();
+
+  await db
+    .prepare(`
+      INSERT OR IGNORE INTO domain_events (
+        event_id,
+        event_type,
+        schema_version,
+        occurred_at,
+        actor_type,
+        actor_id,
+        resource_type,
+        resource_id,
+        request_id,
+        payload_json
+      )
+      VALUES (?, 'tip.completed', 1, ?, 'member', ?, 'tip', ?, ?, ?)
+    `)
+    .bind(
+      eventId,
+      now,
+      operation.sender_id,
+      operation.id,
+      requestId,
+      JSON.stringify({
+        tip_id: operation.id,
+        sender_id: operation.sender_id,
+        receiver_id: operation.receiver_id,
+        post_id: operation.post_id,
+        currency_code: operation.currency_code,
+        amount_minor: operation.amount_minor,
+      })
+    )
+    .run();
+
+  await addScoreEvent(
+    operation.sender_id,
+    "tip_sent",
+    null,
+    {
+      event_id: `tip-sent:${operation.id}`,
+      tip_id: operation.id,
+      post_id: operation.post_id,
+      note: "Sent a wallet tip",
+    },
+    db
+  );
+
+  await addScoreEvent(
+    operation.receiver_id,
+    "tip_received_reaction",
+    null,
+    {
+      event_id: `tip-received:${operation.id}`,
+      tip_id: operation.id,
+      post_id: operation.post_id,
+      note: "Received a wallet tip",
+    },
+    db
+  );
+
+  const notificationsAllowed = await notificationEnabled(
+    operation.receiver_id,
+    "tips_received",
+    db
+  );
+
+  if (!notificationsAllowed) return;
+
+  const currency = await db
+    .prepare(`
+      SELECT minor_unit_exponent
+      FROM financial_currencies
+      WHERE currency_code = ?
+        AND is_enabled = 1
+    `)
+    .bind(operation.currency_code)
+    .first();
+
+  if (!currency) {
+    throw new Error("Tip currency configuration could not be loaded");
+  }
+
+  const amount = fromMinorUnits(
+    operation.amount_minor,
+    currency.minor_unit_exponent
+  );
+
+  await db
+    .prepare(`
+      INSERT OR IGNORE INTO notifications (
+        id,
+        user_id,
+        type,
+        title,
+        body,
+        action_url,
+        metadata,
+        source_event_id,
+        created_at
+      )
+      VALUES (?, ?, 'tip_received', ?, ?, ?, ?, ?, ?)
+    `)
+    .bind(
+      crypto.randomUUID(),
+      operation.receiver_id,
+      "You received a tip",
+      `${amount} ${operation.currency_code} was sent to your post.`,
+      `/ledger`,
+      JSON.stringify({
+        tip_id: operation.id,
+        post_id: operation.post_id,
+        sender_id: operation.sender_id,
+        currency_code: operation.currency_code,
+        amount_minor: operation.amount_minor,
+      }),
+      eventId,
+      now
+    )
+    .run();
+}
 
 export async function handleTipsRoutes(pathname, request, env) {
   if (pathname !== "/api/tips" || request.method !== "POST") {
@@ -159,6 +282,7 @@ export async function handleTipsRoutes(pathname, request, env) {
       }
 
       if (operation.status === "completed") {
+				await applyTipEffects(operation, env.DB, request.headers.get("cf-ray"));
         return json({
           success: true,
           tip_id: operation.id,
@@ -307,6 +431,12 @@ export async function handleTipsRoutes(pathname, request, env) {
     if (!completedOperation || completedOperation.status !== "completed") {
       throw new Error("Tip completion could not be confirmed");
     }
+
+		  await applyTipEffects(
+      completedOperation,
+      env.DB,
+      request.headers.get("cf-ray")
+    );
 
     return json({
       success: true,
