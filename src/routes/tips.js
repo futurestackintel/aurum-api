@@ -345,7 +345,13 @@ export async function handleTipsRoutes(pathname, request, env) {
           }, 409);
         }
 
-        if (operation.status === "completed") {
+                if (operation.status === "completed") {
+          await applyTipEffects(
+            operation,
+            env.DB,
+            request.headers.get("cf-ray")
+          );
+
           return json({
             success: true,
             tip_id: operation.id,
@@ -356,7 +362,6 @@ export async function handleTipsRoutes(pathname, request, env) {
             amount_minor: operation.amount_minor,
           });
         }
-      }
 
       if (!operation) {
         operation = await env.DB
