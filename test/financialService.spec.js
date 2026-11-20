@@ -229,3 +229,185 @@ describe('FinancialService internal transfers', () => {
     expect(await getAvailableBalance(recipient, 'USD')).toBe(0);
   });
 });
+
+
+describe('FinancialService escrow terminal operations', () => {
+  async function fundTestEscrow({
+    ownerId,
+    escrowId,
+    amountMinor = 5000,
+    key = crypto.randomUUID(),
+  }) {
+    return financial.fundEscrow({
+      ownerType: 'user',
+      ownerId,
+      escrowType: 'DUEL',
+      escrowId,
+      currencyCode: 'NGN',
+      amountMinor,
+      idempotencyKey: key,
+    });
+  }
+
+  async function getEscrowBalance(escrowId) {
+    const result = await env.DB.prepare(`
+      SELECT
+        COALESCE(
+          SUM(
+            CASE
+              WHEN entries.entry_side = 'credit'
+                THEN entries.amount_minor
+              ELSE -entries.amount_minor
+            END
+          ),
+          0
+        ) AS balance
+      FROM ledger_entries AS entries
+      JOIN ledger_accounts AS accounts
+        ON accounts.id = entries.account_id
+      JOIN ledger_transactions AS transactions
+        ON transactions.id = entries.transaction_id
+      WHERE accounts.account_code = ?
+        AND transactions.status = 'posted'
+    `).bind(
+      `DUEL:ESCROW:${escrowId}:NGN`
+    ).first();
+
+    return result.balance;
+  }
+
+  async function getTerminalCount(escrowId) {
+    const result = await env.DB.prepare(`
+      SELECT COUNT(*) AS total
+      FROM financial_escrow_terminal_operations
+      WHERE escrow_type = 'DUEL'
+        AND escrow_id = ?
+    `).bind(escrowId).first();
+
+    return result.total;
+  }
+
+  it('allows one settlement and rejects a second settlement or refund', async () => {
+    const ownerId = `escrow-owner-${crypto.randomUUID()}`;
+    const winnerId = `escrow-winner-${crypto.randomUUID()}`;
+    const escrowId = `duel-${crypto.randomUUID()}`;
+    const settlementKey = crypto.randomUUID();
+
+    await fundTestEscrow({
+      ownerId,
+      escrowId,
+      amountMinor: 5000,
+    });
+
+    await fundTestEscrow({
+      ownerId,
+      escrowId,
+      amountMinor: 5000,
+    });
+
+    const input = {
+      escrowType: 'DUEL',
+      escrowId,
+      currencyCode: 'NGN',
+      grossAmountMinor: 5000,
+      recipientType: 'user',
+      recipientId: winnerId,
+      idempotencyKey: settlementKey,
+    };
+
+    const first = await financial.settleEscrow(input);
+    const retry = await financial.settleEscrow(input);
+
+    expect(first.created).toBe(true);
+    expect(retry.created).toBe(false);
+    expect(retry.transaction.id).toBe(first.transaction.id);
+
+    expect(await getAvailableBalance(winnerId)).toBe(4900);
+    expect(await getEscrowBalance(escrowId)).toBe(5000);
+    expect(await getTerminalCount(escrowId)).toBe(1);
+
+    await expect(
+      financial.settleEscrow({
+        ...input,
+        idempotencyKey: crypto.randomUUID(),
+      })
+    ).rejects.toThrow();
+
+    await expect(
+      financial.refundEscrow({
+        ownerType: 'user',
+        ownerId,
+        escrowType: 'DUEL',
+        escrowId,
+        currencyCode: 'NGN',
+        amountMinor: 5000,
+        idempotencyKey: crypto.randomUUID(),
+      })
+    ).rejects.toThrow();
+
+    expect(await getAvailableBalance(winnerId)).toBe(4900);
+    expect(await getEscrowBalance(escrowId)).toBe(5000);
+    expect(await getTerminalCount(escrowId)).toBe(1);
+  });
+
+  it('allows one refund and rejects a second refund or settlement', async () => {
+    const ownerId = `refund-owner-${crypto.randomUUID()}`;
+    const winnerId = `refund-winner-${crypto.randomUUID()}`;
+    const escrowId = `duel-${crypto.randomUUID()}`;
+
+    await fundTestEscrow({
+      ownerId,
+      escrowId,
+      amountMinor: 5000,
+    });
+
+    await fundTestEscrow({
+      ownerId,
+      escrowId,
+      amountMinor: 5000,
+    });
+
+    const input = {
+      ownerType: 'user',
+      ownerId,
+      escrowType: 'DUEL',
+      escrowId,
+      currencyCode: 'NGN',
+      amountMinor: 5000,
+      idempotencyKey: crypto.randomUUID(),
+    };
+
+    const first = await financial.refundEscrow(input);
+
+    expect(first.created).toBe(true);
+    expect(first.transaction.status).toBe('posted');
+
+    expect(await getAvailableBalance(ownerId)).toBe(5000);
+    expect(await getEscrowBalance(escrowId)).toBe(5000);
+    expect(await getTerminalCount(escrowId)).toBe(1);
+
+    await expect(
+      financial.refundEscrow({
+        ...input,
+        idempotencyKey: crypto.randomUUID(),
+      })
+    ).rejects.toThrow();
+
+    await expect(
+      financial.settleEscrow({
+        escrowType: 'DUEL',
+        escrowId,
+        currencyCode: 'NGN',
+        grossAmountMinor: 5000,
+        recipientType: 'user',
+        recipientId: winnerId,
+        idempotencyKey: crypto.randomUUID(),
+      })
+    ).rejects.toThrow();
+
+    expect(await getAvailableBalance(ownerId)).toBe(5000);
+    expect(await getAvailableBalance(winnerId)).toBe(0);
+    expect(await getEscrowBalance(escrowId)).toBe(5000);
+    expect(await getTerminalCount(escrowId)).toBe(1);
+  });
+});
