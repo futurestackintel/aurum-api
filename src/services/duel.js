@@ -16,6 +16,7 @@
 // in services/crew.js and services/dropCircle.js.
 // ============================================================
 import { DuelFinancialService } from './duelFinancials.js';
+import { FinancialService } from './financialService.js';
 import {
   assertSafeMinorUnits,
   validateCurrencyCode,
@@ -535,26 +536,138 @@ export async function acceptDuel(duelId, clerkId, db) {
 
 export async function declineDuel(duelId, clerkId, db) {
   const userId = await resolveUserId(clerkId, db);
-  if (!userId) return { error: 'User not found' };
+
+  if (!userId) {
+    return { error: 'User not found' };
+  }
 
   const duel = await db
     .prepare(`SELECT * FROM duels WHERE id = ?`)
     .bind(duelId)
     .first();
 
-    if (!duel)                      return { error: 'Duel not found' };
-  if (duel.target_id !== userId)  return { error: 'Only the challenged user can decline' };
-  if (duel.status !== 'pending')  return { error: `Duel is already ${duel.status}` };
+  if (!duel) {
+    return { error: 'Duel not found' };
+  }
 
-  await db.batch([
-    db.prepare(`UPDATE duels SET status = 'declined' WHERE id = ?`).bind(duelId),
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(duel.duel_tip_amount, nowISO(), duel.challenger_id),
-  ]);
+  if (duel.target_id !== userId) {
+    return {
+      error: 'Only the challenged user can decline',
+    };
+  }
 
-  return { declined: true, duel_id: duelId };
+  if (
+    duel.status === 'declined' &&
+    duel.financial_status === 'refunded'
+  ) {
+    return {
+      declined: true,
+      already_declined: true,
+      duel_id: duelId,
+    };
+  }
+
+  if (
+    duel.status !== 'pending' &&
+    !(
+      duel.status === 'declined' &&
+      duel.financial_status === 'reconciliation_required'
+    )
+  ) {
+    return {
+      error: `Duel is already ${duel.status}`,
+    };
+  }
+
+  if (
+    duel.target_stake_funded_minor > 0 ||
+    duel.challenger_stake_funded_minor <= 0 ||
+    duel.challenger_stake_funded_minor !== duel.stake_amount_minor
+  ) {
+    return {
+      error: 'Duel funding requires financial reconciliation before decline',
+      reconciliation_required: true,
+      duel_id: duelId,
+    };
+  }
+
+  // Close the Duel to prevent further stake funding.
+  if (duel.status === 'pending') {
+    const closed = await db.prepare(`
+      UPDATE duels
+      SET status = 'declined'
+      WHERE id = ?
+        AND status = 'pending'
+        AND target_stake_funded_minor = 0
+        AND challenger_stake_funded_minor = stake_amount_minor
+    `).bind(duelId).run();
+
+    if (closed.meta?.changes !== 1) {
+      return {
+        error: 'Duel state changed during decline',
+        reconciliation_required: true,
+        duel_id: duelId,
+      };
+    }
+  }
+
+  const financial = new FinancialService(db);
+
+  try {
+    await financial.refundEscrow({
+      ownerType: 'user',
+      ownerId: duel.challenger_id,
+      escrowType: 'DUEL',
+      escrowId: duelId,
+      currencyCode: duel.currency_code,
+      amountMinor: duel.challenger_stake_funded_minor,
+      idempotencyKey: `duel-decline-refund:${duelId}`,
+      actorType: 'member',
+      actorId: userId,
+      reference: duelId,
+      metadata: {
+        duel_id: duelId,
+        reason: 'target_declined',
+      },
+    });
+
+    await db.prepare(`
+      UPDATE duels
+      SET financial_status = 'refunded'
+      WHERE id = ?
+        AND status = 'declined'
+        AND financial_status IN (
+          'pending',
+          'partially_funded',
+          'reconciliation_required'
+        )
+    `).bind(duelId).run();
+
+    return {
+      declined: true,
+      refunded: true,
+      duel_id: duelId,
+    };
+  } catch (error) {
+    await db.prepare(`
+      UPDATE duels
+      SET financial_status = 'reconciliation_required'
+      WHERE id = ?
+        AND status = 'declined'
+    `).bind(duelId).run();
+
+    console.error('Duel decline refund requires reconciliation:', {
+      duel_id: duelId,
+      error: error.message,
+    });
+
+    return {
+      declined: true,
+      refunded: false,
+      reconciliation_required: true,
+      duel_id: duelId,
+    };
+  }
 }
 
 // ── SUBMIT PROOF ─────────────────────────────────────────────
