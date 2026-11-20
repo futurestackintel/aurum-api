@@ -266,92 +266,307 @@ export async function createDuel(clerkId, body, db) {
 
 
 // ── ACCEPT DUEL ──────────────────────────────────────────────
-
 export async function acceptDuel(duelId, clerkId, db) {
   const userId = await resolveUserId(clerkId, db);
-  if (!userId) return { error: 'User not found' };
 
-  const duel = await db
+  if (!userId) {
+    return { error: 'User not found' };
+  }
+
+  let duel = await db
     .prepare(`SELECT * FROM duels WHERE id = ?`)
     .bind(duelId)
     .first();
 
-    if (!duel)                      return { error: 'Duel not found' };
-  if (duel.target_id !== userId)  return { error: 'Only the challenged user can accept' };
-  if (duel.status !== 'pending')  return { error: `Duel is already ${duel.status}` };
+  if (!duel) {
+    return { error: 'Duel not found' };
+  }
+
+  if (duel.target_id !== userId) {
+    return { error: 'Only the challenged user can accept' };
+  }
+
+  if (duel.status === 'active' && duel.post_id) {
+    return {
+      accepted: true,
+      already_accepted: true,
+      duel_id: duelId,
+      post_id: duel.post_id,
+      ends_at: duel.ends_at,
+    };
+  }
+
+  if (duel.status !== 'pending') {
+    return { error: `Duel is already ${duel.status}` };
+  }
+
   if (new Date(duel.expires_at) <= new Date()) {
-    // Refund the challenger's escrowed stake — the duel never happened.
-    await db.batch([
-      db.prepare(`UPDATE duels SET status = 'expired' WHERE id = ?`).bind(duelId),
-      db.prepare(`
-        UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
-        WHERE user_id = ?
-      `).bind(duel.duel_tip_amount, nowISO(), duel.challenger_id),
-    ]);
     return { error: 'Duel invitation has expired' };
   }
 
-  // Escrow the target's stake now, matching the challenger's stake
-  // already escrowed at creation. Both stakes must be collected before
-  // the duel can go active.
-  const targetWallet = await db
-    .prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`)
-    .bind(userId)
-    .first();
-
-  if (!targetWallet || targetWallet.balance_usd < duel.duel_tip_amount) {
-    return { error: 'Insufficient wallet balance to accept this stake' };
+  if (
+    duel.challenger_stake_funded_minor !==
+    duel.stake_amount_minor
+  ) {
+    return {
+      error: 'The challenger stake has not been fully funded',
+    };
   }
 
-  const now       = new Date();
-  const windowHrs = duel.window_hours ?? DEFAULT_DUEL_DAYS * 24;
-  const endsAt    = new Date(now.getTime() + windowHrs * 60 * 60 * 1000);
+  // Fund the target's stake through the immutable financial ledger.
+  // This operation is idempotent, so retrying acceptance cannot
+  // charge the target twice.
+  let funding;
+
+  try {
+    const financials = new DuelFinancialService(db);
+
+    funding = await financials.fundStake({
+      duelId,
+      participantId: userId,
+      participantRole: 'target',
+    });
+  } catch (err) {
+    console.error('Duel target stake funding failed:', err);
+
+    return {
+      error: 'Unable to fund your Duel stake. Please check your wallet and try again.',
+    };
+  }
+
+  // Reload after financial funding.
+  duel = await db
+    .prepare(`SELECT * FROM duels WHERE id = ?`)
+    .bind(duelId)
+    .first();
+
+  if (!duel) {
+    return {
+      error: 'Duel record missing after stake funding',
+      reconciliation_required: true,
+    };
+  }
+
+  if (
+    duel.target_stake_funded_minor !== duel.stake_amount_minor ||
+    duel.challenger_stake_funded_minor !== duel.stake_amount_minor
+  ) {
+    return {
+      error: 'Both Duel stakes must be fully funded before activation',
+      reconciliation_required: true,
+    };
+  }
+
+  // If another request already activated the Duel, return its result.
+  if (duel.status === 'active' && duel.post_id) {
+    return {
+      accepted: true,
+      already_accepted: true,
+      duel_id: duelId,
+      post_id: duel.post_id,
+      ends_at: duel.ends_at,
+      funding,
+    };
+  }
+
+  if (duel.status !== 'pending') {
+    return {
+      error: `Duel cannot be activated from status: ${duel.status}`,
+      reconciliation_required: true,
+    };
+  }
+
+  // Recheck expiration after funding.
+  // The expiration/refund process will be handled by the ledger-based
+  // expiration task, not by direct wallet mutations.
+  if (new Date(duel.expires_at) <= new Date()) {
+    return {
+      error: 'Duel invitation expired during acceptance',
+      reconciliation_required: true,
+    };
+  }
+
+  const now = new Date();
+  const windowHrs =
+    duel.window_hours ?? DEFAULT_DUEL_DAYS * 24;
+
+  const endsAt = new Date(
+    now.getTime() + windowHrs * 60 * 60 * 1000
+  );
 
   const [challenger, target] = await Promise.all([
-    db.prepare(`SELECT username FROM users WHERE id = ?`).bind(duel.challenger_id).first(),
-    db.prepare(`SELECT username FROM users WHERE id = ?`).bind(duel.target_id).first(),
+    db.prepare(`
+      SELECT username
+      FROM users
+      WHERE id = ?
+    `).bind(duel.challenger_id).first(),
+
+    db.prepare(`
+      SELECT username
+      FROM users
+      WHERE id = ?
+    `).bind(duel.target_id).first(),
   ]);
 
-  const postId = crypto.randomUUID();
   const postContent =
-    `⚔️ Duel: ${duel.title}\n@${challenger?.username ?? 'challenger'} vs @${target?.username ?? 'opponent'}\n` +
+    `⚔️ Duel: ${duel.title}\n` +
+    `@${challenger?.username ?? 'challenger'} vs ` +
+    `@${target?.username ?? 'opponent'}\n` +
     (duel.description ? duel.description : '');
 
+  // Reserve the post ID once. Concurrent acceptance retries will
+  // reuse this same ID instead of creating duplicate posts.
+  const proposedPostId = crypto.randomUUID();
+
+  await db.prepare(`
+    UPDATE duels
+    SET post_id = ?
+    WHERE id = ?
+      AND status = 'pending'
+      AND post_id IS NULL
+  `).bind(proposedPostId, duelId).run();
+
+  duel = await db.prepare(`
+    SELECT *
+    FROM duels
+    WHERE id = ?
+  `).bind(duelId).first();
+
+  if (!duel) {
+    return {
+      error: 'Duel record missing during activation',
+      reconciliation_required: true,
+    };
+  }
+
+  if (duel.status === 'active' && duel.post_id) {
+    return {
+      accepted: true,
+      already_accepted: true,
+      duel_id: duelId,
+      post_id: duel.post_id,
+      ends_at: duel.ends_at,
+      funding,
+    };
+  }
+
+  if (!duel.post_id) {
+    return {
+      error: 'Unable to reserve Duel post ID',
+      reconciliation_required: true,
+    };
+  }
+
+  const postId = duel.post_id;
+
+  // Atomic activation:
+  // 1. Insert the post only if this reserved post ID doesn't exist.
+  // 2. Activate the Duel only if it is still pending and fully funded.
+  //
+  // A retry reuses post_id and INSERT OR IGNORE, preventing duplicate posts.
   await db.batch([
     db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(duel.duel_tip_amount, now.toISOString(), userId),
-
-    db.prepare(`
-      INSERT INTO posts
-        (id, user_id, content, achievement_category, stake_amount_cents, duel_id, created_at, updated_at)
-      VALUES (?, ?, ?, 'challenge_win', ?, ?, ?, ?)
+      INSERT OR IGNORE INTO posts (
+        id,
+        user_id,
+        content,
+        achievement_category,
+        stake_amount_cents,
+        duel_id,
+        created_at,
+        updated_at
+      )
+      SELECT
+        ?,
+        ?,
+        ?,
+        'challenge_win',
+        ?,
+        ?,
+        ?,
+        ?
+      WHERE EXISTS (
+        SELECT 1
+        FROM duels
+        WHERE id = ?
+          AND status = 'pending'
+          AND post_id = ?
+          AND challenger_stake_funded_minor = stake_amount_minor
+          AND target_stake_funded_minor = stake_amount_minor
+    )
     `).bind(
       postId,
       duel.challenger_id,
       postContent,
-      Math.round(duel.duel_tip_amount * 100),
+      Math.round(
+        Number(fromMinorUnits(
+          duel.stake_amount_minor,
+          duel.currency_code === 'USD' ? 2 : 2
+        )) * 100
+      ),
       duelId,
       now.toISOString(),
       now.toISOString(),
+      duelId,
+      postId
     ),
 
     db.prepare(`
       UPDATE duels
-      SET status = 'active', accepted_at = ?, ends_at = ?, post_id = ?, dispute_status = 'none'
+      SET
+        status = 'active',
+        accepted_at = ?,
+        ends_at = ?,
+        dispute_status = 'none'
       WHERE id = ?
-    `).bind(now.toISOString(), endsAt.toISOString(), postId, duelId),
+        AND status = 'pending'
+        AND post_id = ?
+        AND challenger_stake_funded_minor = stake_amount_minor
+        AND target_stake_funded_minor = stake_amount_minor
+        AND EXISTS (
+          SELECT 1
+          FROM posts
+          WHERE posts.id = ?
+            AND posts.duel_id = duels.id
+        )
+    `).bind(
+      now.toISOString(),
+      endsAt.toISOString(),
+      duelId,
+      postId,
+      postId
+    ),
   ]);
-	
+
+  // Verify the final state instead of assuming the batch succeeded.
+  const finalDuel = await db.prepare(`
+    SELECT status, post_id, ends_at
+    FROM duels
+    WHERE id = ?
+  `).bind(duelId).first();
+
+  if (
+    !finalDuel ||
+    finalDuel.status !== 'active' ||
+    !finalDuel.post_id
+  ) {
+    return {
+      error: 'Duel stakes were funded but activation did not complete',
+      reconciliation_required: true,
+      duel_id: duelId,
+      funding,
+    };
+  }
+
   return {
     accepted: true,
-    duel_id:  duelId,
-    post_id:  postId,
-    ends_at:  endsAt.toISOString(),
+    duel_id: duelId,
+    post_id: finalDuel.post_id,
+    ends_at: finalDuel.ends_at,
+    funding,
   };
 }
-
+    
 // ── DECLINE DUEL ─────────────────────────────────────────────
 
 export async function declineDuel(duelId, clerkId, db) {
