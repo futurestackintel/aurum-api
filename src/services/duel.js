@@ -15,7 +15,12 @@
 // at the top of every function that needs it, same pattern used
 // in services/crew.js and services/dropCircle.js.
 // ============================================================
-
+import { DuelFinancialService } from './duelFinancials.js';
+import {
+  assertSafeMinorUnits,
+  validateCurrencyCode,
+  fromMinorUnits,
+} from './money.js';
 import { addScoreEvent } from './aurumScore.js';
 import { notificationEnabled } from './notifications.js';
 
@@ -40,110 +45,225 @@ async function resolveUserId(clerkId, db) {
 
 // ── CREATE DUEL ──────────────────────────────────────────────
 
+ 
+    
 export async function createDuel(clerkId, body, db) {
   const challengerId = await resolveUserId(clerkId, db);
   if (!challengerId) return { error: 'User not found' };
 
-    const {
-    target_username, title, description, duel_tip_amount,
-    duel_type, quick_game_type,
+  const {
+    target_username,
+    title,
+    description,
+    currency_code,
+    stake_amount_minor,
+    duel_type,
+    quick_game_type,
   } = body;
 
-  if (!target_username)                          return { error: 'target_username is required' };
-  if (!title || title.trim().length === 0)       return { error: 'title is required' };
-  if (!duel_tip_amount || duel_tip_amount < MIN_DUEL_TIP_AMOUNT) {
-    return { error: `Minimum duel tip amount is $${MIN_DUEL_TIP_AMOUNT}` };
+  if (!target_username || typeof target_username !== 'string') {
+    return { error: 'target_username is required' };
+  }
+
+  if (typeof title !== 'string' || !title.trim()) {
+    return { error: 'title is required' };
+  }
+
+  let currencyCode;
+
+  try {
+    currencyCode = validateCurrencyCode(currency_code);
+    assertSafeMinorUnits(stake_amount_minor);
+  } catch (err) {
+    return { error: err.message };
+  }
+
+  if (stake_amount_minor === 0) {
+    return { error: 'Duel stake must be greater than zero' };
+  }
+
+  const currency = await db.prepare(`
+    SELECT
+      c.currency_code,
+      c.minor_unit_exponent,
+      r.minimum_stake_minor
+    FROM financial_currencies c
+    JOIN duel_currency_rules r
+      ON r.currency_code = c.currency_code
+    WHERE c.currency_code = ?
+      AND c.is_enabled = 1
+      AND r.is_enabled = 1
+  `).bind(currencyCode).first();
+
+  if (!currency) {
+    return { error: 'This currency is not currently enabled for Duels' };
+  }
+
+  if (stake_amount_minor < currency.minimum_stake_minor) {
+    return {
+      error: 'Duel stake is below the minimum for this currency',
+      currency_code: currencyCode,
+      minimum_stake_minor: currency.minimum_stake_minor,
+    };
   }
 
   const duelType = duel_type === 'quick' ? 'quick' : 'proof';
   const VALID_QUICK_GAMES = ['reflex_tap', 'trivia'];
-  if (duelType === 'quick' && !VALID_QUICK_GAMES.includes(quick_game_type)) {
-    return { error: `quick_game_type must be one of: ${VALID_QUICK_GAMES.join(', ')}` };
-  }
-  const quickGameType = duelType === 'quick' ? quick_game_type : null;
 
-  const target = await db
-    .prepare(`SELECT id, username FROM users WHERE username = ?`)
-    .bind(target_username.trim())
-    .first();
-
-  if (!target)                    return { error: `User @${target_username} not found` };
-  if (target.id === challengerId) return { error: 'You cannot duel yourself' };
-
-  // Prevent duplicate active duel between same two users
-  const existing = await db
-    .prepare(`
-      SELECT id FROM duels
-      WHERE ((challenger_id = ? AND target_id = ?)
-          OR (challenger_id = ? AND target_id = ?))
-        AND status IN ('pending', 'active')
-    `)
-    .bind(challengerId, target.id, target.id, challengerId)
-    .first();
-
-    if (existing) return { error: 'You already have an active duel with this user' };
-
-  // Escrow the challenger's stake right now — money must actually be
-  // there before a duel can be created, not just checked later at payout.
-  const challengerWallet = await db
-    .prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`)
-    .bind(challengerId)
-    .first();
-
-  if (!challengerWallet || challengerWallet.balance_usd < duel_tip_amount) {
-    return { error: 'Insufficient wallet balance to stake this duel' };
+  if (
+    duelType === 'quick' &&
+    !VALID_QUICK_GAMES.includes(quick_game_type)
+  ) {
+    return {
+      error: `quick_game_type must be one of: ${VALID_QUICK_GAMES.join(', ')}`,
+    };
   }
 
-  const now       = new Date();
-  const expiresAt = new Date(now.getTime() + DUEL_EXPIRY_HOURS * 60 * 60 * 1000);
-  const duelId    = crypto.randomUUID();
+  const quickGameType = duelType === 'quick'
+    ? quick_game_type
+    : null;
 
-  await db.batch([
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(duel_tip_amount, now.toISOString(), challengerId),
+  const target = await db.prepare(`
+    SELECT id, username
+    FROM users
+    WHERE username = ?
+  `).bind(target_username.trim()).first();
 
-    db.prepare(`
-      INSERT INTO duels
-        (id, challenger_id, target_id, title, description,
-         duel_tip_amount, status, expires_at, created_at,
-         duel_type, quick_game_type)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-    `).bind(
-      duelId,
-      challengerId,
-      target.id,
-      title.trim(),
-      description ?? null,
+  if (!target) {
+    return { error: `User @${target_username} not found` };
+  }
+
+  if (target.id === challengerId) {
+    return { error: 'You cannot duel yourself' };
+  }
+
+  const existing = await db.prepare(`
+    SELECT id
+    FROM duels
+    WHERE (
+      (challenger_id = ? AND target_id = ?)
+      OR
+      (challenger_id = ? AND target_id = ?)
+    )
+    AND status IN ('pending', 'active')
+  `).bind(
+    challengerId,
+    target.id,
+    target.id,
+    challengerId
+  ).first();
+
+  if (existing) {
+    return { error: 'You already have an active duel with this user' };
+  }
+
+  const now = new Date();
+  const expiresAt = new Date(
+    now.getTime() + DUEL_EXPIRY_HOURS * 60 * 60 * 1000
+  );
+
+  const duelId = crypto.randomUUID();
+
+  // Retain the legacy major-unit field for historical UI compatibility.
+  // All new financial calculations use stake_amount_minor.
+  const legacyDisplayAmount = Number(
+    fromMinorUnits(
+      stake_amount_minor,
+      currency.minor_unit_exponent
+    )
+  );
+
+  await db.prepare(`
+    INSERT INTO duels (
+      id,
+      challenger_id,
+      target_id,
+      title,
+      description,
       duel_tip_amount,
-      expiresAt.toISOString(),
-      now.toISOString(),
-      duelType,
-      quickGameType,
-    ),
-  ]);
-  const challenger = await db
-    .prepare(`SELECT username FROM users WHERE id = ?`)
-    .bind(challengerId)
-    .first();
+      status,
+      expires_at,
+      created_at,
+      duel_type,
+      quick_game_type,
+      currency_code,
+      stake_amount_minor,
+      financial_status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, 'pending')
+  `).bind(
+    duelId,
+    challengerId,
+    target.id,
+    title.trim(),
+    description ?? null,
+    legacyDisplayAmount,
+    expiresAt.toISOString(),
+    now.toISOString(),
+    duelType,
+    quickGameType,
+    currencyCode,
+    stake_amount_minor
+  ).run();
+
+  try {
+    const financials = new DuelFinancialService(db);
+
+    const funding = await financials.fundStake({
+      duelId,
+      participantId: challengerId,
+      participantRole: 'challenger',
+    });
+
+    const challenger = await db.prepare(`
+      SELECT username
+      FROM users
+      WHERE id = ?
+    `).bind(challengerId).first();
 
     return {
-    duel: {
-      id:              duelId,
-      challenger:      challenger?.username ?? null,
-      target:          target.username,
-      title:           title.trim(),
-      description:     description ?? null,
-      duel_tip_amount,
-      status:          'pending',
-      expires_at:      expiresAt.toISOString(),
-      created_at:      now.toISOString(),
-      duel_type:       duelType,
-      quick_game_type: quickGameType,
-    },
-  };
+      duel: {
+        id: duelId,
+        challenger: challenger?.username ?? null,
+        target: target.username,
+        title: title.trim(),
+        description: description ?? null,
+        currency_code: currencyCode,
+        stake_amount_minor,
+        minimum_stake_minor: currency.minimum_stake_minor,
+        duel_tip_amount: legacyDisplayAmount,
+        status: 'pending',
+        financial_status: 'partially_funded',
+        expires_at: expiresAt.toISOString(),
+        created_at: now.toISOString(),
+        duel_type: duelType,
+        quick_game_type: quickGameType,
+      },
+      funding,
+    };
+  } catch (err) {
+    // Remove the new Duel only if no financial operation was recorded
+    // and no stake was successfully funded.
+    await db.prepare(`
+      DELETE FROM duels
+      WHERE id = ?
+        AND financial_status = 'pending'
+        AND challenger_stake_funded_minor = 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM duel_financial_operations
+          WHERE duel_id = ?
+        )
+    `).bind(duelId, duelId).run();
+
+    console.error('Duel challenger stake funding failed:', err);
+
+    return {
+      error: 'Unable to fund the Duel stake. Please check your wallet and try again.',
+    };
+  }
 }
+
 
 // ── ACCEPT DUEL ──────────────────────────────────────────────
 
