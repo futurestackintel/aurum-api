@@ -33,6 +33,26 @@ function validateActorType(actorType) {
   return actorType;
 }
 
+function validateEscrowType(escrowType) {
+  if (!['DUEL', 'CHALLENGE', 'CREW_BATTLE'].includes(escrowType)) {
+    throw new Error('Unsupported escrow type');
+  }
+
+  return escrowType;
+}
+
+function validateFinancialMetadata(metadata) {
+  if (
+    typeof metadata !== 'object' ||
+    metadata === null ||
+    Array.isArray(metadata)
+  ) {
+    throw new Error('Financial metadata must be an object');
+  }
+
+  return metadata;
+}
+
 function getAccount(accounts, accountCode) {
   const account = accounts.find(
     item => item.account_code === accountCode
@@ -82,6 +102,7 @@ export class FinancialService {
     escrowId,
     currencyCode,
   }) {
+		escrowType = validateEscrowType(escrowType);
     return this.accounts.provisionEscrowAccount({
       escrowType,
       escrowId,
@@ -114,6 +135,8 @@ export class FinancialService {
     currencyCode = validateCurrencyCode(currencyCode);
     assertSafeMinorUnits(amountMinor);
     actorType = validateActorType(actorType);
+		    escrowType = validateEscrowType(escrowType);
+    metadata = validateFinancialMetadata(metadata);
 
     if (amountMinor === 0) {
       throw new Error('Escrow funding amount must be greater than zero');
@@ -132,6 +155,7 @@ export class FinancialService {
     });
 
     return this.ledger.postTransaction({
+			const transactionId = crypto.randomUUID();
       idempotencyScope: `financial-escrow-fund:${escrowType.toLowerCase()}`,
       idempotencyKey,
       sourceModule: 'financial_service',
@@ -306,6 +330,8 @@ export class FinancialService {
     currencyCode = validateCurrencyCode(currencyCode);
     assertSafeMinorUnits(amountMinor);
     actorType = validateActorType(actorType);
+		escrowType = validateEscrowType(escrowType);
+    metadata = validateFinancialMetadata(metadata);
 
     if (amountMinor === 0) {
       throw new Error('Refund amount must be greater than zero');
@@ -323,7 +349,29 @@ export class FinancialService {
       currencyCode,
     });
 
+		const transactionId = crypto.randomUUID();
+
     return this.ledger.postTransaction({
+			transactionId,
+      atomicStatements: [
+        this.db.prepare(`
+          INSERT INTO financial_escrow_terminal_operations (
+            id,
+            escrow_type,
+            escrow_id,
+            currency_code,
+            outcome,
+            ledger_transaction_id
+          )
+          VALUES (?, ?, ?, ?, 'refund', ?)
+        `).bind(
+          crypto.randomUUID(),
+          escrowType,
+          escrowId,
+          currencyCode,
+          transactionId
+        ),
+      ],
       idempotencyScope: `financial-escrow-refund:${escrowType.toLowerCase()}`,
       idempotencyKey,
       sourceModule: 'financial_service',
