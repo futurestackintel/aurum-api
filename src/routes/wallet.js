@@ -14,6 +14,7 @@
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { PaymentService } from "../services/payments.js";
 import { DepositService } from "../services/deposits.js";
+import { WithdrawalService } from "../services/withdrawals.js";
 import { buildBalanceDisplay, SUPPORTED_CURRENCIES } from "../services/currency.js";
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -180,95 +181,136 @@ export async function handleWalletRoutes(pathname, request, env) {
     }
   }
 
-  // ── POST /api/wallet/withdraw ───────────────────────────────
+    // ── POST /api/wallet/withdraw ───────────────────────────────
   if (pathname === "/api/wallet/withdraw" && request.method === "POST") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
-    const body = await request.json();
-    const { amount_usd, account_number, bank_code, account_name } = body;
-
-    if (!amount_usd || amount_usd < 10) {
-      return json({ error: "Minimum withdrawal is $10" }, 400);
-    }
-
-    if (!account_number || !bank_code || !account_name) {
-      return json({ error: "account_number, bank_code, and account_name required" }, 400);
-    }
-
     try {
-      const user = await env.DB
-        .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
-        .bind(auth.id)
-        .first();
+      const body = await request.json();
 
-      if (!user) return json({ error: "User not found" }, 404);
+      const idempotencyKey = request.headers.get("Idempotency-Key");
 
-      const wallet = await getWallet(user.id, env.DB);
-
-      if (wallet.balance_usd < amount_usd) {
+      if (!idempotencyKey) {
         return json({
-          error: "Insufficient balance",
-          balance_usd: wallet.balance_usd,
+          error: "Idempotency-Key header required",
         }, 400);
       }
 
-      const now = new Date().toISOString();
-      const newBalance = wallet.balance_usd - amount_usd;
-
-      // Deduct balance immediately before initiating transfer
-      await env.DB
+      const user = await env.DB
         .prepare(`
-          UPDATE wallets
-          SET balance_usd = ?,
-              total_withdrawn_usd = total_withdrawn_usd + ?,
-              updated_at = ?
+          SELECT id
+          FROM users
+          WHERE clerk_id = ?
+        `)
+        .bind(auth.id)
+        .first();
+
+      if (!user) {
+        return json({ error: "User not found" }, 404);
+      }
+
+      // Withdrawals must use previously saved bank details.
+      // Never accept payout account details directly from this request.
+      const bankDetails = await env.DB
+        .prepare(`
+          SELECT
+            bank_name,
+            account_number,
+            account_name,
+            bank_code
+          FROM user_bank_details
           WHERE user_id = ?
         `)
-        .bind(newBalance, amount_usd, now, user.id)
-        .run();
+        .bind(user.id)
+        .first();
 
-      // Create Paystack transfer recipient then initiate transfer
-      const payments = new PaymentService(env);
-      const recipient = await payments.createTransferRecipient({
-        name: account_name,
-        account_number,
-        bank_code,
-      });
+      if (
+        !bankDetails ||
+        !bankDetails.account_number ||
+        !bankDetails.account_name ||
+        !bankDetails.bank_code
+      ) {
+        return json({
+          error: "Please save complete bank details before withdrawing.",
+        }, 400);
+      }
 
-      const transfer = await payments.initiateWithdrawal({
-        amount: amount_usd,
-        recipientCode: recipient.recipient_code,
+      const withdrawals = new WithdrawalService(env);
+
+      const result = await withdrawals.initiateWithdrawal({
         userId: user.id,
+        amountMinor: body.amount_minor,
+        currencyCode: body.currency_code,
+        idempotencyKey,
+        bankDetails,
+        requestId: request.headers.get("cf-ray"),
       });
 
-      const txReference = transfer.reference ?? `withdrawal_${user.id}_${Date.now()}`;
+      const response = {
+        operation_id: result.operationId,
+        reference: result.reference,
+        status: result.status,
+        already_created: result.alreadyCreated || false,
+      };
 
-      await env.DB
-        .prepare(`
-          INSERT INTO wallet_transactions
-            (id, wallet_id, user_id, type, amount_usd,
-             balance_after_usd, reference, description, created_at)
-          VALUES (?, ?, ?, 'withdrawal', ?, ?, ?, 'Withdrawal to bank account', ?)
-        `)
-        .bind(
-          crypto.randomUUID(), wallet.id, user.id,
-          amount_usd, newBalance, txReference, now
-        )
-        .run();
+      if (result.status === "reconciliation_required") {
+        return json(response, 202);
+      }
 
-      const display = await buildBalanceDisplay(newBalance, wallet.currency_preference, env.DB);
-      return json({
-        success: true,
-        reference: txReference,
-        ...display,
-      });
+      return json(response);
     } catch (err) {
       console.error("Wallet withdrawal error:", err);
-      return json({ error: "Unable to process withdrawal. Please try again." }, 500);
+
+      // Preserve visibility of uncertain provider outcomes.
+      const idempotencyKey = request.headers.get("Idempotency-Key");
+
+      if (idempotencyKey) {
+        try {
+          const user = await env.DB
+            .prepare(`
+              SELECT id
+              FROM users
+              WHERE clerk_id = ?
+            `)
+            .bind(auth.id)
+            .first();
+
+          if (user) {
+            const operation = await env.DB
+              .prepare(`
+                SELECT id, provider_reference, status
+                FROM financial_payment_operations
+                WHERE user_id = ?
+                  AND idempotency_scope = 'wallet-withdrawal'
+                  AND idempotency_key = ?
+                LIMIT 1
+              `)
+              .bind(user.id, idempotencyKey)
+              .first();
+
+            if (operation?.status === "reconciliation_required") {
+              return json({
+                operation_id: operation.id,
+                reference: operation.provider_reference,
+                status: operation.status,
+                message: "Withdrawal requires reconciliation. Funds remain reserved.",
+              }, 202);
+            }
+          }
+        } catch (lookupError) {
+          console.error(
+            "Withdrawal reconciliation lookup error:",
+            lookupError
+          );
+        }
+      }
+
+      return json({
+        error: "Unable to process withdrawal. Please try again.",
+      }, 500);
     }
   }
-
   // ── POST /api/wallet/currency ───────────────────────────────
   if (pathname === "/api/wallet/currency" && request.method === "POST") {
     const auth = await requireAuth(request, env);
