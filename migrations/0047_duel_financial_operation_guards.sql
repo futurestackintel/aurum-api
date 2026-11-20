@@ -97,6 +97,42 @@ BEGIN
 
 END;
 
+-- A stake operation cannot become posted unless the matching
+-- Duel record reflects the funded amount.
+CREATE TRIGGER validate_duel_stake_operation_posted
+BEFORE UPDATE OF status ON duel_financial_operations
+WHEN
+  NEW.status = 'posted'
+  AND NEW.operation_type IN ('challenger_stake', 'target_stake')
+BEGIN
+
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM duels d
+      WHERE d.id = NEW.duel_id
+        AND d.currency_code = NEW.currency_code
+        AND (
+          (
+            NEW.operation_type = 'challenger_stake'
+            AND d.challenger_id = NEW.actor_id
+            AND d.challenger_stake_funded_minor = NEW.amount_minor
+          )
+          OR
+          (
+            NEW.operation_type = 'target_stake'
+            AND d.target_id = NEW.actor_id
+            AND d.target_stake_funded_minor = NEW.amount_minor
+          )
+        )
+    )
+    THEN RAISE(
+      ABORT,
+      'Posted Duel stake operation requires matching funded Duel record'
+    )
+  END;
+
+END;
 
 -- ============================================================
 -- END MIGRATION 0047
