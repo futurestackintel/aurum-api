@@ -1,6 +1,9 @@
 
 import { requireAuth } from "../middleware/auth.js";
 import { FinancialService } from "../services/financialService.js";
+import { addScoreEvent } from "../services/aurumScore.js";
+import { notificationEnabled } from "../services/notifications.js";
+import { fromMinorUnits } from "../services/money.js";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
