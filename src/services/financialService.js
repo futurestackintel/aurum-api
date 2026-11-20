@@ -202,6 +202,7 @@ export class FinancialService {
     escrowId,
     currencyCode,
     grossAmountMinor,
+    feeableAmountMinor = null,
     recipientType,
     recipientId,
     idempotencyKey,
@@ -217,6 +218,12 @@ export class FinancialService {
     idempotencyKey = requireText(idempotencyKey, 'Idempotency key');
     currencyCode = validateCurrencyCode(currencyCode);
     assertSafeMinorUnits(grossAmountMinor);
+    const feeBasisMinor = feeableAmountMinor ?? grossAmountMinor;
+    assertSafeMinorUnits(feeBasisMinor);
+
+    if (feeBasisMinor > grossAmountMinor) {
+      throw new Error('Feeable amount cannot exceed gross settlement amount');
+    }
     actorType = validateActorType(actorType);
 	escrowType = validateEscrowType(escrowType);
     metadata = validateFinancialMetadata(metadata);
@@ -237,8 +244,8 @@ export class FinancialService {
       currencyCode,
     });
 
-    const feeMinor = Number(
-      (BigInt(grossAmountMinor) * BigInt(PLATFORM_FEE_BPS)) /
+        const feeMinor = Number(
+      (BigInt(feeBasisMinor) * BigInt(PLATFORM_FEE_BPS)) /
       BigInt(BASIS_POINTS)
     );
 
@@ -320,6 +327,7 @@ export class FinancialService {
         recipient_id: recipientId,
         currency_code: currencyCode,
         gross_amount_minor: grossAmountMinor,
+        fee_basis_minor: feeBasisMinor,
         platform_fee_bps: PLATFORM_FEE_BPS,
         platform_fee_minor: feeMinor,
         recipient_amount_minor: recipientAmountMinor,
