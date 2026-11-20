@@ -402,6 +402,8 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
 }
 
   async #postTransaction({
+		transactionId: requestedTransactionId = null,
+    atomicStatements = [],
     idempotencyScope,
     idempotencyKey,
     sourceModule,
@@ -453,6 +455,24 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
     }
 
     metadata = validateMetadata(metadata);
+    if (
+      requestedTransactionId !== null &&
+      (
+        typeof requestedTransactionId !== 'string' ||
+        requestedTransactionId.trim() === ''
+      )
+    ) {
+      throw new Error('Transaction ID must be a non-empty string');
+    }
+
+    if (
+      !Array.isArray(atomicStatements) ||
+      atomicStatements.some(
+        statement => !statement || typeof statement !== 'object'
+      )
+    ) {
+      throw new Error('Atomic statements must be prepared statements');
+    }
 
     const normalizedEntries = normalizeEntries(entries);
 
@@ -511,7 +531,7 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
       allowInactiveAccounts
     );
 
-    const transactionId = crypto.randomUUID();
+    const transactionId = requestedTransactionId || crypto.randomUUID();
     const now = new Date().toISOString();
 
     const storedMetadata = {
@@ -577,6 +597,8 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
         )
       );
     }
+
+	  statements.push(...atomicStatements);
 
     statements.push(
       this.db.prepare(`
