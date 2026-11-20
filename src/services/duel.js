@@ -1333,59 +1333,6 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
   };
 }
 
-// ── SHARED PAYOUT LOGIC ───────────────────────────────────────
-// Called by both decideDuelDispute (admin path) and
-// finaliseDuelPayouts (auto-release cron, Stage 4). Credits the
-// winner with both stakes + both escrowed audience tip totals in
-// one wallet update, and marks all related tips as completed.
-
-export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
-  if (duel.payout_released) return { error: 'Payout already released for this duel' };
-
-    const loserId = winnerId === duel.challenger_id ? duel.target_id : duel.challenger_id;
-  const now     = nowISO();
-
-  // Both stakes were already escrowed out of both wallets at creation
-  // (challenger) and acceptance (target) — see createDuel/acceptDuel.
-  // Nothing needs debiting from anyone here; the full pot just needs
-  // to be paid out to the winner.
-  const totalEscrow =
-    (duel.duel_tip_amount * 2) +
-    (duel.audience_tips_challenger ?? 0) +
-    (duel.audience_tips_target ?? 0);
-
-  const platformFee = Math.round(totalEscrow * DUEL_PLATFORM_FEE_RATE * 100) / 100;
-  const netPayout    = totalEscrow - platformFee;
-
-  await db.batch([
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(netPayout, now, winnerId),
-    db.prepare(`
-      UPDATE tips
-      SET platform_fee_cents = ROUND(amount_cents * ?),
-          receiver_net_cents = amount_cents - ROUND(amount_cents * ?)
-      WHERE duel_id = ? AND status = 'escrowed'
-    `).bind(DUEL_PLATFORM_FEE_RATE, DUEL_PLATFORM_FEE_RATE, duelId),
-
-    db.prepare(`
-      UPDATE tips SET status = 'completed', completed_at = ? WHERE duel_id = ?
-    `).bind(now, duelId),
-
-    db.prepare(`
-      UPDATE duels SET payout_released = 1 WHERE id = ?
-    `).bind(duelId),
-  ]);
-
-  await addScoreEvent(
-    winnerId, 'challenge_win', null,
-    { challenge_id: duelId, note: `Won duel: ${duel.title}` },
-    db,
-  );
-
-  return { winner_id: winnerId, loser_id: loserId, total_payout: netPayout, platform_fee: platformFee };
-}
 
 // ── CRON: PROCESS DUEL WINDOWS + PAYOUTS ─────────────────────
 // Runs every 15 minutes (see wrangler.jsonc + index.js scheduled()).
