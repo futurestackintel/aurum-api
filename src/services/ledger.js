@@ -402,8 +402,9 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
 }
 
   async #postTransaction({
-		transactionId: requestedTransactionId = null,
+    transactionId: requestedTransactionId = null,
     atomicStatements = [],
+    atomicStatementsAfterPosting = [],
     idempotencyScope,
     idempotencyKey,
     sourceModule,
@@ -465,14 +466,18 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
       throw new Error('Transaction ID must be a non-empty string');
     }
 
-    if (
-      !Array.isArray(atomicStatements) ||
-      atomicStatements.some(
-        statement => !statement || typeof statement !== 'object'
-      )
-    ) {
-      throw new Error('Atomic statements must be prepared statements');
-    }
+    const validAtomicStatements = statements =>
+  Array.isArray(statements) &&
+  statements.every(
+    statement => statement && typeof statement === 'object'
+  );
+
+if (
+  !validAtomicStatements(atomicStatements) ||
+  !validAtomicStatements(atomicStatementsAfterPosting)
+) {
+  throw new Error('Atomic statements must be prepared statements');
+}
 
     const normalizedEntries = normalizeEntries(entries);
 
@@ -600,17 +605,18 @@ if (NATURAL_BALANCES[accountClass] !== normalBalance) {
 
 	  statements.push(...atomicStatements);
 
-    statements.push(
-      this.db.prepare(`
-        UPDATE ledger_transactions
-        SET
-          status = 'posted',
-          posted_at = ?
-        WHERE id = ?
-          AND status = 'draft'
-      `).bind(now, transactionId)
-    );
+statements.push(
+  this.db.prepare(`
+    UPDATE ledger_transactions
+    SET
+      status = 'posted',
+      posted_at = ?
+    WHERE id = ?
+      AND status = 'draft'
+  `).bind(now, transactionId)
+);
 
+statements.push(...atomicStatementsAfterPosting);
     try {
       await this.db.batch(statements);
     } catch (error) {
