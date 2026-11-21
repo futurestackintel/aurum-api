@@ -346,20 +346,6 @@ export async function joinChallenge(
     return { error: 'Challenge is full' };
   }
 
-  const existing = await db.prepare(`
-    SELECT id
-    FROM challenge_entries
-    WHERE challenge_id = ?
-      AND user_id = ?
-  `).bind(challengeId, userId).first();
-
-  if (existing) {
-    return {
-      error: 'You have already joined this Challenge',
-      entry_id: existing.id,
-    };
-  }
-
   if (challenge.financial_status === 'legacy') {
     return {
       error: 'This legacy Challenge is unavailable for new financial entries',
@@ -420,6 +406,20 @@ export async function joinChallenge(
     }
   }
 
+const existing = await db.prepare(`
+    SELECT id
+    FROM challenge_entries
+    WHERE challenge_id = ?
+      AND user_id = ?
+  `).bind(challengeId, userId).first();
+
+  if (existing) {
+    return {
+      error: 'You have already joined this Challenge',
+      entry_id: existing.id,
+    };
+	}
+	
   // Free entry: no wallet movement and no ledger transaction.
   // Entry creation and participant count update are atomic.
   const now = nowISO();
