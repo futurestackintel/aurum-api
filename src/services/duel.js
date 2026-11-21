@@ -869,88 +869,88 @@ export async function setStreamReady(duelId, body, db) {
 // duel.target_id (already internal ids, per duelHTML in arena.js),
 // so only tipperId (the route-layer Clerk id) needs resolving.
 
-export async function audienceTip(duelId, participantId, clerkId, body, db) {
+export async function audienceTip(
+  duelId,
+  participantId,
+  clerkId,
+  body,
+  db
+) {
   const tipperId = await resolveUserId(clerkId, db);
-  if (!tipperId) return { error: 'User not found' };
 
-  const { amount_usd } = body;
-
-  if (!amount_usd || amount_usd <= 0) {
-    return { error: 'amount_usd is required and must be positive' };
+  if (!tipperId) {
+    return { error: 'User not found' };
   }
 
-  const duel = await db
-    .prepare(`SELECT * FROM duels WHERE id = ?`)
-    .bind(duelId)
-    .first();
+  const {
+    currency_code,
+    amount_minor,
+    idempotency_key,
+  } = body ?? {};
 
-  if (!duel)                    return { error: 'Duel not found' };
-  if (duel.status !== 'active') return { error: 'Duel is not active' };
+  try {
+    const currencyCode = validateCurrencyCode(currency_code);
+    assertSafeMinorUnits(amount_minor);
 
-  if (participantId !== duel.challenger_id && participantId !== duel.target_id) {
-    return { error: 'participant must be one of the duel participants' };
+    if (amount_minor <= 0) {
+      return {
+        error: 'Tip amount must be greater than zero',
+      };
+    }
+
+    if (
+      typeof idempotency_key !== 'string' ||
+      !idempotency_key.trim()
+    ) {
+      return {
+        error: 'An idempotency_key is required',
+      };
+    }
+
+    const financials = new DuelFinancialService(db);
+
+    const result = await financials.fundAudienceTip({
+      duelId,
+      tipperId,
+      participantId,
+      currencyCode,
+      amountMinor: amount_minor,
+      idempotencyKey: idempotency_key.trim(),
+    });
+
+    if (!result.already_tipped) {
+      try {
+        await addScoreEvent(
+          tipperId,
+          'duel_audience_tip',
+          null,
+          {
+            operation_id: result.operation_id,
+            duel_id: duelId,
+            note: 'Audience tip on Duel',
+          },
+          db,
+        );
+      } catch (scoreError) {
+        console.error(
+          'Duel audience tip score event failed:',
+          scoreError
+        );
+      }
+    }
+
+    return {
+      ...result,
+      tipped: true,
+    };
+  } catch (err) {
+    console.error('Duel audience tip failed:', err);
+
+    return {
+      error: err.message || 'Unable to process audience tip',
+    };
   }
-
-  if (tipperId === participantId) {
-    return { error: 'You cannot tip yourself' };
-  }
-
-  // Check wallet
-  const wallet = await db
-    .prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`)
-    .bind(tipperId)
-    .first();
-
-  if (!wallet || wallet.balance_usd < amount_usd) {
-    return { error: `Insufficient wallet balance` };
-  }
-
-  const now   = nowISO();
-  const tipId = crypto.randomUUID();
-  const amountCents = Math.round(amount_usd * 100);
-
-  const isChallenger   = participantId === duel.challenger_id;
-  const tipColumn      = isChallenger
-    ? 'audience_tips_challenger'
-    : 'audience_tips_target';
-
-  // Escrowed — tip is recorded and the tipper is debited now, but the
-  // participant's wallet is NOT credited yet. The full escrowed total
-  // (both audience_tips_* columns + both stakes) is released to the
-  // winner in one payout when the duel resolves (see finaliseDuelPayouts).
-  await db.batch([
-    db.prepare(`
-      INSERT INTO tips
-        (id, sender_id, receiver_id, duel_id, amount_cents, platform_fee_cents,
-         receiver_net_cents, is_wallet_tip, status, created_at)
-      VALUES (?, ?, ?, ?, ?, 0, ?, 1, 'escrowed', ?)
-    `).bind(tipId, tipperId, participantId, duelId, amountCents, amountCents, now),
-
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(amount_usd, now, tipperId),
-
-    db.prepare(`
-      UPDATE duels SET ${tipColumn} = ${tipColumn} + ? WHERE id = ?
-    `).bind(amount_usd, duelId),
-  ]);
-
-  await addScoreEvent(
-    tipperId, 'duel_audience_tip', null,
-    { tip_id: tipId, note: `Audience tip on duel: ${duel.title}` },
-    db,
-  );
-
-  return {
-    tipped:         true,
-    tip_id:         tipId,
-    duel_id:        duelId,
-    recipient_id:   participantId,
-    amount_usd,
-  };
 }
-
 // ── FEATURE 5: COMMUNITY VOTE ────────────────────────────────
 // Same as audienceTip — participantId is already an internal id
 // from the frontend; only voterId (Clerk id) needs resolving.
