@@ -20,6 +20,7 @@ import {
   validateCurrencyCode,
   validateMinorUnitExponent,
 } from './money.js';
+import { ChallengeFinancialService } from './challengeFinancials.js';
 
 const PLATFORM_FEE_PERCENT = 5;
 
@@ -302,93 +303,225 @@ export async function createChallenge(clerkId, body, db) {
 // of entry_amount. status/created_at/updated_at rely on the
 // table's own defaults ('entered', now(), now()).
 
-export async function joinChallenge(challengeId, clerkId, db) {
+export async function joinChallenge(
+  challengeId,
+  clerkId,
+  db,
+  options = {}
+) {
   const userId = await resolveUserId(clerkId, db);
-  if (!userId) return { error: 'User not found' };
 
-  const challenge = await db
-    .prepare(`SELECT * FROM challenges WHERE id = ?`)
-    .bind(challengeId)
-    .first();
+  if (!userId) {
+    return { error: 'User not found' };
+  }
 
-  if (!challenge)                  return { error: 'Challenge not found' };
-  if (challenge.status !== 'open') return { error: 'Challenge is not open for entries' };
+  const challenge = await db.prepare(`
+    SELECT *
+    FROM challenges
+    WHERE id = ?
+  `).bind(challengeId).first();
+
+  if (!challenge) {
+    return { error: 'Challenge not found' };
+  }
+
+  if (challenge.status !== 'open') {
+    return { error: 'Challenge is not open for entries' };
+  }
+
   if (new Date(challenge.ends_at) <= new Date()) {
     return { error: 'Challenge has expired' };
   }
 
-  // Fix — creator cannot join own challenge
   if (userId === challenge.creator_id) {
-    return { error: 'Challenge creators cannot enter their own challenge' };
+    return {
+      error: 'Challenge creators cannot enter their own challenge',
+    };
   }
 
-  // Check max participants
-  if (challenge.max_participants) {
-    if (challenge.participant_count >= challenge.max_participants) {
-      return { error: 'Challenge is full' };
+  if (
+    challenge.max_participants !== null &&
+    challenge.participant_count >= challenge.max_participants
+  ) {
+    return { error: 'Challenge is full' };
+  }
+
+  const existing = await db.prepare(`
+    SELECT id
+    FROM challenge_entries
+    WHERE challenge_id = ?
+      AND user_id = ?
+  `).bind(challengeId, userId).first();
+
+  if (existing) {
+    return {
+      error: 'You have already joined this Challenge',
+      entry_id: existing.id,
+    };
+  }
+
+  if (challenge.financial_status === 'legacy') {
+    return {
+      error: 'This legacy Challenge is unavailable for new financial entries',
+    };
+  }
+
+  if (
+    !['pending', 'funding', 'funded'].includes(
+      challenge.financial_status
+    )
+  ) {
+    return {
+      error: 'Challenge is not accepting entries',
+    };
+  }
+
+  const entryFeeMinor = challenge.entry_fee_minor ?? 0;
+
+  if (!Number.isSafeInteger(entryFeeMinor) || entryFeeMinor < 0) {
+    return { error: 'Challenge entry amount is invalid' };
+  }
+
+  // Paid entry: all wallet movement goes through the ledger.
+  if (entryFeeMinor > 0) {
+    const idempotencyKey = options.idempotencyKey;
+
+    if (
+      typeof idempotencyKey !== 'string' ||
+      idempotencyKey.trim() === '' ||
+      idempotencyKey.length > 128
+    ) {
+      return {
+        error: 'A valid idempotency key is required for paid entry',
+      };
+    }
+
+    const financial = new ChallengeFinancialService(db);
+
+    try {
+      const result = await financial.fundEntry({
+        challengeId,
+        userId,
+        idempotencyKey: idempotencyKey.trim(),
+      });
+
+      return {
+        joined: true,
+        ...result,
+      };
+    } catch (error) {
+      console.error('Challenge entry funding error:', error);
+
+      return {
+        error: error.message.includes('reconciliation')
+          ? 'Challenge entry requires financial reconciliation'
+          : error.message,
+      };
     }
   }
 
-  // Prevent duplicate entry
-  const existing = await db
-    .prepare(`SELECT id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?`)
-    .bind(challengeId, userId)
-    .first();
-  if (existing) return { error: 'You have already joined this challenge' };
-
-  // Check wallet balance
-  const wallet = await db
-    .prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`)
-    .bind(userId)
-    .first();
-
-  const entryFeeUsd = (challenge.entry_fee_cents ?? 0) / 100;
-
-  if (!wallet || wallet.balance_usd < entryFeeUsd) {
-    return { error: `Insufficient wallet balance. Entry fee is $${entryFeeUsd.toFixed(2)}` };
-  }
-
-  const now     = nowISO();
+  // Free entry: no wallet movement and no ledger transaction.
+  // Entry creation and participant count update are atomic.
+  const now = nowISO();
   const entryId = crypto.randomUUID();
-  const newPool = (challenge.pool_total_cents ?? 0) + (challenge.entry_fee_cents ?? 0);
-  const entryFeePaidCents = challenge.entry_fee_cents ?? 0;
 
-  // Wrap pool sync in D1 batch
-  await db.batch([
-    db.prepare(`
-      INSERT INTO challenge_entries
-        (id, challenge_id, user_id, entry_fee_paid_cents)
-      VALUES (?, ?, ?, ?)
-    `).bind(entryId, challengeId, userId, entryFeePaidCents),
+  try {
+    await db.batch([
+      db.prepare(`
+        INSERT INTO challenge_entries (
+          id,
+          challenge_id,
+          user_id,
+          entry_fee_paid_cents,
+          entry_fee_paid_minor
+        )
+        SELECT
+          ?,
+          c.id,
+          ?,
+          0,
+          0
+        FROM challenges c
+        WHERE c.id = ?
+          AND c.status = 'open'
+          AND c.financial_status IN (
+            'pending',
+            'funding',
+            'funded'
+          )
+          AND c.entry_fee_minor = 0
+          AND c.ends_at > ?
+          AND (
+            c.max_participants IS NULL
+            OR c.participant_count < c.max_participants
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM challenge_entries ce
+            WHERE ce.challenge_id = c.id
+              AND ce.user_id = ?
+          )
+      `).bind(
+        entryId,
+        userId,
+        challengeId,
+        now,
+        userId
+      ),
 
-    db.prepare(`
-      UPDATE challenges
-      SET pool_total_cents = ?, participant_count = participant_count + 1, updated_at = ?
-      WHERE id = ?
-    `).bind(newPool, now, challengeId),
+      db.prepare(`
+        UPDATE challenges
+        SET
+          participant_count = participant_count + 1,
+          updated_at = ?
+        WHERE id = ?
+          AND status = 'open'
+          AND financial_status IN (
+            'pending',
+            'funding',
+            'funded'
+          )
+          AND entry_fee_minor = 0
+          AND ends_at > ?
+          AND (
+            max_participants IS NULL
+            OR participant_count < max_participants
+          )
+      `).bind(
+        now,
+        challengeId,
+        now
+      ),
+    ]);
 
-    db.prepare(`
-      UPDATE treasury_ledger
-      SET total_held_cents = ?, updated_at = ?
-      WHERE challenge_id = ? AND status = 'holding'
-    `).bind(newPool, now, challengeId),
+    const confirmedEntry = await db.prepare(`
+      SELECT id
+      FROM challenge_entries
+      WHERE challenge_id = ?
+        AND user_id = ?
+    `).bind(challengeId, userId).first();
 
-    db.prepare(`
-      UPDATE wallets
-      SET balance_usd = balance_usd - ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(entryFeeUsd, now, userId),
-  ]);
+    if (!confirmedEntry) {
+      return {
+        error: 'Unable to confirm Challenge entry',
+      };
+    }
 
-  return {
-    joined:       true,
-    entry_id:     entryId,
-    challenge_id: challengeId,
-    entry_fee:    entryFeeUsd,
-    pool_amount:  newPool / 100,
-  };
+    return {
+      joined: true,
+      entry_id: confirmedEntry.id,
+      challenge_id: challengeId,
+      entry_fee_minor: 0,
+      currency_code: challenge.currency_code,
+    };
+  } catch (error) {
+    console.error('Free Challenge entry error:', error);
+
+    return {
+      error: 'Unable to join this free Challenge',
+    };
+  }
 }
-
 // ── STAGE 3: SUBMIT ACHIEVEMENT PROOF ───────────────────────
 // FIX: writes to the real columns — achievement_proof_urls,
 // proof_description, submitted_at, proof_value — instead of a
