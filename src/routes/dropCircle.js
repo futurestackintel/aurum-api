@@ -105,7 +105,16 @@ export async function handleChallengeRoutes(path, method, request, env) {
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
-      const body = await request.json();
+      let body = {};
+const rawBody = await request.text();
+
+if (rawBody.trim()) {
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON request body' }, 400);
+  }
+}
 
       await streakMiddleware(user.id, db);
 
