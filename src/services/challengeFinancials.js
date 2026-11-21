@@ -368,22 +368,18 @@ export class ChallengeFinancialService {
         ),
 
         this.db.prepare(`
-          UPDATE challenges
-          SET
-            pool_funded_minor = pool_funded_minor + ?,
-            financial_status = 'funded',
-            updated_at = ?
-          WHERE id = ?
-            AND financial_status IN (
-              'pending',
-              'funding',
-              'funded'
-            )
-        `).bind(
-          amountMinor,
-          now,
-          challengeId
-        ),
+        UPDATE challenges
+        SET
+        participant_count = participant_count + 1,
+        pool_funded_minor = pool_funded_minor + ?,
+        financial_status = 'funded',
+        updated_at = ?
+   WHERE id = ?
+    `).bind(
+       amountMinor,
+       now,
+       challengeId
+     ),
       ],
     });
 
