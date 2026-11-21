@@ -325,13 +325,8 @@ export async function joinChallenge(
     return { error: 'Challenge not found' };
   }
 
-  if (challenge.status !== 'open') {
-    return { error: 'Challenge is not open for entries' };
-  }
-
-  if (new Date(challenge.ends_at) <= new Date()) {
-    return { error: 'Challenge has expired' };
-  }
+  
+  
 
   if (userId === challenge.creator_id) {
     return {
@@ -339,28 +334,8 @@ export async function joinChallenge(
     };
   }
 
-  if (
-    challenge.max_participants !== null &&
-    challenge.participant_count >= challenge.max_participants
-  ) {
-    return { error: 'Challenge is full' };
-  }
-
-  if (challenge.financial_status === 'legacy') {
-    return {
-      error: 'This legacy Challenge is unavailable for new financial entries',
-    };
-  }
-
-  if (
-    !['pending', 'funding', 'funded'].includes(
-      challenge.financial_status
-    )
-  ) {
-    return {
-      error: 'Challenge is not accepting entries',
-    };
-  }
+  
+  
 
   const entryFeeMinor = challenge.entry_fee_minor ?? 0;
 
@@ -419,7 +394,36 @@ const existing = await db.prepare(`
       entry_id: existing.id,
     };
 	}
-	
+	if (challenge.status !== 'open') {
+    return { error: 'Challenge is not open for entries' };
+  }
+
+	if (new Date(challenge.ends_at) <= new Date()) {
+    return { error: 'Challenge has expired' };
+	}
+
+	if (
+    challenge.max_participants !== null &&
+    challenge.participant_count >= challenge.max_participants
+  ) {
+    return { error: 'Challenge is full' };
+  }
+
+	if (challenge.financial_status === 'legacy') {
+    return {
+      error: 'This legacy Challenge is unavailable for new financial entries',
+    };
+  }
+
+  if (
+    !['pending', 'funding', 'funded'].includes(
+      challenge.financial_status
+    )
+  ) {
+    return {
+      error: 'Challenge is not accepting entries',
+    };
+  }
   // Free entry: no wallet movement and no ledger transaction.
   // Entry creation and participant count update are atomic.
   const now = nowISO();
@@ -487,9 +491,18 @@ const existing = await db.prepare(`
             max_participants IS NULL
             OR participant_count < max_participants
           )
+		  AND EXISTS (
+          SELECT 1
+          FROM challenge_entries ce
+          WHERE ce.id = ?
+          AND ce.challenge_id = challenges.id
+          AND ce.user_id = ?
+         )
       `).bind(
         now,
         challengeId,
+	    entryId,
+        userId,
         now
       ),
     ]);
@@ -501,11 +514,14 @@ const existing = await db.prepare(`
         AND user_id = ?
     `).bind(challengeId, userId).first();
 
-    if (!confirmedEntry) {
-      return {
-        error: 'Unable to confirm Challenge entry',
-      };
-    }
+    if (!confirmedEntry || confirmedEntry.id !== entryId) {
+  return {
+    error: confirmedEntry
+      ? 'You have already joined this Challenge'
+      : 'Unable to confirm Challenge entry',
+    entry_id: confirmedEntry?.id,
+  };
+	}
 
     return {
       joined: true,
