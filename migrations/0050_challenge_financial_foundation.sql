@@ -10,8 +10,35 @@
 -- ============================================================
 
 ALTER TABLE challenges ADD COLUMN currency_code TEXT
-  NOT NULL DEFAULT 'USD'
   REFERENCES financial_currencies(currency_code);
+
+UPDATE challenges
+SET currency_code = 'USD'
+WHERE currency_code IS NULL;
+
+CREATE TRIGGER validate_challenge_currency_insert
+BEFORE INSERT ON challenges
+WHEN NEW.currency_code IS NULL
+  OR NOT EXISTS (
+    SELECT 1
+    FROM financial_currencies
+    WHERE currency_code = NEW.currency_code
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'Challenge requires a registered currency');
+END;
+
+CREATE TRIGGER validate_challenge_currency_update
+BEFORE UPDATE OF currency_code ON challenges
+WHEN NEW.currency_code IS NULL
+  OR NOT EXISTS (
+    SELECT 1
+    FROM financial_currencies
+    WHERE currency_code = NEW.currency_code
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'Challenge requires a registered currency');
+END;
 
 ALTER TABLE challenges ADD COLUMN entry_fee_minor INTEGER
   NOT NULL DEFAULT 0
