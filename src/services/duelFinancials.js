@@ -1,4 +1,4 @@
-	
+
 import { FinancialService } from './financialService.js';
 import {
   assertSafeMinorUnits,
@@ -295,3 +295,267 @@ export class DuelFinancialService {
     };
   }
 }
+
+  async fundAudienceTip({
+    duelId,
+    tipperId,
+    participantId,
+    currencyCode,
+    amountMinor,
+    idempotencyKey,
+  }) {
+    duelId = requireText(duelId, 'Duel ID');
+    tipperId = requireText(tipperId, 'Tipper ID');
+    participantId = requireText(participantId, 'Participant ID');
+    idempotencyKey = requireText(
+      idempotencyKey,
+      'Idempotency key'
+    );
+
+    currencyCode = validateCurrencyCode(currencyCode);
+    assertSafeMinorUnits(amountMinor);
+
+    if (amountMinor <= 0) {
+      throw new Error('Audience tip must be greater than zero');
+    }
+
+    if (tipperId === participantId) {
+      throw new Error('You cannot tip yourself');
+    }
+
+    const duel = await this.db.prepare(`
+      SELECT
+        id,
+        challenger_id,
+        target_id,
+        currency_code,
+        financial_status,
+        status,
+        payout_released
+      FROM duels
+      WHERE id = ?
+    `).bind(duelId).first();
+
+    if (!duel) {
+      throw new Error('Duel not found');
+    }
+
+    if (duel.status !== 'active') {
+      throw new Error('Duel is not active');
+    }
+
+    if (duel.financial_status !== 'funded') {
+      throw new Error('Duel financial state is not funded');
+    }
+
+    if (duel.payout_released) {
+      throw new Error('Duel payout has already been released');
+    }
+
+    if (
+      participantId !== duel.challenger_id &&
+      participantId !== duel.target_id
+    ) {
+      throw new Error('Tip recipient must be a Duel participant');
+    }
+
+    if (
+      tipperId === duel.challenger_id ||
+      tipperId === duel.target_id
+    ) {
+      throw new Error('Duel participants cannot audience-tip');
+    }
+
+    if (currencyCode !== duel.currency_code) {
+      throw new Error('Tip currency must match the Duel currency');
+    }
+
+    const existing = await this.db.prepare(`
+      SELECT
+        id,
+        status,
+        ledger_transaction_id,
+        amount_minor
+      FROM duel_financial_operations
+      WHERE duel_id = ?
+        AND operation_type = 'audience_tip'
+        AND actor_id = ?
+        AND idempotency_key = ?
+    `).bind(
+      duelId,
+      tipperId,
+      idempotencyKey
+    ).first();
+
+    if (existing) {
+      if (
+        existing.status === 'posted' &&
+        existing.ledger_transaction_id
+      ) {
+        return {
+          tipped: true,
+          already_tipped: true,
+          operation_id: existing.id,
+          ledger_transaction_id: existing.ledger_transaction_id,
+          amount_minor: existing.amount_minor,
+        };
+      }
+
+      throw new Error(
+        'Previous audience-tip operation requires reconciliation'
+      );
+    }
+
+    const currency = await this.db.prepare(`
+      SELECT minor_unit_exponent
+      FROM financial_currencies
+      WHERE currency_code = ?
+        AND is_enabled = 1
+    `).bind(currencyCode).first();
+
+    if (!currency) {
+      throw new Error('Tip currency is not enabled');
+    }
+
+    validateMinorUnitExponent(currency.minor_unit_exponent);
+
+    const isChallenger =
+      participantId === duel.challenger_id;
+
+    const tipColumn = isChallenger
+      ? 'audience_tips_challenger_minor'
+      : 'audience_tips_target_minor';
+
+    const source = await this.financial.getOwnerAvailableAccount({
+      ownerType: 'user',
+      ownerId: tipperId,
+      currencyCode,
+    });
+
+    const escrow = await this.financial.getEscrowAccount({
+      escrowType: 'DUEL',
+      escrowId: duelId,
+      currencyCode,
+    });
+
+    const transactionId = crypto.randomUUID();
+    const operationId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const result = await this.financial.ledger.postTransaction({
+      transactionId,
+
+      idempotencyScope: 'duel-audience-tip',
+      idempotencyKey,
+
+      sourceModule: 'duel',
+      transactionType: 'duel_audience_tip',
+
+      actorType: 'member',
+      actorId: tipperId,
+
+      description: 'Audience tip to Duel participant',
+      reference: duelId,
+
+      metadata: {
+        duel_id: duelId,
+        tipper_id: tipperId,
+        participant_id: participantId,
+        participant_role: isChallenger
+          ? 'challenger'
+          : 'target',
+        currency_code: currencyCode,
+        amount_minor: amountMinor,
+        platform_fee_minor: 0,
+      },
+
+      entries: [
+        {
+          accountId: source.id,
+          currencyCode,
+          side: 'debit',
+          amountMinor,
+          description: 'Audience tip debited from available wallet',
+        },
+        {
+          accountId: escrow.id,
+          currencyCode,
+          side: 'credit',
+          amountMinor,
+          description: 'Audience tip added to Duel escrow',
+        },
+      ],
+
+      atomicStatements: [
+        this.db.prepare(`
+          INSERT INTO duel_financial_operations (
+            id,
+            duel_id,
+            operation_type,
+            actor_id,
+            currency_code,
+            amount_minor,
+            idempotency_key,
+            ledger_transaction_id,
+            status,
+            metadata_json
+          )
+          VALUES (?, ?, 'audience_tip', ?, ?, ?, ?, ?, 'pending', ?)
+        `).bind(
+          operationId,
+          duelId,
+          tipperId,
+          currencyCode,
+          amountMinor,
+          idempotencyKey,
+          transactionId,
+          JSON.stringify({
+            participant_id: participantId,
+            participant_role: isChallenger
+              ? 'challenger'
+              : 'target',
+          })
+        ),
+      ],
+
+      atomicStatementsAfterPosting: [
+        this.db.prepare(`
+          UPDATE duels
+          SET ${tipColumn} = ${tipColumn} + ?
+          WHERE id = ?
+            AND status = 'active'
+            AND financial_status = 'funded'
+            AND payout_released = 0
+            AND currency_code = ?
+        `).bind(
+          amountMinor,
+          duelId,
+          currencyCode
+        ),
+
+        this.db.prepare(`
+          UPDATE duel_financial_operations
+          SET
+            status = 'posted',
+            updated_at = ?
+          WHERE id = ?
+            AND status = 'pending'
+        `).bind(
+          now,
+          operationId
+        ),
+      ],
+    });
+
+    return {
+      tipped: true,
+      already_tipped: !result.created,
+      operation_id: operationId,
+      ledger_transaction_id: result.transaction.id,
+      duel_id: duelId,
+      recipient_id: participantId,
+      amount_minor: amountMinor,
+      currency_code: currencyCode,
+      platform_fee_minor: 0,
+    };
+  }
