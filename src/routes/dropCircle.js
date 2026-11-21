@@ -98,20 +98,39 @@ export async function handleChallengeRoutes(path, method, request, env) {
     }
   }
 
-  // ── POST /api/challenges/:id/join ───────────────────────
+    // ── POST /api/challenges/:id/join ───────────────────────
   const joinMatch = path.match(/^\/api\/challenges\/([^/]+)\/join$/);
   if (joinMatch && method === 'POST') {
     const user = await requireAuth(request, env);
     if (user.error) return jsonResponse({ error: user.error }, 401);
 
     try {
+      const body = await request.json();
+
       await streakMiddleware(user.id, db);
-      const result = await joinChallenge(joinMatch[1], user.id, db);
-      if (result.error) return jsonResponse({ error: result.error }, 400);
+
+      const result = await joinChallenge(
+        joinMatch[1],
+        user.id,
+        db,
+        {
+          idempotencyKey:
+            request.headers.get('Idempotency-Key') ||
+            body.idempotency_key,
+        }
+      );
+
+      if (result.error) {
+        return jsonResponse({ error: result.error }, 400);
+      }
+
       return jsonResponse(result);
     } catch (err) {
       console.error('Join challenge error:', err);
-      return jsonResponse({ error: 'Unable to join challenge. Please try again.' }, 500);
+      return jsonResponse(
+        { error: 'Unable to join challenge. Please try again.' },
+        500
+      );
     }
   }
 
