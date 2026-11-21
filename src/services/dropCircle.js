@@ -466,10 +466,10 @@ const existing = await db.prepare(`
               AND ce.user_id = ?
           )
       `).bind(
-        entryId,
-        userId,
+        now,
         challengeId,
         now,
+        entryId,
         userId
       ),
 
@@ -498,12 +498,12 @@ const existing = await db.prepare(`
           AND ce.challenge_id = challenges.id
           AND ce.user_id = ?
          )
-      `).bind(
+       `).bind(
         now,
         challengeId,
-	    entryId,
-        userId,
-        now
+        now,
+        entryId,
+        userId
       ),
     ]);
 
