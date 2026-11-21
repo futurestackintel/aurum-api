@@ -546,16 +546,46 @@ export class DuelFinancialService {
       ],
     });
 
-    return {
-      tipped: true,
-      already_tipped: !result.created,
-      operation_id: operationId,
-      ledger_transaction_id: result.transaction.id,
-      duel_id: duelId,
-      recipient_id: participantId,
-      amount_minor: amountMinor,
-      currency_code: currencyCode,
-      platform_fee_minor: 0,
-    };
+    let finalOperationId = operationId;
+
+if (!result.created) {
+  const existingOperation = await this.db.prepare(`
+    SELECT id, status, ledger_transaction_id
+    FROM duel_financial_operations
+    WHERE duel_id = ?
+      AND operation_type = 'audience_tip'
+      AND actor_id = ?
+      AND idempotency_key = ?
+  `).bind(
+    duelId,
+    tipperId,
+    idempotencyKey
+  ).first();
+
+  if (
+    !existingOperation ||
+    existingOperation.status !== 'posted' ||
+    existingOperation.ledger_transaction_id !==
+      result.transaction.id
+  ) {
+    throw new Error(
+      'Audience tip retry requires reconciliation'
+    );
+  }
+
+  finalOperationId = existingOperation.id;
+}
+
+return {
+  tipped: true,
+  already_tipped: !result.created,
+  operation_id: finalOperationId,
+  ledger_transaction_id: result.transaction.id,
+  duel_id: duelId,
+  recipient_id: participantId,
+  amount_minor: amountMinor,
+  currency_code: currencyCode,
+  platform_fee_minor: 0,
+   };
   }
 }
