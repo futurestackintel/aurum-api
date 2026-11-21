@@ -14,6 +14,12 @@
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
+import {
+  toMinorUnits,
+  fromMinorUnits,
+  validateCurrencyCode,
+  validateMinorUnitExponent,
+} from './money.js';
 
 const PLATFORM_FEE_PERCENT = 5;
 
@@ -33,12 +39,12 @@ async function resolveUserId(clerkId, db) {
 
 // ── STAGE 1: CREATE CHALLENGE (already correct — challenges
 //    table schema matches what's coded here) ──────────────────
-
 export async function createChallenge(clerkId, body, db) {
   const {
     title,
     type,
     entry_fee,
+    currency_code = 'USD',
     ends_at,
     starts_at,
     description,
@@ -46,81 +52,247 @@ export async function createChallenge(clerkId, body, db) {
     verification_method,
   } = body;
 
-  if (!title || title.trim().length === 0) return { error: 'Title is required' };
-  if (!entry_fee || entry_fee < 5)          return { error: 'Minimum entry fee is $5' };
-  if (!ends_at)                             return { error: 'End date is required' };
-  if (!type)                                return { error: 'Challenge type is required' };
+  if (
+    typeof title !== 'string' ||
+    title.trim().length === 0
+  ) {
+    return { error: 'Title is required' };
+  }
 
-  const validTypes = ['revenue', 'deals_closed', 'growth', 'savings', 'custom', 'charity_brawl'];
+  if (typeof entry_fee !== 'string') {
+    return {
+      error: 'Entry fee must be provided as a decimal string',
+    };
+  }
+
+  if (!ends_at) {
+    return { error: 'End date is required' };
+  }
+
+  if (!type) {
+    return { error: 'Challenge type is required' };
+  }
+
+  const validTypes = [
+    'revenue',
+    'deals_closed',
+    'growth',
+    'savings',
+    'custom',
+    'charity_brawl',
+  ];
+
   if (!validTypes.includes(type)) {
-    return { error: `type must be one of: ${validTypes.join(', ')}` };
+    return {
+      error: `type must be one of: ${validTypes.join(', ')}`,
+    };
   }
 
-  const validVerification = ['proof_upload', 'honor_system', 'admin_verified'];
-  const verificationMethod = verification_method ?? 'proof_upload';
+  const validVerification = [
+    'proof_upload',
+    'honor_system',
+    'admin_verified',
+  ];
+
+  const verificationMethod =
+    verification_method ?? 'proof_upload';
+
   if (!validVerification.includes(verificationMethod)) {
-    return { error: `verification_method must be one of: ${validVerification.join(', ')}` };
+    return {
+      error: `verification_method must be one of: ${validVerification.join(', ')}`,
+    };
   }
 
-  const endsAtDate   = new Date(ends_at);
-  if (endsAtDate <= new Date()) return { error: 'ends_at must be in the future' };
+  let currencyCode;
+  let entryFeeMinor;
 
-  const startsAtDate = starts_at ? new Date(starts_at) : new Date();
-  const now          = nowISO();
-  const challengeId  = crypto.randomUUID();
+  try {
+    currencyCode = validateCurrencyCode(currency_code);
+
+    const currency = await db.prepare(`
+      SELECT minor_unit_exponent
+      FROM financial_currencies
+      WHERE currency_code = ?
+    `).bind(currencyCode).first();
+
+    if (!currency) {
+      return { error: 'Challenge currency is not registered' };
+    }
+
+    const exponent = validateMinorUnitExponent(
+      currency.minor_unit_exponent
+    );
+
+    entryFeeMinor = toMinorUnits(entry_fee, exponent);
+  } catch (error) {
+    return { error: error.message };
+  }
+
+  // Paid entries require both the currency and Challenge rule
+  // to be independently enabled.
+  if (entryFeeMinor > 0) {
+    const currency = await db.prepare(`
+      SELECT is_enabled
+      FROM financial_currencies
+      WHERE currency_code = ?
+    `).bind(currencyCode).first();
+
+    if (!currency || currency.is_enabled !== 1) {
+      return { error: 'Challenge currency is not enabled for payments' };
+    }
+
+    const rule = await db.prepare(`
+      SELECT minimum_entry_minor
+      FROM challenge_currency_rules
+      WHERE currency_code = ?
+        AND is_enabled = 1
+    `).bind(currencyCode).first();
+
+    if (!rule) {
+      return { error: 'Paid Challenges are not enabled for this currency' };
+    }
+
+    if (entryFeeMinor < rule.minimum_entry_minor) {
+      return {
+        error: 'Entry fee is below the minimum for this currency',
+        minimum_entry_minor: rule.minimum_entry_minor,
+        currency_code: currencyCode,
+      };
+    }
+  }
+
+  const endsAtDate = new Date(ends_at);
+
+  if (Number.isNaN(endsAtDate.getTime())) {
+    return { error: 'Invalid end date' };
+  }
+
+  if (endsAtDate <= new Date()) {
+    return { error: 'ends_at must be in the future' };
+  }
+
+  const startsAtDate = starts_at
+    ? new Date(starts_at)
+    : new Date();
+
+  if (Number.isNaN(startsAtDate.getTime())) {
+    return { error: 'Invalid start date' };
+  }
+
+  if (startsAtDate >= endsAtDate) {
+    return { error: 'Challenge start must be before its end' };
+  }
+
+  if (
+    max_entries !== undefined &&
+    max_entries !== null &&
+    (!Number.isInteger(max_entries) || max_entries < 1)
+  ) {
+    return { error: 'Maximum entries must be a positive integer' };
+  }
+
+  const now = nowISO();
+  const challengeId = crypto.randomUUID();
 
   const internalUserId = await resolveUserId(clerkId, db);
-  if (!internalUserId) return { error: 'User not found' };
 
-  // entry_fee stored as cents in DB
-  const entryFeeCents = Math.round(entry_fee * 100);
+  if (!internalUserId) {
+    return { error: 'User not found' };
+  }
 
-  await db
-    .prepare(`
-      INSERT INTO challenges
-        (id, creator_id, title, description, challenge_type, verification_method,
-         entry_fee_cents, pool_total_cents, max_participants, participant_count,
-         status, starts_at, ends_at, moderation_status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 'open', ?, ?, 'approved', ?, ?)
-    `)
-    .bind(
-      challengeId,
-      internalUserId,
-      title.trim(),
-      description ?? '',
-      type,
-      verificationMethod,
-      entryFeeCents,
-      max_entries ?? null,
-      startsAtDate.toISOString(),
-      endsAtDate.toISOString(),
-      now,
-      now,
+  // Keep the old cents column meaningful only for USD.
+  // New financial logic uses entry_fee_minor and currency_code.
+  const legacyEntryFeeCents =
+    currencyCode === 'USD' ? entryFeeMinor : 0;
+
+  await db.prepare(`
+    INSERT INTO challenges (
+      id,
+      creator_id,
+      title,
+      description,
+      challenge_type,
+      verification_method,
+      entry_fee_cents,
+      pool_total_cents,
+      max_participants,
+      participant_count,
+      status,
+      starts_at,
+      ends_at,
+      moderation_status,
+      currency_code,
+      entry_fee_minor,
+      pool_funded_minor,
+      financial_status,
+      created_at,
+      updated_at
     )
-    .run();
+    VALUES (
+      ?, ?, ?, ?, ?, ?, ?, 0, ?, 0,
+      'open', ?, ?, 'approved',
+      ?, ?, 0, 'pending', ?, ?
+    )
+  `).bind(
+    challengeId,
+    internalUserId,
+    title.trim(),
+    description ?? '',
+    type,
+    verificationMethod,
+    legacyEntryFeeCents,
+    max_entries ?? null,
+    startsAtDate.toISOString(),
+    endsAtDate.toISOString(),
+    currencyCode,
+    entryFeeMinor,
+    now,
+    now,
+  ).run();
 
-  // Initialize treasury record
-  await db
-    .prepare(`
-      INSERT INTO treasury_ledger
-        (id, challenge_id, total_held_cents, platform_fee_cents,
-         winner_payout_cents, status, created_at, updated_at)
-      VALUES (?, ?, 0, 0, 0, 'holding', ?, ?)
-    `)
-    .bind(crypto.randomUUID(), challengeId, now, now)
-    .run();
+  // Retain the legacy treasury record for compatibility.
+  // The immutable financial ledger is authoritative.
+  await db.prepare(`
+    INSERT INTO treasury_ledger (
+      id,
+      challenge_id,
+      total_held_cents,
+      platform_fee_cents,
+      winner_payout_cents,
+      status,
+      created_at,
+      updated_at
+    )
+    VALUES (?, ?, 0, 0, 0, 'holding', ?, ?)
+  `).bind(
+    crypto.randomUUID(),
+    challengeId,
+    now,
+    now,
+  ).run();
+
+  const currency = await db.prepare(`
+    SELECT minor_unit_exponent
+    FROM financial_currencies
+    WHERE currency_code = ?
+  `).bind(currencyCode).first();
 
   return {
     challenge: {
-      id:          challengeId,
-      title:       title.trim(),
+      id: challengeId,
+      title: title.trim(),
       type,
-      status:      'open',
-      pool_amount: 0,
-      entry_fee,
-      entries:     0,
-      starts_at:   startsAtDate.toISOString(),
-      ends_at:     endsAtDate.toISOString(),
+      status: 'open',
+      financial_status: 'pending',
+      currency_code: currencyCode,
+      entry_fee_minor: entryFeeMinor,
+      entry_fee: fromMinorUnits(
+        entryFeeMinor,
+        currency.minor_unit_exponent
+      ),
+      entries: 0,
+      starts_at: startsAtDate.toISOString(),
+      ends_at: endsAtDate.toISOString(),
     },
   };
 }
