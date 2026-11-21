@@ -431,30 +431,6 @@ export class DuelFinancialService {
         'Previous audience-tip operation requires reconciliation'
       );
     }
-	.bind(
-      duelId,
-      tipperId,
-      idempotencyKey
-    ).first();
-
-    if (existing) {
-      if (
-        existing.status === 'posted' &&
-        existing.ledger_transaction_id
-      ) {
-        return {
-          tipped: true,
-          already_tipped: true,
-          operation_id: existing.id,
-          ledger_transaction_id: existing.ledger_transaction_id,
-          amount_minor: existing.amount_minor,
-        };
-      }
-
-      throw new Error(
-        'Previous audience-tip operation requires reconciliation'
-      );
-    }
 
     const currency = await this.db.prepare(`
       SELECT minor_unit_exponent
