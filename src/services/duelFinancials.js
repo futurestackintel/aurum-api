@@ -292,9 +292,8 @@ export class DuelFinancialService {
       amount_minor: amountMinor,
       currency_code: currencyCode,
       financial_status: nextFinancialStatus,
-    };
+        };
   }
-}
 
   async fundAudienceTip({
     duelId,
@@ -559,3 +558,4 @@ export class DuelFinancialService {
       platform_fee_minor: 0,
     };
   }
+}
