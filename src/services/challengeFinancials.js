@@ -2,7 +2,6 @@ import { FinancialService } from './financialService.js';
 import {
   assertSafeMinorUnits,
   validateCurrencyCode,
-  validateMinorUnitExponent,
 } from './money.js';
 
 function requireText(value, fieldName) {
@@ -11,6 +10,16 @@ function requireText(value, fieldName) {
   }
 
   return value.trim();
+}
+
+function parseMetadata(value) {
+  if (!value) return {};
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new Error('Invalid Challenge financial metadata');
+  }
 }
 
 export class ChallengeFinancialService {
@@ -23,6 +32,14 @@ export class ChallengeFinancialService {
     this.financial = new FinancialService(db);
   }
 
+  /**
+   * Fund one paid Challenge entry.
+   *
+   * Money moves:
+   * User available wallet -> Challenge escrow.
+   *
+   * No platform fee is charged when entering.
+   */
   async fundEntry({
     challengeId,
     userId,
@@ -66,8 +83,7 @@ export class ChallengeFinancialService {
       throw new Error('This Challenge does not require paid entry');
     }
 
-    // Check an existing operation before checking current
-    // Challenge state. This allows legitimate retries.
+    // Idempotent retry recovery.
     const existing = await this.db.prepare(`
       SELECT
         id,
@@ -95,7 +111,7 @@ export class ChallengeFinancialService {
         existing.currency_code !== currencyCode
       ) {
         throw new Error(
-          'Idempotency key was already used for different Challenge entry data'
+          'Idempotency key was reused with different Challenge entry data'
         );
       }
 
@@ -116,7 +132,7 @@ export class ChallengeFinancialService {
       }
 
       throw new Error(
-        'Previous Challenge entry funding requires reconciliation'
+        'Previous Challenge funding operation requires reconciliation'
       );
     }
 
@@ -176,17 +192,11 @@ export class ChallengeFinancialService {
       throw new Error('Challenge currency is not enabled');
     }
 
-    validateMinorUnitExponent(
-      currency.minor_unit_exponent
-    );
-
     const entryId = crypto.randomUUID();
     const operationId = crypto.randomUUID();
     const transactionId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Include the Challenge and member in the ledger key.
-    // This prevents collisions between different Challenges.
     const ledgerIdempotencyKey =
       `challenge:${challengeId}:entry:${userId}:${idempotencyKey}`;
 
@@ -232,7 +242,7 @@ export class ChallengeFinancialService {
           currencyCode,
           side: 'debit',
           amountMinor,
-          description: 'Challenge entry funded from available wallet',
+          description: 'Challenge entry funded from wallet',
         },
         {
           accountId: escrow.id,
@@ -243,8 +253,8 @@ export class ChallengeFinancialService {
         },
       ],
 
-      // The entry and pending operation are created in the
-      // same atomic batch as the ledger transaction.
+      // The entry must successfully exist before its
+      // financial operation record can be inserted.
       atomicStatements: [
         this.db.prepare(`
           INSERT INTO challenge_entries (
@@ -283,4 +293,109 @@ export class ChallengeFinancialService {
                 AND ce.user_id = ?
             )
         `).bind(
-          entryId
+          entryId,
+          userId,
+          amountMinor,
+          amountMinor,
+          challengeId,
+          now,
+          userId
+        ),
+
+        // If the entry INSERT above fails to create a row,
+        // this FK-linked operation insert fails the batch.
+        this.db.prepare(`
+          INSERT INTO challenge_financial_operations (
+            id,
+            challenge_id,
+            entry_id,
+            operation_type,
+            actor_id,
+            currency_code,
+            amount_minor,
+            idempotency_key,
+            ledger_transaction_id,
+            status,
+            metadata_json
+          )
+          VALUES (
+            ?,
+            ?,
+            ?,
+            'entry_funding',
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            'pending',
+            ?
+          )
+        `).bind(
+          operationId,
+          challengeId,
+          entryId,
+          userId,
+          currencyCode,
+          amountMinor,
+          idempotencyKey,
+          transactionId,
+          JSON.stringify({
+            challenge_id: challengeId,
+            entry_id: entryId,
+            participant_id: userId,
+            currency_code: currencyCode,
+            amount_minor: amountMinor,
+          })
+        ),
+      ],
+
+      // Mark the operation posted only after the ledger
+      // transaction itself has been posted.
+      atomicStatementsAfterPosting: [
+        this.db.prepare(`
+          UPDATE challenge_financial_operations
+          SET
+            status = 'posted',
+            updated_at = ?
+          WHERE id = ?
+            AND status = 'pending'
+            AND ledger_transaction_id = ?
+        `).bind(
+          now,
+          operationId,
+          transactionId
+        ),
+
+        this.db.prepare(`
+          UPDATE challenges
+          SET
+            pool_funded_minor = pool_funded_minor + ?,
+            financial_status = 'funded',
+            updated_at = ?
+          WHERE id = ?
+            AND financial_status IN (
+              'pending',
+              'funding',
+              'funded'
+            )
+        `).bind(
+          amountMinor,
+          now,
+          challengeId
+        ),
+      ],
+    });
+
+    return {
+      funded: true,
+      already_funded: !result.created,
+      entry_id: entryId,
+      operation_id: operationId,
+      ledger_transaction_id:
+        result.transaction.id,
+      amount_minor: amountMinor,
+      currency_code: currencyCode,
+    };
+  }
+	}
