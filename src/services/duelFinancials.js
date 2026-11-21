@@ -369,18 +369,69 @@ export class DuelFinancialService {
       throw new Error('Tip currency must match the Duel currency');
     }
 
-    const existing = await this.db.prepare(`
+        const existing = await this.db.prepare(`
       SELECT
         id,
         status,
         ledger_transaction_id,
-        amount_minor
+        amount_minor,
+        currency_code,
+        metadata_json
       FROM duel_financial_operations
       WHERE duel_id = ?
         AND operation_type = 'audience_tip'
         AND actor_id = ?
         AND idempotency_key = ?
     `).bind(
+      duelId,
+      tipperId,
+      idempotencyKey
+    ).first();
+
+    if (existing) {
+      let existingMetadata = {};
+
+      try {
+        existingMetadata = JSON.parse(
+          existing.metadata_json || '{}'
+        );
+      } catch {
+        throw new Error(
+          'Existing audience-tip operation requires reconciliation'
+        );
+      }
+
+      const sameRequest =
+        existing.amount_minor === amountMinor &&
+        existing.currency_code === currencyCode &&
+        existingMetadata.participant_id === participantId;
+
+      if (!sameRequest) {
+        throw new Error(
+          'Idempotency key was already used for a different audience tip'
+        );
+      }
+
+      if (
+        existing.status === 'posted' &&
+        existing.ledger_transaction_id
+      ) {
+        return {
+          tipped: true,
+          already_tipped: true,
+          operation_id: existing.id,
+          ledger_transaction_id: existing.ledger_transaction_id,
+          amount_minor: existing.amount_minor,
+          currency_code: existing.currency_code,
+          recipient_id: participantId,
+        };
+      }
+
+      throw new Error(
+        'Previous audience-tip operation requires reconciliation'
+      );
+    }
+	.bind(
       duelId,
       tipperId,
       idempotencyKey
