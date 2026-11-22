@@ -319,11 +319,12 @@ export class CrewBattleFinancialService {
       throw new Error('Winner must be one of the battling crews');
     }
 
-    if (battle.financial_status === 'settled') {
-      const existing = await this.db.prepare(`
-	    if (battle.winner_crew_id !== winnerCrewId) {
+        if (battle.financial_status === 'settled') {
+      if (battle.winner_crew_id !== winnerCrewId) {
         throw new Error('Winner differs from the recorded settlement');
       }
+
+      const existing = await this.db.prepare(`
         SELECT ledger_transaction_id
         FROM crew_battle_financial_operations
         WHERE battle_id = ?
@@ -331,8 +332,18 @@ export class CrewBattleFinancialService {
           AND status = 'posted'
       `).bind(battleId).first();
 
-      if (!existing) {
+      if (!existing?.ledger_transaction_id) {
         throw new Error('Settled battle has no verified settlement operation');
+      }
+
+      const ledgerTransaction = await this.db.prepare(`
+        SELECT status
+        FROM ledger_transactions
+        WHERE id = ?
+      `).bind(existing.ledger_transaction_id).first();
+
+      if (ledgerTransaction?.status !== 'posted') {
+        throw new Error('Crew Battle settlement ledger transaction is not posted');
       }
 
       return {
