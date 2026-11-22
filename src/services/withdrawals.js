@@ -175,7 +175,7 @@ export class WithdrawalService {
           operationId,
           userId,
           amountMinor,
-		  providerAmountMinor
+		  providerAmountMinor,
           currencyCode,
           this.provider,
           scope,
