@@ -402,7 +402,7 @@ export class WithdrawalService {
       try {
         transfer = await this.payments.createTransfer({
           provider: this.provider,
-          amountMinor,
+          amountMinor: providerAmountMinor,
           currencyCode,
           recipientCode,
           reference,
@@ -426,7 +426,7 @@ export class WithdrawalService {
 
       if (
         transfer.reference !== reference ||
-        transfer.amountMinor !== amountMinor ||
+        transfer.amountMinor !== providerAmountMinor ||
         transfer.currencyCode !== currencyCode
       ) {
         await this.markReconciliationRequired(
@@ -495,7 +495,7 @@ export class WithdrawalService {
 
       if (
         verification.reference !== reference ||
-        verification.amountMinor !== amountMinor ||
+        verification.amountMinor !== providerAmountMinor ||
         verification.currencyCode !== currencyCode
       ) {
         await this.markReconciliationRequired(
@@ -520,6 +520,7 @@ export class WithdrawalService {
           operationId,
           userId,
           amountMinor,
+		  providerAmountMinor,
           currencyCode,
           reference,
           requestId,
@@ -880,7 +881,7 @@ export class WithdrawalService {
       `)
       .bind(
         posting.transaction.id,
-        netAmountMinor,,
+        netAmountMinor,
         currencyCode,
         now,
         now,
