@@ -207,6 +207,9 @@ await this.db
     JSON.stringify({
       request_id: requestId,
       authorization_url: result.authorizationUrl,
+      principal_amount_minor: amountMinor,
+      fee_minor: feeMinor,
+      provider_amount_minor: providerAmountMinor,
     }),
     new Date().toISOString(),
     operationId
