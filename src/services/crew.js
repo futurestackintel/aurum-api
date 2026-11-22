@@ -2207,8 +2207,12 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
       return { error: 'Resolved battle requires financial reconciliation' };
     }
     if (battle.status === 'cancelled') return { error: 'Battle was cancelled' };
-    if (battle.payout_released) return { error: 'Payout already released' };
-
+        if (
+      battle.payout_released &&
+      !(battle.status === 'resolved' && battle.financial_status === 'settled')
+    ) {
+      return { error: 'Payout already released' };
+    }
     if (
       winnerCrewId !== battle.challenger_crew_id &&
       winnerCrewId !== battle.target_crew_id
