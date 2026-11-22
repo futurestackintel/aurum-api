@@ -321,6 +321,9 @@ export class CrewBattleFinancialService {
 
     if (battle.financial_status === 'settled') {
       const existing = await this.db.prepare(`
+	    if (battle.winner_crew_id !== winnerCrewId) {
+        throw new Error('Winner differs from the recorded settlement');
+      }
         SELECT ledger_transaction_id
         FROM crew_battle_financial_operations
         WHERE battle_id = ?
@@ -523,6 +526,20 @@ export class CrewBattleFinancialService {
     if (poolMinor <= 0) {
       throw new Error('Crew Battle has no funded prize pool');
     }
+
+	  const refundClaim = await this.db.prepare(`
+      UPDATE crew_battles
+      SET financial_status = 'refunding'
+      WHERE id = ?
+        AND financial_status = 'funded'
+    `).bind(battleId).run();
+
+    if (
+      refundClaim.meta?.changes !== 1 &&
+      battle.financial_status !== 'refunding'
+    ) {
+      throw new Error('Crew Battle refund is already being processed');
+	}
 
     const terminal = await this.db.prepare(`
       SELECT outcome, ledger_transaction_id
