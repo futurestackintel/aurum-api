@@ -10,7 +10,7 @@
 // GET  /api/wallet/bank-details   ← NEW (Fix 2)
 // POST /api/admin/wallet/migrate
 // ============================================================
-
+import { AccountProvisioningService } from "../services/accountProvisioning.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { PaymentService } from "../services/payments.js";
 import { DepositService } from "../services/deposits.js";
@@ -25,38 +25,48 @@ function json(data, status = 200) {
   });
 }
 
-/**
- * Get or create a wallet for a user.
- * Registration auto-creates wallets for new users.
- * This is a safety net for any user who slipped through.
- */
-async function getWallet(userId, db) {
-  const wallet = await db
-    .prepare(`SELECT * FROM wallets WHERE user_id = ?`)
-    .bind(userId)
-    .first();
+async function getLedgerWalletAccounts(userId, db) {
+  const currencies = await db.prepare(`
+    SELECT currency_code, minor_unit_exponent
+    FROM financial_currencies
+    WHERE is_enabled = 1
+    ORDER BY currency_code
+  `).all();
 
-  if (wallet) return wallet;
+  const provisioning = new AccountProvisioningService(db);
+  const accounts = [];
 
-  // Auto-create if missing
-  const now = new Date().toISOString();
-  const walletId = crypto.randomUUID();
-  await db
-    .prepare(`
-      INSERT INTO wallets
-        (id, user_id, balance_usd, total_deposited_usd,
-         total_withdrawn_usd, total_tips_sent_usd,
-         total_tips_received_usd, currency_preference,
-         created_at, updated_at)
-      VALUES (?, ?, 0, 0, 0, 0, 0, 'USD', ?, ?)
-    `)
-    .bind(walletId, userId, now, now)
-    .run();
+  for (const currency of currencies.results || []) {
+    const provisioned = await provisioning.provisionUserAccounts(
+      userId,
+      currency.currency_code
+    );
 
-  return await db
-    .prepare(`SELECT * FROM wallets WHERE user_id = ?`)
-    .bind(userId)
-    .first();
+    const available = provisioned.accounts.find(
+      account => account.account_code ===
+        `USER:AVAILABLE:${userId}:${currency.currency_code}`
+    );
+
+    const held = provisioned.accounts.find(
+      account => account.account_code ===
+        `USER:HELD:${userId}:${currency.currency_code}`
+    );
+
+    if (!available || !held) {
+      throw new Error(
+        `Wallet ledger accounts missing for ${currency.currency_code}`
+      );
+    }
+
+    accounts.push({
+      currency_code: currency.currency_code,
+      minor_unit_exponent: currency.minor_unit_exponent,
+      available_account_id: available.id,
+      held_account_id: held.id,
+    });
+  }
+
+  return accounts;
 }
 
 // ── Route Handler ─────────────────────────────────────────────
@@ -149,7 +159,7 @@ export async function handleWalletRoutes(pathname, request, env) {
     }
   }
 
-  // ── GET /api/wallet/balance ─────────────────────────────────
+    // ── GET /api/wallet/balance ─────────────────────────────────
   if (pathname === "/api/wallet/balance" && request.method === "GET") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
@@ -162,22 +172,71 @@ export async function handleWalletRoutes(pathname, request, env) {
 
       if (!user) return json({ error: "User not found" }, 404);
 
-      const wallet = await getWallet(user.id, env.DB);
-      const display = await buildBalanceDisplay(
-        wallet.balance_usd,
-        wallet.currency_preference,
-        env.DB
-      );
+      const accounts = await getLedgerWalletAccounts(user.id, env.DB);
+      const balances = [];
+
+      for (const account of accounts) {
+        const result = await env.DB.prepare(`
+          SELECT
+            COALESCE(SUM(
+              CASE
+                WHEN le.account_id = ?
+                  AND le.entry_side = 'credit'
+                THEN le.amount_minor
+                WHEN le.account_id = ?
+                  AND le.entry_side = 'debit'
+                THEN -le.amount_minor
+                ELSE 0
+              END
+            ), 0) AS available_minor,
+
+            COALESCE(SUM(
+              CASE
+                WHEN le.account_id = ?
+                  AND le.entry_side = 'credit'
+                THEN le.amount_minor
+                WHEN le.account_id = ?
+                  AND le.entry_side = 'debit'
+                THEN -le.amount_minor
+                ELSE 0
+              END
+            ), 0) AS held_minor
+
+          FROM ledger_entries le
+          JOIN ledger_transactions lt
+            ON lt.id = le.transaction_id
+          WHERE lt.status = 'posted'
+            AND le.account_id IN (?, ?)
+        `).bind(
+          account.available_account_id,
+          account.available_account_id,
+          account.held_account_id,
+          account.held_account_id,
+          account.available_account_id,
+          account.held_account_id
+        ).first();
+
+        const availableMinor = Number(result?.available_minor || 0);
+        const heldMinor = Number(result?.held_minor || 0);
+
+        balances.push({
+          currency_code: account.currency_code,
+          minor_unit_exponent: account.minor_unit_exponent,
+          available_minor: availableMinor,
+          held_minor: heldMinor,
+          total_minor: availableMinor + heldMinor,
+        });
+      }
 
       return json({
-        ...display,
-        total_deposited_usd: wallet.total_deposited_usd,
-        total_tips_sent_usd: wallet.total_tips_sent_usd,
-        total_tips_received_usd: wallet.total_tips_received_usd,
+        balances,
+        source: "ledger",
       });
     } catch (err) {
-      console.error("Wallet balance error:", err);
-      return json({ error: "Unable to fetch balance. Please try again." }, 500);
+      console.error("Wallet ledger balance error:", err);
+      return json({
+        error: "Unable to fetch wallet balances.",
+      }, 500);
     }
   }
 
@@ -350,14 +409,25 @@ export async function handleWalletRoutes(pathname, request, env) {
     }
   }
 
-  // ── GET /api/wallet/transactions ────────────────────────────
+    // ── GET /api/wallet/transactions ────────────────────────────
   if (pathname === "/api/wallet/transactions" && request.method === "GET") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
     const url = new URL(request.url);
-    const limit  = Math.min(parseInt(url.searchParams.get("limit")  ?? "20"), 50);
-    const offset = parseInt(url.searchParams.get("offset") ?? "0");
+
+    const requestedLimit = Number(url.searchParams.get("limit") ?? 20);
+    const requestedOffset = Number(url.searchParams.get("offset") ?? 0);
+
+    const limit = Number.isInteger(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 50)
+      : 20;
+
+    const offset = Number.isInteger(requestedOffset)
+      ? Math.max(requestedOffset, 0)
+      : 0;
+
+    const currencyCode = url.searchParams.get("currency");
 
     try {
       const user = await env.DB
@@ -367,22 +437,86 @@ export async function handleWalletRoutes(pathname, request, env) {
 
       if (!user) return json({ error: "User not found" }, 404);
 
-      const { results } = await env.DB
-        .prepare(`
-          SELECT id, type, amount_usd, balance_after_usd,
-                 reference, description, created_at
-          FROM wallet_transactions
-          WHERE user_id = ?
-          ORDER BY created_at DESC
-          LIMIT ? OFFSET ?
-        `)
-        .bind(user.id, limit, offset)
-        .all();
+      const accounts = await getLedgerWalletAccounts(user.id, env.DB);
 
-      return json({ transactions: results, limit, offset });
+      const accountIds = accounts.flatMap(account => [
+        account.available_account_id,
+        account.held_account_id,
+      ]);
+
+      if (currencyCode && !accounts.some(
+        account => account.currency_code === currencyCode
+      )) {
+        return json({ error: "Unsupported wallet currency" }, 400);
+      }
+
+      if (accountIds.length === 0) {
+        return json({
+          transactions: [],
+          limit,
+          offset,
+          source: "ledger",
+        });
+      }
+
+      const placeholders = accountIds.map(() => "?").join(",");
+
+      let currencyFilter = "";
+      const bindings = [...accountIds];
+
+      if (currencyCode) {
+        currencyFilter = "AND le.currency_code = ?";
+        bindings.push(currencyCode);
+      }
+
+      bindings.push(limit, offset);
+
+      const result = await env.DB.prepare(`
+        SELECT
+          lt.id AS transaction_id,
+          lt.transaction_type,
+          lt.description,
+          lt.reference,
+          lt.status,
+          lt.created_at,
+          lt.posted_at,
+          le.currency_code,
+          le.entry_side,
+          le.amount_minor,
+          la.account_code
+
+        FROM ledger_entries le
+
+        JOIN ledger_transactions lt
+          ON lt.id = le.transaction_id
+
+        JOIN ledger_accounts la
+          ON la.id = le.account_id
+
+        WHERE lt.status = 'posted'
+          AND la.owner_type = 'user'
+          AND la.owner_id = ?
+          AND le.account_id IN (${placeholders})
+          ${currencyFilter}
+
+        ORDER BY lt.created_at DESC, le.id DESC
+        LIMIT ? OFFSET ?
+      `).bind(
+        user.id,
+        ...bindings
+      ).all();
+
+      return json({
+        transactions: result.results || [],
+        limit,
+        offset,
+        source: "ledger",
+      });
     } catch (err) {
-      console.error("Wallet transactions error:", err);
-      return json({ error: "Unable to fetch transactions. Please try again." }, 500);
+      console.error("Wallet ledger transactions error:", err);
+      return json({
+        error: "Unable to fetch wallet transactions.",
+      }, 500);
     }
   }
 
