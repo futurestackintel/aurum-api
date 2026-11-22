@@ -148,36 +148,238 @@ export class CrewBattleFinancialService {
           AND status = 'pending'
       `).bind(transactionId, new Date().toISOString(), operationId).run();
 
-      if (update.meta?.changes !== 1) {
-        const confirmed = await this.db.prepare(`
-          SELECT status, ledger_transaction_id
-          FROM crew_battle_financial_operations
-          WHERE id = ?
-        `).bind(operationId).first();
+  async fundContribution({
+    battleId,
+    payerId,
+    contributionType,
+    amountMinor,
+    currencyCode = 'USD',
+    idempotencyKey,
+  }) {
+    battleId = requireText(battleId, 'Battle ID');
+    payerId = requireText(payerId, 'Payer ID');
+    idempotencyKey = requireText(idempotencyKey, 'Idempotency key');
 
-        if (
-          confirmed?.status !== 'posted' ||
-          confirmed.ledger_transaction_id !== transactionId
-        ) {
-          throw new Error('Contribution posted but operation finalization requires reconciliation');
-        }
+    if (!['challenger_funding', 'target_funding'].includes(contributionType)) {
+      throw new Error('Unsupported Crew Battle contribution type');
+    }
+
+    currencyCode = validateCurrencyCode(currencyCode);
+    assertSafeMinorUnits(amountMinor);
+
+    if (amountMinor <= 0) throw new Error('Contribution must be greater than zero');
+
+    const existing = await this.db.prepare(`
+      SELECT * FROM crew_battle_financial_operations
+      WHERE idempotency_key = ?
+    `).bind(idempotencyKey).first();
+
+    if (existing) {
+      if (
+        existing.battle_id !== battleId ||
+        existing.owner_id !== payerId ||
+        existing.amount_minor !== amountMinor ||
+        existing.currency_code !== currencyCode ||
+        existing.operation_type !== contributionType
+      ) throw new Error('Idempotency key reused with different contribution data');
+
+      if (existing.status === 'posted') {
+        return {
+          funded: true,
+          already_funded: true,
+          operation_id: existing.id,
+          ledger_transaction_id: existing.ledger_transaction_id,
+        };
+      }
+
+      throw new Error('Previous contribution requires financial reconciliation');
+    }
+
+    const battle = await this.db.prepare(`
+      SELECT * FROM crew_battles WHERE id = ?
+    `).bind(battleId).first();
+
+    if (!battle) throw new Error('Crew Battle not found');
+    if (battle.currency_code !== currencyCode) {
+      throw new Error('Contribution currency does not match battle');
+    }
+
+    // Claim the contribution slot before any ledger posting.
+    const claim = contributionType === 'challenger_funding'
+      ? await this.db.prepare(`
+          UPDATE crew_battles
+          SET financial_status = 'funding'
+          WHERE id = ?
+            AND status = 'pending'
+            AND financial_status = 'pending'
+        `).bind(battleId).run()
+      : await this.db.prepare(`
+          UPDATE crew_battles
+          SET financial_status = 'funding'
+          WHERE id = ?
+            AND status = 'pending'
+            AND financial_status = 'funded'
+            AND target_accepted_at IS NULL
+        `).bind(battleId).run();
+
+    if (claim.meta?.changes !== 1) {
+      throw new Error('Crew Battle contribution slot is no longer available');
+    }
+
+    const operationId = crypto.randomUUID();
+    const transactionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    try {
+      const source = await this.financial.getOwnerAvailableAccount({
+        ownerType: 'user',
+        ownerId: payerId,
+        currencyCode,
+      });
+
+      const escrow = await this.financial.getEscrowAccount({
+        escrowType: 'CREW_BATTLE',
+        escrowId: battleId,
+        currencyCode,
+      });
+
+      const result = await this.financial.ledger.postTransaction({
+        transactionId,
+        idempotencyScope: 'financial-escrow-fund:crew_battle',
+        idempotencyKey,
+        sourceModule: 'financial_service',
+        transactionType: 'escrow_funding',
+        actorType: 'member',
+        actorId: payerId,
+        description: 'Fund Crew Battle escrow',
+        reference: battleId,
+        metadata: {
+          escrow_type: 'CREW_BATTLE',
+          escrow_id: battleId,
+          battle_id: battleId,
+          operation_type: contributionType,
+          payer_id: payerId,
+          currency_code: currencyCode,
+          amount_minor: amountMinor,
+        },
+        entries: [
+          {
+            accountId: source.id,
+            currencyCode,
+            side: 'debit',
+            amountMinor,
+            description: 'Crew Battle contribution',
+          },
+          {
+            accountId: escrow.id,
+            currencyCode,
+            side: 'credit',
+            amountMinor,
+            description: 'Crew Battle escrow funding',
+          },
+        ],
+        atomicStatements: [
+          this.db.prepare(`
+            INSERT INTO crew_battle_financial_operations (
+              id, battle_id, operation_type, actor_id,
+              owner_type, owner_id, currency_code,
+              amount_minor, idempotency_key,
+              ledger_transaction_id, status,
+              metadata_json, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, 'pending', '{}', ?, ?)
+          `).bind(
+            operationId,
+            battleId,
+            contributionType,
+            payerId,
+            payerId,
+            currencyCode,
+            amountMinor,
+            idempotencyKey,
+            transactionId,
+            now,
+            now
+          ),
+        ],
+        atomicStatementsAfterPosting: [
+          this.db.prepare(`
+            UPDATE crew_battle_financial_operations
+            SET status = 'posted', updated_at = ?
+            WHERE id = ?
+              AND status = 'pending'
+              AND ledger_transaction_id = ?
+          `).bind(now, operationId, transactionId),
+        ],
+      });
+
+      const operation = await this.db.prepare(`
+        SELECT status, ledger_transaction_id
+        FROM crew_battle_financial_operations
+        WHERE id = ?
+      `).bind(operationId).first();
+
+      if (
+        operation?.status !== 'posted' ||
+        operation.ledger_transaction_id !== result.transaction.id
+      ) {
+        throw new Error('Contribution posting requires financial reconciliation');
+      }
+
+      const total = await this.db.prepare(`
+        SELECT COALESCE(SUM(amount_minor), 0) AS total
+        FROM crew_battle_financial_operations
+        WHERE battle_id = ?
+          AND operation_type IN ('challenger_funding', 'target_funding')
+          AND status = 'posted'
+      `).bind(battleId).first();
+
+      const nextStatus = total.total === amountMinor &&
+        contributionType === 'challenger_funding'
+        ? 'funded'
+        : 'funded';
+
+      const finalized = await this.db.prepare(`
+        UPDATE crew_battles
+        SET financial_status = ?,
+            challenger_contribution_minor = CASE
+              WHEN ? = 'challenger_funding' THEN ?
+              ELSE challenger_contribution_minor
+            END,
+            target_contribution_minor = CASE
+              WHEN ? = 'target_funding' THEN ?
+              ELSE target_contribution_minor
+            END,
+            prize_pool_minor = ?
+        WHERE id = ?
+          AND financial_status = 'funding'
+      `).bind(
+        nextStatus,
+        contributionType,
+        amountMinor,
+        contributionType,
+        amountMinor,
+        total.total,
+        battleId
+      ).run();
+
+      if (finalized.meta?.changes !== 1) {
+        throw new Error('Contribution posted; battle finalization requires reconciliation');
       }
 
       return {
         funded: true,
         operation_id: operationId,
-        ledger_transaction_id: transactionId,
+        ledger_transaction_id: result.transaction.id,
         amount_minor: amountMinor,
         currency_code: currencyCode,
       };
     } catch (error) {
       await this.db.prepare(`
-        UPDATE crew_battle_financial_operations
-        SET status = 'reconciliation_required',
-            updated_at = ?
-        WHERE id = ?
-          AND status = 'pending'
-      `).bind(new Date().toISOString(), operationId).run();
+        UPDATE crew_battles
+        SET financial_status = 'reconciliation_required'
+        WHERE id = ? AND financial_status = 'funding'
+      `).bind(battleId).run();
 
       throw error;
     }
@@ -454,10 +656,9 @@ export class CrewBattleFinancialService {
       ORDER BY operation_type
     `).bind(battleId).all();
 
-    if (contributions.length !== 2) {
-      throw new Error('Both Crew Battle contributions must be verified before refund');
-    }
-
+    if (contributions.length < 1 || contributions.length > 2) {
+  throw new Error('Crew Battle contribution records require reconciliation');
+}
     let verifiedTotal = 0;
     const entries = [];
 
