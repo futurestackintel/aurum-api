@@ -155,7 +155,7 @@ export class DepositService {
         operationId,
         userId,
         amountMinor,
-				providerAmountMinor
+		providerAmountMinor,
         currencyCode,
         this.provider,
         scope,
