@@ -8,6 +8,7 @@ import { PaystackAdapter } from "./paystackAdapter.js";
 
 export class PaymentService {
   constructor(env, options = {}) {
+	  this.env = env;
     this.adapters = options.adapters || {
       paystack: new PaystackAdapter(env.PAYSTACK_SECRET_KEY),
     };
@@ -29,6 +30,45 @@ export class PaymentService {
 
     return provider;
   }
+
+	  assertCurrencySupported(currencyCode, operationType, providerName = this.defaultProvider) {
+    currencyCode = String(currencyCode || '').toUpperCase();
+
+    if (!['deposit', 'withdrawal'].includes(operationType)) {
+      throw new Error('Invalid payment operation type');
+    }
+
+    const provider = this.getProvider(providerName);
+
+    if (providerName === 'paystack') {
+      const envKey = operationType === 'deposit'
+        ? 'PAYSTACK_DEPOSIT_CURRENCIES'
+        : 'PAYSTACK_WITHDRAWAL_CURRENCIES';
+
+      const configured = this.env?.[envKey];
+
+      const allowedCurrencies = (
+        typeof configured === 'string' && configured.trim()
+          ? configured
+          : 'NGN'
+      )
+        .split(',')
+        .map(value => value.trim().toUpperCase())
+        .filter(Boolean);
+
+      if (!allowedCurrencies.includes(currencyCode)) {
+        throw new Error(
+          `Paystack ${operationType} is not enabled for ${currencyCode}`
+        );
+      }
+
+      return true;
+    }
+
+    throw new Error(
+      `Currency capability has not been configured for provider: ${providerName}`
+    );
+		}
 
   // ----------------------------------------------------------
   // Provider-independent payment operations
