@@ -781,7 +781,13 @@
 	  
   </div>
 
-  
+    <!-- =====================================================
+       AURUM WALLET MODAL
+  ====================================================== -->
+  <div class="modal-overlay" id="wallet-modal" style="display:none;">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title">AURUM Wallet</h3>
 
       <div class="wallet-balance-display">
         <div class="wallet-balance-amount" id="wallet-modal-balance">—</div>
@@ -915,7 +921,6 @@
   </div>
 
   <!-- Scripts -->
-  <!-- Scripts -->
   <script src="js/api.js"></script>
   <script src="js/pages/ledger.js"></script>
   <script src="js/pages/arena.js"></script>
@@ -971,10 +976,19 @@
       sessionStorage.setItem('aurum_crew_invite_code', crew);
     }
   })();
-  const App = {
-    user:        null,
+    const App = {
+    user: null,
     currentView: 'ledger',
+
+    // Ledger-backed wallet state
     walletBalance: 0,
+    walletBalances: [],
+    walletAccounts: [],
+    walletTransactions: [],
+    walletAccount: null,
+    walletBankDetails: null,
+    walletCurrency: 'NGN',
+    walletPreferredCurrency: 'NGN',
 
     /* -----------------------------------------
        INIT — boot overlay stays up the whole
@@ -1705,26 +1719,55 @@
   /* =====================================================
      WALLET MODAL EVENTS
   ===================================================== */
+
   document.getElementById('wallet-modal').addEventListener('click', e => {
-    if (e.target.id === 'wallet-modal') e.target.style.display = 'none';
+    if (e.target.id === 'wallet-modal') {
+      e.target.style.display = 'none';
+    }
   });
 
   document.getElementById('btn-wallet-deposit').addEventListener('click', () => {
-    document.getElementById('wallet-modal').style.display  = 'none';
+    document.getElementById('wallet-modal').style.display = 'none';
+
+    const currency = document.getElementById('deposit-currency');
+    if (currency) currency.value = 'NGN';
+
+    document.getElementById('deposit-error').style.display = 'none';
     document.getElementById('deposit-modal').style.display = 'flex';
   });
 
-  document.getElementById('btn-wallet-withdraw').addEventListener('click', () => {
-    document.getElementById('wallet-modal').style.display   = 'none';
+  document.getElementById('btn-wallet-withdraw').addEventListener('click', async () => {
+    document.getElementById('wallet-modal').style.display = 'none';
+
+    const currency = document.getElementById('withdraw-currency');
+    if (currency) currency.value = 'NGN';
+
+    const balance = App.walletBalanceFor('NGN');
+    const info = App.walletCurrencyInfo('NGN');
     const wBal = document.getElementById('withdraw-modal-balance');
-    if (wBal) wBal.textContent = AURUM.formatAurum(App.walletBalance);
+
+    if (wBal) {
+      wBal.textContent = App.walletMoney(
+        balance.available_minor,
+        info.minor_unit_exponent,
+        'NGN'
+      );
+    }
+
+    document.getElementById('withdraw-error').style.display = 'none';
     document.getElementById('withdraw-modal').style.display = 'flex';
+
+    await App.loadWalletBankDetails();
   });
 
-	    document.querySelectorAll('.wallet-tab').forEach(button => {
-    button.addEventListener('click', () => App.showWalletTab(button.dataset.walletTab));
+  // Wallet tabs
+  document.querySelectorAll('.wallet-tab').forEach(button => {
+    button.addEventListener('click', () => {
+      App.showWalletTab(button.dataset.walletTab);
+    });
   });
 
+  // Currency selection
   document.getElementById('wallet-currency').addEventListener('change', async e => {
     App.walletCurrency = e.target.value;
     App.renderWalletBalances();
@@ -1736,9 +1779,11 @@
     await App.loadWalletTransactions();
   });
 
+  // Save withdrawal bank details
   document.getElementById('btn-wallet-save-bank').addEventListener('click', async () => {
     const error = document.getElementById('wallet-bank-error');
     error.style.display = 'none';
+
     try {
       await AURUM.WalletAPI.saveBankDetails({
         bank_name: document.getElementById('wallet-bank-name').value.trim(),
@@ -1746,6 +1791,7 @@
         account_name: document.getElementById('wallet-bank-holder').value.trim(),
         bank_code: document.getElementById('wallet-bank-code').value.trim() || undefined,
       });
+
       AURUM.showToast('Withdrawal account saved.', 'gold');
       await App.loadWalletBankDetails();
     } catch (err) {
@@ -1754,27 +1800,42 @@
     }
   });
 
+  // Save preferred wallet currency
   document.getElementById('btn-wallet-save-preference').addEventListener('click', async () => {
     const currency = document.getElementById('wallet-preferred-currency').value;
     const message = document.getElementById('wallet-settings-message');
+
     try {
       await AURUM.WalletAPI.setCurrency({ currency });
+
       App.walletPreferredCurrency = currency;
       App.updateWalletInBar();
+
       message.textContent = 'Preferred currency saved.';
     } catch (err) {
       message.textContent = err.message || 'Could not save preference.';
     }
   });
 
+  // Export loaded transaction history
   document.getElementById('btn-wallet-export').addEventListener('click', () => {
     const rows = App.walletTransactions || [];
+
     if (!rows.length) {
       AURUM.showToast('No transactions to export.', 'error');
       return;
     }
 
-    const columns = ['created_at', 'transaction_type', 'description', 'currency_code', 'amount_minor', 'direction', 'reference'];
+    const columns = [
+      'created_at',
+      'transaction_type',
+      'description',
+      'currency_code',
+      'amount_minor',
+      'direction',
+      'reference'
+    ];
+
     const csv = [
       columns.join(','),
       ...rows.map(row => columns.map(key =>
@@ -1782,103 +1843,194 @@
       ).join(','))
     ].join('\n');
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csv], {
+      type: 'text/csv;charset=utf-8;'
+    });
+
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
+
     link.href = url;
     link.download = `aurum-wallet-${App.walletCurrency}-statement.csv`;
     link.click();
+
     URL.revokeObjectURL(url);
   });
 
   /* =====================================================
      DEPOSIT MODAL
-     FIX: was sending {amount, currency} — backend expects
-     {amount_usd, callback_url}, neither of which was being sent.
-     Also was checking data.payment_url — backend returns
-     authorization_url. Both fixed. Minimum bumped to $5 client-side
-     to match the backend's actual minimum.
   ===================================================== */
+
   document.getElementById('deposit-modal').addEventListener('click', e => {
-    if (e.target.id === 'deposit-modal') e.target.style.display = 'none';
+    if (e.target.id === 'deposit-modal') {
+      e.target.style.display = 'none';
+    }
   });
+
   document.getElementById('btn-deposit-cancel').addEventListener('click', () => {
     document.getElementById('deposit-modal').style.display = 'none';
   });
-  document.getElementById('btn-deposit-confirm').addEventListener('click', async () => {
-    const amount = parseFloat(document.getElementById('deposit-amount').value);
-    const btn    = document.getElementById('btn-deposit-confirm');
 
-    if (!amount || amount < 5) {
-      AURUM.showToast('Minimum deposit is $5.', 'error'); return;
+  // Deposit fee preview
+  document.getElementById('deposit-amount').addEventListener('input', e => {
+    const preview = document.getElementById('deposit-fee-preview');
+    const amount = e.target.value;
+
+    if (!amount || Number(amount) <= 0) {
+      preview.textContent = '';
+      return;
+    }
+
+    try {
+      const minor = App.walletMinor(amount, 2);
+      const fee = Number((BigInt(minor) * 500n + 9999n) / 10000n);
+      const total = minor + fee;
+
+      preview.textContent =
+        `Funding fee: ${App.walletMoney(fee, 2, 'NGN')} · Total payment: ${App.walletMoney(total, 2, 'NGN')}`;
+    } catch (err) {
+      preview.textContent = err.message;
+    }
+  });
+
+  document.getElementById('btn-deposit-confirm').addEventListener('click', async () => {
+    const amountInput = document.getElementById('deposit-amount');
+    const error = document.getElementById('deposit-error');
+    const btn = document.getElementById('btn-deposit-confirm');
+
+    error.style.display = 'none';
+
+    let amountMinor;
+
+    try {
+      amountMinor = App.walletMinor(amountInput.value, 2);
+    } catch (err) {
+      error.textContent = err.message || 'Enter a valid deposit amount.';
+      error.style.display = 'block';
+      return;
     }
 
     btn.textContent = 'Redirecting...';
-    btn.disabled    = true;
+    btn.disabled = true;
 
     try {
       const data = await AURUM.WalletAPI.deposit({
-        amount_usd: amount,
-        callback_url: window.location.origin + window.location.pathname,
+        amount_minor: amountMinor,
+        currency_code: 'NGN',
       });
+
       if (data.authorization_url) {
         window.location.href = data.authorization_url;
       } else {
-        AURUM.showToast('Deposit initiated.', 'gold');
-        document.getElementById('deposit-modal').style.display = 'none';
+        throw new Error('Payment authorization URL was not returned.');
       }
     } catch (err) {
-      AURUM.showToast(err.message || 'Deposit failed.', 'error');
+      error.textContent = err.message || 'Deposit initialization failed.';
+      error.style.display = 'block';
     } finally {
-      btn.textContent = 'Continue →';
-      btn.disabled    = false;
+      btn.textContent = 'Continue';
+      btn.disabled = false;
     }
   });
 
   /* =====================================================
      WITHDRAW MODAL
   ===================================================== */
+
   document.getElementById('withdraw-modal').addEventListener('click', e => {
-    if (e.target.id === 'withdraw-modal') e.target.style.display = 'none';
+    if (e.target.id === 'withdraw-modal') {
+      e.target.style.display = 'none';
+    }
   });
+
   document.getElementById('btn-withdraw-cancel').addEventListener('click', () => {
     document.getElementById('withdraw-modal').style.display = 'none';
   });
+
+  // Withdrawal fee preview
+  document.getElementById('withdraw-amount').addEventListener('input', e => {
+    const preview = document.getElementById('withdraw-fee-preview');
+    const amount = e.target.value;
+
+    if (!amount || Number(amount) <= 0) {
+      preview.textContent = '';
+      return;
+    }
+
+    try {
+      const gross = App.walletMinor(amount, 2);
+      const fee = Number((BigInt(gross) * 500n + 9999n) / 10000n);
+      const net = gross - fee;
+
+      preview.textContent =
+        `Withdrawal fee: ${App.walletMoney(fee, 2, 'NGN')} · You receive: ${App.walletMoney(net, 2, 'NGN')}`;
+    } catch (err) {
+      preview.textContent = err.message;
+    }
+  });
+
   document.getElementById('btn-withdraw-confirm').addEventListener('click', async () => {
-    const amount  = parseFloat(document.getElementById('withdraw-amount').value);
-    const bank    = document.getElementById('withdraw-bank').value.trim();
-    const account = document.getElementById('withdraw-account').value.trim();
-    const name    = document.getElementById('withdraw-name').value.trim();
-    const errEl   = document.getElementById('withdraw-error');
-    const btn     = document.getElementById('btn-withdraw-confirm');
+    const amountInput = document.getElementById('withdraw-amount');
+    const error = document.getElementById('withdraw-error');
+    const btn = document.getElementById('btn-withdraw-confirm');
 
-    errEl.style.display = 'none';
+    error.style.display = 'none';
 
-    if (!amount || amount < 1) {
-      errEl.textContent = 'Enter a valid amount.'; errEl.style.display = 'block'; return;
+    let amountMinor;
+
+    try {
+      amountMinor = App.walletMinor(amountInput.value, 2);
+    } catch (err) {
+      error.textContent = err.message || 'Enter a valid withdrawal amount.';
+      error.style.display = 'block';
+      return;
     }
-    if (amount > App.walletBalance) {
-      errEl.textContent = 'Insufficient balance.'; errEl.style.display = 'block'; return;
+
+    const balance = App.walletBalanceFor('NGN');
+
+    if (amountMinor > balance.available_minor) {
+      error.textContent = 'Insufficient available balance.';
+      error.style.display = 'block';
+      return;
     }
-    if (!bank || !account || !name) {
-      errEl.textContent = 'Fill in all bank details.'; errEl.style.display = 'block'; return;
+
+    const bankDetails = App.walletBankDetails;
+
+    if (!bankDetails || !bankDetails.account_number) {
+      error.textContent = 'Please save your withdrawal bank account first.';
+      error.style.display = 'block';
+      return;
     }
 
     btn.textContent = 'Requesting...';
-    btn.disabled    = true;
+    btn.disabled = true;
 
     try {
-      await AURUM.WalletAPI.withdraw({ amount, bank_name: bank, account_number: account, account_name: name });
-      AURUM.showToast('Withdrawal request submitted.', 'gold');
+      const result = await AURUM.WalletAPI.withdraw({
+        amount_minor: amountMinor,
+        currency_code: 'NGN',
+      });
+
       document.getElementById('withdraw-modal').style.display = 'none';
-      App.walletBalance = Math.max(0, App.walletBalance - amount);
-      App.updateWalletInBar();
+
+      AURUM.showToast(
+        result.status === 'reconciliation_required'
+          ? 'Withdrawal submitted for financial review.'
+          : 'Withdrawal request submitted.',
+        'gold'
+      );
+
+      // Never optimistically change ledger balances.
+      await Promise.all([
+        App.loadWalletBalance(),
+        App.loadWalletTransactions(),
+      ]);
     } catch (err) {
-      errEl.textContent   = err.message || 'Withdrawal failed.';
-      errEl.style.display = 'block';
+      error.textContent = err.message || 'Withdrawal request failed.';
+      error.style.display = 'block';
     } finally {
       btn.textContent = 'Request Withdrawal';
-      btn.disabled    = false;
+      btn.disabled = false;
     }
   });
 
