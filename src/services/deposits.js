@@ -98,7 +98,7 @@ export class DepositService {
       .bind(scope, idempotencyKey)
       .first();
 
-    if (existing) {
+        if (existing) {
       if (existing.request_fingerprint !== fingerprint) {
         throw new Error(
           'Idempotency key was already used for a different deposit'
@@ -111,22 +111,26 @@ export class DepositService {
         );
       }
 
-      if (existing.provider_reference) {
-  let metadata = {};
+      let metadata = {};
 
-  try {
-    metadata = JSON.parse(existing.metadata_json || '{}');
-  } catch {
-    throw new Error('Stored deposit metadata is invalid');
-  }
+      try {
+        metadata = JSON.parse(existing.metadata_json || '{}');
+      } catch {
+        throw new Error('Stored deposit metadata is invalid');
+      }
 
-  return {
-    operationId: existing.id,
-    reference: existing.provider_reference,
-    authorizationUrl: metadata.authorization_url || null,
-    status: existing.status,
-  };
-}
+      if (!metadata.authorization_url) {
+        throw new Error(
+          'Deposit initialization is still processing. Please retry shortly.'
+        );
+      }
+
+      return {
+        operationId: existing.id,
+        reference: existing.provider_reference,
+        authorizationUrl: metadata.authorization_url,
+        status: existing.status,
+      };
     }
 
     const operationId = crypto.randomUUID();
