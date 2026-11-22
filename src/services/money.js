@@ -139,3 +139,30 @@ export function subtractMinorUnits(minuend, subtrahend) {
 
   return minuend - subtrahend;
 }
+
+/**
+ * Calculate a fee in minor units using basis points.
+ * Rounds up so fractional minor units are never silently discarded.
+ * 500 basis points = 5%.
+ */
+export function calculateFeeMinor(amountMinor, basisPoints) {
+  assertSafeMinorUnits(amountMinor);
+
+  if (
+    !Number.isInteger(basisPoints) ||
+    basisPoints < 0 ||
+    basisPoints > 10000
+  ) {
+    throw new Error('Invalid fee basis points');
+  }
+
+  const fee =
+    (BigInt(amountMinor) * BigInt(basisPoints) + 9999n) /
+    10000n;
+
+  if (fee > MAX_SAFE_MINOR_UNITS) {
+    throw new Error('Calculated fee exceeds safe integer range');
+  }
+
+  return Number(fee);
+}
