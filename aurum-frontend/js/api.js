@@ -309,7 +309,9 @@ const SettingsAPI = {
 /* --- Wallet --- */
 const WalletAPI = {
   deposit: (data) =>
-    apiRequest('POST', '/api/wallet/deposit', data),
+    apiRequest('POST', '/api/wallet/deposit', data, true, {
+      'Idempotency-Key': crypto.randomUUID(),
+    }),
 
   confirmDeposit: (data) =>
     apiRequest('POST', '/api/wallet/deposit/confirm', data),
@@ -317,18 +319,36 @@ const WalletAPI = {
   getBalance: () =>
     apiRequest('GET', '/api/wallet/balance'),
 
+  getAccount: () =>
+    apiRequest('GET', '/api/wallet/account'),
+
   withdraw: (data) =>
-    apiRequest('POST', '/api/wallet/withdraw', data),
+    apiRequest('POST', '/api/wallet/withdraw', data, true, {
+      'Idempotency-Key': crypto.randomUUID(),
+    }),
 
   setCurrency: (data) =>
     apiRequest('POST', '/api/wallet/currency', data),
 
-  getTransactions: (page = 0) =>
-    apiRequest('GET', `/api/wallet/transactions?limit=20&offset=${page * 20}`),
+  getTransactions: (page = 0, currency = '') => {
+    const params = new URLSearchParams({
+      limit: '20',
+      offset: String(page * 20),
+    });
+
+    if (currency) params.set('currency', currency);
+
+    return apiRequest(
+      'GET',
+      `/api/wallet/transactions?${params.toString()}`
+    );
+  },
 
   getBankDetails: () =>
     apiRequest('GET', '/api/wallet/bank-details'),
-  getAccount: () => apiRequest('GET', '/api/wallet/account'),
+
+  saveBankDetails: (data) =>
+    apiRequest('POST', '/api/wallet/bank-details', data),
 };
 
 /* --- Founding Member --- */
