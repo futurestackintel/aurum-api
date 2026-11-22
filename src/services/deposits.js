@@ -4,8 +4,9 @@ import { PaymentService } from './payments.js';
 import {
   assertSafeMinorUnits,
   validateCurrencyCode,
+  calculateFeeMinor,
+  addMinorUnits,
 } from './money.js';
-
 function requireText(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`${fieldName} is required`);
@@ -59,6 +60,17 @@ export class DepositService {
     if (amountMinor === 0) {
       throw new Error('Deposit amount must be greater than zero');
     }
+		    this.payments.assertCurrencySupported(
+      currencyCode,
+      'deposit',
+      this.provider
+    );
+
+    const feeMinor = calculateFeeMinor(amountMinor, 500);
+    const providerAmountMinor = addMinorUnits(
+      amountMinor,
+      feeMinor
+    );
 
     if (
       callbackUrl !== undefined &&
@@ -128,6 +140,7 @@ export class DepositService {
           operation_type,
           status,
           amount_minor,
+          provider_amount_minor,
           currency_code,
           provider,
           idempotency_scope,
@@ -136,20 +149,24 @@ export class DepositService {
           provider_reference,
           metadata_json
         )
-        VALUES (?, ?, 'deposit', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, 'deposit', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .bind(
         operationId,
         userId,
         amountMinor,
+				providerAmountMinor
         currencyCode,
         this.provider,
         scope,
         idempotencyKey,
         fingerprint,
         reference,
-        JSON.stringify({
+          JSON.stringify({
           request_id: requestId,
+          principal_amount_minor: amountMinor,
+          fee_minor: feeMinor,
+          provider_amount_minor: providerAmountMinor,
         })
       )
       .run();
@@ -158,7 +175,7 @@ export class DepositService {
       const result = await this.payments.initializePayment({
         provider: this.provider,
         email,
-        amountMinor,
+        amountMinor: providerAmountMinor,
         currencyCode,
         reference,
         callbackUrl,
@@ -281,7 +298,10 @@ return {
       throw new Error('Provider payment reference mismatch');
     }
 
-    if (payment.amountMinor !== operation.amount_minor) {
+      const expectedProviderAmount =
+      operation.provider_amount_minor ?? operation.amount_minor;
+
+    if (payment.amountMinor !== expectedProviderAmount) {
       throw new Error('Provider payment amount mismatch');
     }
 
@@ -319,6 +339,28 @@ return {
         currencyCode: operation.currency_code,
       });
 
+		    let depositMetadata = {};
+
+    try {
+      depositMetadata = JSON.parse(operation.metadata_json || '{}');
+    } catch {
+      throw new Error('Stored deposit metadata is invalid');
+    }
+
+    const principalMinor = operation.amount_minor;
+    const providerGrossMinor =
+      operation.provider_amount_minor ?? operation.amount_minor;
+
+    const feeMinor = depositMetadata.fee_minor ??
+      (providerGrossMinor - principalMinor);
+
+    const feeAccount = feeMinor > 0
+      ? await this.accounts.provisionPlatformAccount({
+          accountType: 'fee_revenue',
+          currencyCode: operation.currency_code,
+        })
+      : null;
+
     const posting = await this.ledger.postTransaction({
       idempotencyScope: 'wallet-deposit-settlement',
       idempotencyKey: operation.id,
@@ -334,21 +376,28 @@ return {
         provider: this.provider,
         provider_reference: reference,
       },
-      entries: [
+            entries: [
         {
           accountId: providerAccount.id,
           currencyCode: operation.currency_code,
           side: 'debit',
-          amountMinor: operation.amount_minor,
-          description: 'Provider deposit receivable',
+          amountMinor: providerGrossMinor,
+          description: 'Gross provider deposit',
         },
         {
           accountId: availableAccount.id,
           currencyCode: operation.currency_code,
           side: 'credit',
-          amountMinor: operation.amount_minor,
-          description: 'User wallet deposit',
+          amountMinor: principalMinor,
+          description: 'User wallet deposit principal',
         },
+        ...(feeMinor > 0 ? [{
+          accountId: feeAccount.id,
+          currencyCode: operation.currency_code,
+          side: 'credit',
+          amountMinor: feeMinor,
+          description: 'Platform deposit fee',
+        }] : []),
       ],
     });
 
