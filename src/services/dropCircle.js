@@ -1082,11 +1082,159 @@ export async function getChallengeById(challengeId, db) {
 // ── FIX 7: EXPIRE CHALLENGES ──────────────────────────────────
 
 export async function expireChallenges(db) {
-  const now = nowISO();
-  await db.prepare(`
-    UPDATE challenges
-    SET status = 'completed', updated_at = ?
-    WHERE status = 'open'
-      AND ends_at <= ?
-  `).bind(now, now).run();
+const now = nowISO();
+
+const { results: expired } = await db.prepare("SELECT id, entry_fee_minor, pool_funded_minor, financial_status FROM challenges WHERE status = 'open' AND ends_at <= ? ORDER BY ends_at ASC, id ASC").bind(now).all();
+
+const summary = {
+processed: 0,
+refunded: 0,
+completed: 0,
+skipped: 0,
+failed: 0,
+};
+
+for (const challenge of expired) {
+try {
+const financialStatus = challenge.financial_status;
+const entryFeeMinor = challenge.entry_fee_minor ?? 0;
+const poolMinor = challenge.pool_funded_minor ?? 0;
+
+  // Legacy financial records must never be refunded
+  // automatically through the new ledger.
+  if (financialStatus === 'legacy') {
+    await db.prepare(`
+      UPDATE challenges
+      SET status = 'completed',
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'open'
+        AND financial_status = 'legacy'
+    `).bind(now, challenge.id).run();
+
+    summary.completed++;
+    continue;
+  }
+
+  // A funded Challenge must be refunded before expiry
+  // can be finalized.
+  if (
+    financialStatus === 'funded' ||
+    financialStatus === 'refunding'
+  ) {
+    const financial = new ChallengeFinancialService(db);
+
+    await financial.refundChallenge({
+      challengeId: challenge.id,
+      moderatorId: 'system',
+      reason: 'Challenge expired before resolution',
+    });
+
+    const finalized = await db.prepare(`
+      UPDATE challenges
+      SET status = 'completed',
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'open'
+        AND financial_status = 'refunded'
+    `).bind(nowISO(), challenge.id).run();
+
+    const confirmed = await db.prepare(`
+      SELECT status, financial_status
+      FROM challenges
+      WHERE id = ?
+    `).bind(challenge.id).first();
+
+    if (
+      confirmed?.status !== 'completed' ||
+      confirmed?.financial_status !== 'refunded'
+    ) {
+      throw new Error(
+        'Refund succeeded but Challenge expiry finalization failed'
+      );
+    }
+
+    summary.refunded++;
+    summary.completed++;
+    summary.processed++;
+    continue;
+  }
+
+  // Pending/free Challenges can expire only when no
+  // financial funding operation or funded pool exists.
+  if (
+    ['pending', 'funding'].includes(financialStatus) &&
+    entryFeeMinor >= 0 &&
+    poolMinor === 0
+  ) {
+    const operations = await db.prepare(`
+      SELECT COUNT(*) AS operation_count
+      FROM challenge_financial_operations
+      WHERE challenge_id = ?
+    `).bind(challenge.id).first();
+
+    if ((operations?.operation_count ?? 0) !== 0) {
+      console.error(
+        '[Challenge expiry] Pending financial operations require reconciliation:',
+        challenge.id
+      );
+      summary.skipped++;
+      continue;
+    }
+
+    await db.prepare(`
+      UPDATE challenges
+      SET status = 'completed',
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'open'
+        AND financial_status IN ('pending', 'funding')
+        AND pool_funded_minor = 0
+    `).bind(nowISO(), challenge.id).run();
+
+    summary.completed++;
+    summary.processed++;
+    continue;
+  }
+
+  // Settled/refunded records should not be silently
+  // reprocessed. Any other financial state needs review.
+  if (
+    financialStatus === 'settled' ||
+    financialStatus === 'refunded'
+  ) {
+    await db.prepare(`
+      UPDATE challenges
+      SET status = 'completed',
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'open'
+        AND financial_status = ?
+    `).bind(nowISO(), challenge.id, financialStatus).run();
+
+    summary.completed++;
+    summary.processed++;
+    continue;
+  }
+
+  console.error(
+    '[Challenge expiry] Financial state requires reconciliation:',
+    challenge.id,
+    financialStatus
+  );
+  summary.skipped++;
+} catch (error) {
+  console.error(
+    '[Challenge expiry] Failed:',
+    challenge.id,
+    error?.message || error
+  );
+  summary.failed++;
 }
+
+}
+
+console.log('[Challenge expiry] Summary:', summary);
+
+return summary;
+		}
