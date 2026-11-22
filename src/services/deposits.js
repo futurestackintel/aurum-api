@@ -137,43 +137,96 @@ export class DepositService {
     const reference = `aurum_deposit_${operationId}`;
 
     await this.db
-      .prepare(`
-        INSERT INTO financial_payment_operations (
-          id,
-          user_id,
-          operation_type,
-          status,
-          amount_minor,
-          provider_amount_minor,
-          currency_code,
-          provider,
-          idempotency_scope,
-          idempotency_key,
-          request_fingerprint,
-          provider_reference,
-          metadata_json
-        )
-         VALUES (?, ?, 'deposit', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .bind(
-        operationId,
-        userId,
-        amountMinor,
-		providerAmountMinor,
-        currencyCode,
-        this.provider,
-        scope,
-        idempotencyKey,
-        fingerprint,
-        reference,
+        try {
+      await this.db
+        .prepare(`
+          INSERT INTO financial_payment_operations (
+            id,
+            user_id,
+            operation_type,
+            status,
+            amount_minor,
+            provider_amount_minor,
+            currency_code,
+            provider,
+            idempotency_scope,
+            idempotency_key,
+            request_fingerprint,
+            provider_reference,
+            metadata_json
+          )
+          VALUES (?, ?, 'deposit', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .bind(
+          operationId,
+          userId,
+          amountMinor,
+          providerAmountMinor,
+          currencyCode,
+          this.provider,
+          scope,
+          idempotencyKey,
+          fingerprint,
+          reference,
           JSON.stringify({
-          request_id: requestId,
-          principal_amount_minor: amountMinor,
-          fee_minor: feeMinor,
-          provider_amount_minor: providerAmountMinor,
-        })
-      )
-      .run();
+            request_id: requestId,
+            principal_amount_minor: amountMinor,
+            fee_minor: feeMinor,
+            provider_amount_minor: providerAmountMinor,
+          })
+        )
+        .run();
+    } catch (insertError) {
+      // Recover if another request inserted the same idempotency key first.
+      const racedOperation = await this.db
+        .prepare(`
+          SELECT *
+          FROM financial_payment_operations
+          WHERE idempotency_scope = ?
+            AND idempotency_key = ?
+        `)
+        .bind(scope, idempotencyKey)
+        .first();
+
+      if (!racedOperation) {
+        throw insertError;
+      }
+
+      if (racedOperation.request_fingerprint !== fingerprint) {
+        throw new Error(
+          'Idempotency key was already used for a different deposit'
+        );
+      }
+
+      if (racedOperation.status !== 'pending') {
+        throw new Error(
+          'This deposit operation is no longer pending'
+        );
+      }
+
+      let racedMetadata = {};
+
+      try {
+        racedMetadata = JSON.parse(
+          racedOperation.metadata_json || '{}'
+        );
+      } catch {
+        throw new Error('Stored deposit metadata is invalid');
+      }
+
+      if (!racedMetadata.authorization_url) {
+        throw new Error(
+          'Deposit initialization is still processing. Please retry shortly.'
+        );
+      }
+
+      return {
+        operationId: racedOperation.id,
+        reference: racedOperation.provider_reference,
+        authorizationUrl: racedMetadata.authorization_url,
+        status: racedOperation.status,
+      };
+    }
 
     try {
       const result = await this.payments.initializePayment({
