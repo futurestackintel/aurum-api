@@ -617,91 +617,180 @@ export async function scoreEntry(challengeId, entryUserId, score, db) {
 // challenges table, not per-entry amounts). Dead reference removed.
 
 export async function resolveChallenge(challengeId, moderatorId, db) {
-  const challenge = await db
-    .prepare(`SELECT * FROM challenges WHERE id = ?`)
-    .bind(challengeId)
-    .first();
+  const challenge = await db.prepare(`
+    SELECT *
+    FROM challenges
+    WHERE id = ?
+  `).bind(challengeId).first();
 
-  if (!challenge)                         return { error: 'Challenge not found' };
-  if (challenge.status === 'completed')   return { error: 'Challenge already resolved' };
-  if (challenge.status === 'cancelled')   return { error: 'Challenge was cancelled' };
+  if (!challenge) return { error: 'Challenge not found' };
+  if (challenge.status === 'cancelled') {
+    return { error: 'Challenge was cancelled' };
+  }
 
-  const { results: entries } = await db
-    .prepare(`
-      SELECT ce.user_id, ce.score, u.username
-      FROM challenge_entries ce
-      JOIN users u ON u.id = ce.user_id
-      WHERE ce.challenge_id = ?
-      ORDER BY ce.score DESC
-    `)
-    .bind(challengeId)
-    .all();
+  const { results: entries } = await db.prepare(`
+    SELECT
+      ce.user_id,
+      ce.score,
+      ce.status AS entry_status,
+      ce.submitted_at,
+      ce.created_at,
+      u.username
+    FROM challenge_entries ce
+    JOIN users u ON u.id = ce.user_id
+    WHERE ce.challenge_id = ?
+      AND ce.status != 'disqualified'
+    ORDER BY
+      ce.score DESC,
+      ce.submitted_at ASC,
+      ce.created_at ASC,
+      ce.user_id ASC
+  `).bind(challengeId).all();
 
-  if (entries.length === 0) return { error: 'No entries to resolve' };
+  if (!entries.length) {
+    return { error: 'No eligible entries to resolve' };
+  }
 
-  const winner          = entries[0];
-  const poolCents       = challenge.pool_total_cents ?? 0;
-  const platformFeeCents = Math.floor(poolCents * (PLATFORM_FEE_PERCENT / 100));
-  const winnerPayoutCents = poolCents - platformFeeCents;
-  const winnerPayoutUsd   = winnerPayoutCents / 100;
-  const now             = nowISO();
+  const winner = entries[0];
+  const now = nowISO();
 
-  await db.batch([
-    db.prepare(`
-      UPDATE challenges
-      SET status = 'completed', winner_id = ?, winner_announced_at = ?, updated_at = ?
-      WHERE id = ?
-    `).bind(winner.user_id, now, now, challengeId),
+  const poolMinor = challenge.pool_funded_minor ?? 0;
+  const entryFeeMinor = challenge.entry_fee_minor ?? 0;
 
-    db.prepare(`
-      UPDATE treasury_ledger
-      SET status = 'released', released_at = ?,
-          winner_payout_cents = ?, platform_fee_cents = ?, updated_at = ?
-      WHERE challenge_id = ? AND status = 'holding'
-    `).bind(now, winnerPayoutCents, platformFeeCents, now, challengeId),
+  let settlement = null;
 
-    db.prepare(`
-      INSERT INTO challenge_payouts
-        (id, challenge_id, winner_id, pool_amount, platform_fee,
-         winner_payout, resolved_at, moderator_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      crypto.randomUUID(), challengeId, winner.user_id,
-      poolCents / 100, platformFeeCents / 100, winnerPayoutUsd,
-      now, moderatorId,
-    ),
+  // PAID CHALLENGE
+  if (poolMinor > 0 || entryFeeMinor > 0) {
+    try {
+      const financial = new ChallengeFinancialService(db);
 
-    // Credit winner wallet
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(winnerPayoutUsd, now, winner.user_id),
-  ]);
+      settlement = await financial.settleWinner({
+        challengeId,
+        winnerId: winner.user_id,
+        moderatorId,
+      });
+    } catch (error) {
+      console.error('Challenge winner settlement failed:', error);
 
-  // Score events outside batch (addScoreEvent does its own writes)
-  await addScoreEvent(
-    winner.user_id, 'challenge_win', null,
-    { challenge_id: challengeId, note: `Won Drop Circle: ${challenge.title}` },
-    db,
-  );
+      return {
+        error: 'Financial settlement failed',
+        details: error.message,
+      };
+    }
+  } else {
+    // FREE CHALLENGE: ensure no money was collected.
+    const funding = await db.prepare(`
+      SELECT
+        COUNT(*) AS operation_count,
+        COALESCE(SUM(amount_minor), 0) AS total_minor
+      FROM challenge_financial_operations
+      WHERE challenge_id = ?
+        AND operation_type = 'entry_funding'
+    `).bind(challengeId).first();
+
+    if (
+      poolMinor !== 0 ||
+      funding.total_minor !== 0 ||
+      funding.operation_count !== 0
+    ) {
+      return {
+        error: 'Challenge financial records require reconciliation',
+      };
+    }
+  }
+
+  // Finalize Challenge only after financial settlement succeeds.
+  const finalized = await db.prepare(`
+    UPDATE challenges
+    SET
+      status = 'completed',
+      financial_status = 'settled',
+      winner_id = ?,
+      winner_announced_at = ?,
+      updated_at = ?
+    WHERE id = ?
+      AND status != 'cancelled'
+      AND (
+        status != 'completed'
+        OR (
+          winner_id = ?
+          AND financial_status = 'settled'
+        )
+      )
+  `).bind(
+    winner.user_id,
+    now,
+    now,
+    challengeId,
+    winner.user_id
+  ).run();
+
+  const confirmed = await db.prepare(`
+    SELECT status, winner_id, financial_status
+    FROM challenges
+    WHERE id = ?
+  `).bind(challengeId).first();
+
+  if (
+    confirmed?.status !== 'completed' ||
+    confirmed.winner_id !== winner.user_id ||
+    confirmed.financial_status !== 'settled'
+  ) {
+    return {
+      error: 'Challenge settlement succeeded but finalization requires reconciliation',
+      settlement,
+    };
+  }
+
+  // Score rewards are separate from financial settlement.
+  // Deterministic event IDs prevent duplicate rewards on retries.
+  try {
+    await addScoreEvent(
+      winner.user_id,
+      'challenge_win',
+      null,
+      {
+        event_id: `challenge:${challengeId}:winner:${winner.user_id}`,
+        challenge_id: challengeId,
+        note: `Won Drop Circle: ${challenge.title}`,
+      },
+      db
+    );
+  } catch (error) {
+    console.error('Challenge winner score reward failed:', error);
+  }
 
   for (const entry of entries.slice(1)) {
-    await addScoreEvent(
-      entry.user_id, 'verified_achievement_post', 10,
-      { challenge_id: challengeId, note: `Participated in Drop Circle: ${challenge.title}` },
-      db,
-    );
+    try {
+      await addScoreEvent(
+        entry.user_id,
+        'verified_achievement_post',
+        10,
+        {
+          event_id: `challenge:${challengeId}:participant:${entry.user_id}`,
+          challenge_id: challengeId,
+          note: `Participated in Drop Circle: ${challenge.title}`,
+        },
+        db
+      );
+    } catch (error) {
+      console.error(
+        'Challenge participant score reward failed:',
+        entry.user_id,
+        error
+      );
+    }
   }
 
   return {
-    resolved:        true,
-    challenge_id:    challengeId,
-    winner_id:       winner.user_id,
+    resolved: true,
+    challenge_id: challengeId,
+    winner_id: winner.user_id,
     winner_username: winner.username,
-    pool_amount:     poolCents / 100,
-    platform_fee:    platformFeeCents / 100,
-    winner_payout:   winnerPayoutUsd,
-    total_entries:   entries.length,
+    pool_amount_minor: poolMinor,
+    currency_code: challenge.currency_code,
+    total_entries: entries.length,
+    settlement,
   };
 }
 
