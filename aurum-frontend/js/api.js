@@ -38,8 +38,11 @@ async function getFreshToken() {
 }
 
 /* --- Core fetch wrapper --- */
-async function apiRequest(method, path, body = null, requiresAuth = true) {
-  const headers = { 'Content-Type': 'application/json' };
+async function apiRequest(method, path, body = null, requiresAuth = true, extraHeaders = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...extraHeaders,
+  };
   if (requiresAuth === true) {
     const token = await getFreshToken();
     if (!token) throw new Error('NOT_AUTHENTICATED');
