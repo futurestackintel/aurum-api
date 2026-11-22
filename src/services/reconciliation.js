@@ -136,6 +136,93 @@ const CHECKS = [
       },
     }),
   },
+	  {
+    code: 'PAYMENT_SUCCESS_MISSING_SETTLEMENT',
+    severity: 'critical',
+    sql: `
+      SELECT
+        id,
+        operation_type,
+        status,
+        currency_code,
+        amount_minor
+      FROM financial_payment_operations
+      WHERE status = 'succeeded'
+        AND settlement_ledger_transaction_id IS NULL
+    `,
+    map: row => ({
+      sourceTable: 'financial_payment_operations',
+      sourceRecordId: row.id,
+      currencyCode: row.currency_code,
+      expectedMinor: row.amount_minor,
+      details: {
+        operation_type: row.operation_type,
+        status: row.status,
+        issue: 'Successful payment operation has no settlement ledger transaction',
+      },
+    }),
+  },
+  {
+    code: 'PAYMENT_SETTLEMENT_LEDGER_INVALID',
+    severity: 'critical',
+    sql: `
+      SELECT
+        operations.id,
+        operations.operation_type,
+        operations.status,
+        operations.currency_code,
+        operations.settlement_ledger_transaction_id,
+        transactions.status AS ledger_status
+      FROM financial_payment_operations AS operations
+      LEFT JOIN ledger_transactions AS transactions
+        ON transactions.id = operations.settlement_ledger_transaction_id
+      WHERE operations.settlement_ledger_transaction_id IS NOT NULL
+        AND (
+          transactions.id IS NULL
+          OR transactions.status != 'posted'
+        )
+    `,
+    map: row => ({
+      sourceTable: 'financial_payment_operations',
+      sourceRecordId: row.id,
+      relatedReference: row.settlement_ledger_transaction_id,
+      currencyCode: row.currency_code,
+      details: {
+        operation_type: row.operation_type,
+        operation_status: row.status,
+        ledger_status: row.ledger_status,
+        issue: 'Payment settlement references a missing or unposted ledger transaction',
+      },
+    }),
+  },
+  {
+    code: 'PAYMENT_REQUIRES_RECONCILIATION',
+    severity: 'high',
+    sql: `
+      SELECT
+        id,
+        operation_type,
+        status,
+        currency_code,
+        failure_code,
+        failure_message,
+        updated_at
+      FROM financial_payment_operations
+      WHERE status = 'reconciliation_required'
+    `,
+    map: row => ({
+      sourceTable: 'financial_payment_operations',
+      sourceRecordId: row.id,
+      currencyCode: row.currency_code,
+      details: {
+        operation_type: row.operation_type,
+        status: row.status,
+        failure_code: row.failure_code,
+        failure_message: row.failure_message,
+        updated_at: row.updated_at,
+      },
+    }),
+  },
 ];
 
 const VALID_ACTOR_TYPES = [
