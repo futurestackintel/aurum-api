@@ -781,80 +781,7 @@
 	  
   </div>
 
-  <!-- =====================================================
-       WALLET MODAL
-  ====================================================== -->
-  <div class="modal-overlay" id="wallet-modal" style="display:none;">
-    <div class="modal">
-      <div class="modal-handle"></div>
-      <h3 class="modal-title">Wallet</h3>
-
-      <!-- Balance display -->
-      <div class="wallet-balance-display">
-        <div class="wallet-balance-amount" id="wallet-modal-balance">₳0.00</div>
-        <div class="wallet-balance-label">Aurum Balance</div>
-      </div>
-
-      <!-- Actions -->
-      <div style="display:flex;gap:var(--space-3);margin-bottom:var(--space-5);">
-        <button class="btn btn-primary btn-full" id="btn-wallet-deposit">Deposit</button>
-        <button class="btn btn-outline btn-full" id="btn-wallet-withdraw">Withdraw</button>
-      </div>
-
-      <!-- Transactions -->
-      <p style="font-size:var(--text-xs);letter-spacing:0.08em;text-transform:uppercase;
-        color:var(--color-text-muted);margin-bottom:var(--space-3);">Recent Transactions</p>
-      <div id="wallet-tx-list" style="display:flex;flex-direction:column;gap:var(--space-2);">
-        <div class="skeleton" style="height:48px;border-radius:8px;"></div>
-        <div class="skeleton" style="height:48px;border-radius:8px;"></div>
-        <div class="skeleton" style="height:48px;border-radius:8px;"></div>
-      </div>
-      <button class="btn btn-ghost btn-full btn-sm" style="margin-top:var(--space-4);"
-        onclick="App.navigate('profile')">View Full History →</button>
-    </div>
-  </div>
-
-  <!-- =====================================================
-       DEPOSIT MODAL
-  ====================================================== -->
-  <div class="modal-overlay" id="deposit-modal" style="display:none;">
-    <div class="modal">
-      <div class="modal-handle"></div>
-      <h3 class="modal-title">Deposit Funds</h3>
-      <div style="display:flex;flex-direction:column;gap:var(--space-4);">
-        <div class="input-group">
-          <label class="input-label">Amount (USD)</label>
-          <input class="input" type="number" id="deposit-amount" placeholder="25.00" min="5" step="0.01" />
-        </div>
-        <div class="input-group">
-          <label class="input-label">Currency</label>
-          <select class="input" id="deposit-currency" disabled>
-            <option value="USD">USD — US Dollar</option>
-          </select>
-        </div>
-        <p style="font-size:var(--text-xs);color:var(--color-text-muted);line-height:1.6;">
-          You will be redirected to Paystack to complete the payment securely.
-          Minimum deposit is $5. Your Aurum Balance will update automatically on return.
-        </p>
-        <div style="display:flex;gap:var(--space-3);">
-          <button class="btn btn-ghost btn-full" id="btn-deposit-cancel">Cancel</button>
-          <button class="btn btn-primary btn-full" id="btn-deposit-confirm">Continue →</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- =====================================================
-  <!-- =====================================================
-       AURUM WALLET
-  ====================================================== -->
-  <div class="modal-overlay" id="wallet-modal" style="display:none;">
-    <div class="modal" style="max-width:560px;width:94%;max-height:88vh;overflow-y:auto;">
-      <div class="modal-handle"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <h3 class="modal-title">AURUM Wallet</h3>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('wallet-modal').style.display='none'">Close</button>
-      </div>
+  
 
       <div class="wallet-balance-display">
         <div class="wallet-balance-amount" id="wallet-modal-balance">—</div>
@@ -1514,28 +1441,7 @@
       loaders[view]?.();
     },
 
-    /* -----------------------------------------
-       WALLET MODAL
-    ----------------------------------------- */
-    openWalletModal() {
-      const modal = document.getElementById('wallet-modal');
-      const balEl = document.getElementById('wallet-modal-balance');
-      if (balEl) balEl.textContent = AURUM.formatAurum(this.walletBalance);
-      modal.style.display = 'flex';
-      this.loadWalletTransactions();
-    },
-
-    async loadWalletTransactions() {
-      const list = document.getElementById('wallet-tx-list');
-      if (!list) return;
-      try {
-        const data = await AURUM.WalletAPI.getTransactions(0);
-        const txs  = data.transactions || [];
-        if (!txs.length) {
-          list.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted);
-            text-align:center;padding:var(--space-4);">No transactions yet.</p>`;
-          return;
-        }
+    
         list.innerHTML = txs.slice(0, 5).map(tx => {
           const isCredit = ['deposit','tip_received','stake_won'].includes(tx.type);
           const color    = isCredit ? 'var(--color-success)' : 'var(--color-danger)';
