@@ -7,9 +7,9 @@
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
-import { calcNetPayout } from './battleShared.js';
 import { notificationEnabled } from './notifications.js';
-
+import { CrewBattleFinancialService } from './crewBattleFinancials.js';
+import { toMinorUnits, fromMinorUnits } from './money.js';
 function nowISO() {
   return new Date().toISOString();
 }
@@ -1549,23 +1549,29 @@ export async function decideCrewBattleDispute(battleId, decision, adminId, db, w
 export async function processCrewBattleCron(db) {
   const now = nowISO();
 
-  // Job 0 — refund and cancel stale pending battles nobody ever accepted/declined
-  const { results: toExpire } = await db
-    .prepare(`SELECT id, challenger_paid_by, entry_contribution_usd FROM crew_battles WHERE status = 'pending' AND ends_at <= ?`)
-    .bind(now)
-    .all();
+    // Job 0 — refund expired pending Crew Battles through the ledger.
+  const { results: toExpire } = await db.prepare(`
+    SELECT id, financial_status
+    FROM crew_battles
+    WHERE status = 'pending'
+      AND ends_at <= ?
+      AND financial_status IN ('funded', 'refunding')
+  `).bind(now).all();
+
+  const financial = new CrewBattleFinancialService(db);
 
   for (const row of toExpire) {
     try {
-      await db.batch([
-        db.prepare(`UPDATE crew_battles SET status = 'cancelled' WHERE id = ?`).bind(row.id),
-        db.prepare(`
-          UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
-          WHERE user_id = ?
-        `).bind(row.entry_contribution_usd, now, row.challenger_paid_by),
-      ]);
-    } catch (err) {
-      console.error(`processCrewBattleCron: expire+refund failed for ${row.id}:`, err);
+      await financial.refundContributions({
+        battleId: row.id,
+        moderatorId: 'system',
+        reason: 'Crew Battle expired before acceptance',
+      });
+    } catch (error) {
+      console.error(
+        `[crew-battle-cron] Expiry refund failed for ${row.id}:`,
+        error
+      );
     }
   }
 
@@ -1918,112 +1924,136 @@ export async function joinCrewByCode(inviteCode, clerkId, db) {
 // ── CREATE CREW BATTLE ───────────────────────────────────────
 
 export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
-  const userRow = await db
-    .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
-    .bind(clerkId)
-    .first();
-  if (!userRow) return { error: 'User not found' };
-  const userId = userRow.id;
+  try {
+    const userRow = await db.prepare(
+      `SELECT id FROM users WHERE clerk_id = ?`
+    ).bind(clerkId).first();
 
-  const { target_crew_name, title, entry_contribution_usd, ends_at } = body;
+    if (!userRow) return { error: 'User not found' };
 
-  if (!target_crew_name)                    return { error: 'target_crew_name is required' };
-  if (!title || title.trim().length === 0)  return { error: 'title is required' };
-  if (!entry_contribution_usd || entry_contribution_usd <= 0) {
-    return { error: 'entry_contribution_usd must be a positive number' };
-  }
-  if (!ends_at) return { error: 'ends_at is required' };
+    const userId = userRow.id;
+    const { target_crew_name, title, entry_contribution_usd, ends_at } = body;
 
-  const endsAtDate = new Date(ends_at);
-  if (endsAtDate <= new Date()) return { error: 'ends_at must be in the future' };
+    if (!target_crew_name) return { error: 'target_crew_name is required' };
+    if (!title?.trim()) return { error: 'title is required' };
 
-  // Verify caller is captain of challenger crew
-  const membership = await db
-    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
-    .bind(challengerCrewId, userId)
-    .first();
+    const amountMinor = toMinorUnits(String(entry_contribution_usd), 2);
+    if (amountMinor <= 0) return { error: 'Contribution must be positive' };
 
-  if (!membership)                  return { error: 'You are not a member of this crew' };
-  if (membership.role !== 'captain') return { error: 'Only the crew captain can start a battle' };
-  const muteStatus = await isMemberMuted(challengerCrewId, userId, db);
-  if (muteStatus.muted) {
-    return { error: `You are muted until ${muteStatus.muted_until}`, reason: muteStatus.reason };
-  }
-  // Look up target crew
-  const targetCrew = await db
-    .prepare(`SELECT * FROM crews WHERE name = ?`)
-    .bind(target_crew_name.trim())
-    .first();
+    if (!ends_at || new Date(ends_at) <= new Date()) {
+      return { error: 'A future ends_at date is required' };
+    }
 
-  if (!targetCrew)                          return { error: `Crew "${target_crew_name}" not found` };
-  if (targetCrew.id === challengerCrewId)   return { error: 'A crew cannot battle itself' };
+    const membership = await db.prepare(`
+      SELECT role FROM crew_members
+      WHERE crew_id = ? AND user_id = ?
+    `).bind(challengerCrewId, userId).first();
 
-  // Check no active battle between these two crews
-  const existingBattle = await db
-    .prepare(`
+    if (!membership || membership.role !== 'captain') {
+      return { error: 'Only the crew captain can start a battle' };
+    }
+
+    const muteStatus = await isMemberMuted(challengerCrewId, userId, db);
+    if (muteStatus.muted) {
+      return { error: `You are muted until ${muteStatus.muted_until}` };
+    }
+
+    const targetCrew = await db.prepare(
+      `SELECT * FROM crews WHERE name = ?`
+    ).bind(target_crew_name.trim()).first();
+
+    if (!targetCrew) return { error: 'Target crew not found' };
+    if (targetCrew.id === challengerCrewId) {
+      return { error: 'A crew cannot battle itself' };
+    }
+
+    const existing = await db.prepare(`
       SELECT id FROM crew_battles
-      WHERE ((challenger_crew_id = ? AND target_crew_id = ?)
-          OR (challenger_crew_id = ? AND target_crew_id = ?))
-        AND status IN ('pending', 'active')
-    `)
-    .bind(challengerCrewId, targetCrew.id, targetCrew.id, challengerCrewId)
-    .first();
+      WHERE (
+        (challenger_crew_id = ? AND target_crew_id = ?)
+        OR (challenger_crew_id = ? AND target_crew_id = ?)
+      )
+      AND status IN ('pending', 'active')
+    `).bind(challengerCrewId, targetCrew.id, targetCrew.id, challengerCrewId).first();
 
-  if (existingBattle) return { error: 'An active battle already exists between these crews' };
+    if (existing) {
+      return { error: 'An active battle already exists between these crews' };
+    }
 
-  // Check challenger crew wallet — captain pays entry on behalf of crew
-  const wallet = await db
-    .prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`)
-    .bind(userId)
-    .first();
+    const wallet = await db.prepare(
+      `SELECT balance_usd FROM wallets WHERE user_id = ?`
+    ).bind(userId).first();
 
-  if (!wallet || wallet.balance_usd < entry_contribution_usd) {
-    return { error: `Insufficient wallet balance. Entry contribution is $${entry_contribution_usd}` };
-  }
+    if (!wallet || wallet.balance_usd < Number(entry_contribution_usd)) {
+      return { error: 'Insufficient wallet balance' };
+    }
 
-    const now      = nowISO();
-  const battleId = crypto.randomUUID();
+    const now = nowISO();
+    const battleId = crypto.randomUUID();
+    const endsAt = new Date(ends_at).toISOString();
 
-  await db.batch([
-    db.prepare(`
-      INSERT INTO crew_battles
-        (id, challenger_crew_id, target_crew_id, title,
-         prize_pool_usd, entry_contribution_usd, status, ends_at, created_at,
-         challenger_paid_by)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    await db.prepare(`
+      INSERT INTO crew_battles (
+        id, challenger_crew_id, target_crew_id, title,
+        prize_pool_usd, entry_contribution_usd,
+        status, ends_at, created_at, challenger_paid_by,
+        currency_code, challenger_contribution_minor,
+        target_contribution_minor, prize_pool_minor,
+        financial_status
+      )
+      VALUES (?, ?, ?, ?, 0, ?, 'pending', ?, ?, ?, 'USD', 0, 0, 0, 'pending')
     `).bind(
       battleId,
       challengerCrewId,
       targetCrew.id,
       title.trim(),
-      entry_contribution_usd,
-      entry_contribution_usd,
-      endsAtDate.toISOString(),
+      Number(entry_contribution_usd),
+      endsAt,
       now,
-      userId,
-    ),
+      userId
+    ).run();
 
-    // Deduct entry from captain wallet
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(entry_contribution_usd, now, userId),
-  ]);
+    const financial = new CrewBattleFinancialService(db);
+
+    await financial.fundContribution({
+      battleId,
+      payerId: userId,
+      contributionType: 'challenger_funding',
+      amountMinor,
+      currencyCode: 'USD',
+      idempotencyKey: `crew-battle:${battleId}:challenger-funding:v1`,
+    });
+
+    await db.prepare(`
+      UPDATE crew_battles
+      SET prize_pool_usd = ?, entry_contribution_usd = ?
+      WHERE id = ?
+    `).bind(
+      Number(fromMinorUnits(amountMinor, 2)),
+      Number(fromMinorUnits(amountMinor, 2)),
+      battleId
+    ).run();
 
     return {
-    battle: {
-      id:                    battleId,
-      title:                 title.trim(),
-      challenger_crew_id:    challengerCrewId,
-      target_crew_id:        targetCrew.id,
-      target_crew_name:      targetCrew.name,
-      entry_contribution_usd,
-      prize_pool_usd:        entry_contribution_usd,
-      status:                'pending',
-      ends_at:               endsAtDate.toISOString(),
-      created_at:            now,
-    },
-  };
+      battle: {
+        id: battleId,
+        title: title.trim(),
+        challenger_crew_id: challengerCrewId,
+        target_crew_id: targetCrew.id,
+        target_crew_name: targetCrew.name,
+        entry_contribution_usd: Number(fromMinorUnits(amountMinor, 2)),
+        prize_pool_usd: Number(fromMinorUnits(amountMinor, 2)),
+        currency_code: 'USD',
+        prize_pool_minor: amountMinor,
+        status: 'pending',
+        ends_at: endsAt,
+        created_at: now,
+      },
+    };
+  } catch (error) {
+    console.error('[crew-battle-create]', error);
+    return { error: error.message || 'Crew Battle funding failed' };
+  }
 }
 
 // ── ACCEPT CREW BATTLE (target crew's captain only) ───────────
@@ -2032,186 +2062,213 @@ export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
 // battle sits in 'pending' with only the challenger's money at risk.
 
 export async function acceptCrewBattle(battleId, clerkId, db) {
-  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
-  if (!userRow) return { error: 'User not found' };
-  const userId = userRow.id;
+  try {
+    const userRow = await db.prepare(
+      `SELECT id FROM users WHERE clerk_id = ?`
+    ).bind(clerkId).first();
 
-  const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
-  if (!battle)                          return { error: 'Crew battle not found' };
-  if (battle.status !== 'pending')      return { error: `Battle is already ${battle.status}` };
-  if (battle.target_accepted_at)        return { error: 'Battle has already been accepted' };
-  if (new Date(battle.ends_at) <= new Date()) {
-    return { error: 'Battle voting window has already ended' };
-  }
+    if (!userRow) return { error: 'User not found' };
 
-  const membership = await db
-    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
-    .bind(battle.target_crew_id, userId)
-    .first();
-  if (!membership)                   return { error: 'You are not a member of the target crew' };
-  if (membership.role !== 'captain') return { error: 'Only the target crew\'s captain can accept a battle' };
+    const userId = userRow.id;
+    const battle = await db.prepare(
+      `SELECT * FROM crew_battles WHERE id = ?`
+    ).bind(battleId).first();
 
-  const muteStatus = await isMemberMuted(battle.target_crew_id, userId, db);
-  if (muteStatus.muted) {
-    return { error: `You are muted until ${muteStatus.muted_until}`, reason: muteStatus.reason };
-  }
+    if (!battle) return { error: 'Crew battle not found' };
+    if (battle.status !== 'pending') return { error: `Battle is already ${battle.status}` };
+    if (battle.target_accepted_at) return { error: 'Battle has already been accepted' };
+    if (new Date(battle.ends_at) <= new Date()) {
+      return { error: 'Battle voting window has already ended' };
+    }
 
-  const wallet = await db.prepare(`SELECT balance_usd FROM wallets WHERE user_id = ?`).bind(userId).first();
-  if (!wallet || wallet.balance_usd < battle.entry_contribution_usd) {
-    return { error: `Insufficient wallet balance. Entry contribution is $${battle.entry_contribution_usd}` };
-  }
+    const membership = await db.prepare(`
+      SELECT role FROM crew_members
+      WHERE crew_id = ? AND user_id = ?
+    `).bind(battle.target_crew_id, userId).first();
 
-  const now         = nowISO();
-  const newPrizePool = battle.entry_contribution_usd * 2;
+    if (!membership || membership.role !== 'captain') {
+      return { error: 'Only the target crew captain can accept this battle' };
+    }
 
-  await db.batch([
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd - ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(battle.entry_contribution_usd, now, userId),
+    const muteStatus = await isMemberMuted(battle.target_crew_id, userId, db);
+    if (muteStatus.muted) {
+      return { error: `You are muted until ${muteStatus.muted_until}` };
+    }
 
-    db.prepare(`
+    const amountMinor = battle.challenger_contribution_minor;
+    if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+      return { error: 'Battle contribution requires financial reconciliation' };
+    }
+
+    const wallet = await db.prepare(
+      `SELECT balance_usd FROM wallets WHERE user_id = ?`
+    ).bind(userId).first();
+
+    if (!wallet || wallet.balance_usd < battle.entry_contribution_usd) {
+      return { error: 'Insufficient wallet balance' };
+    }
+
+    const financial = new CrewBattleFinancialService(db);
+
+    await financial.fundContribution({
+      battleId,
+      payerId: userId,
+      contributionType: 'target_funding',
+      amountMinor,
+      currencyCode: 'USD',
+      idempotencyKey: `crew-battle:${battleId}:target-funding:v1`,
+    });
+
+    const now = nowISO();
+    const totalMinor = amountMinor * 2;
+
+    const update = await db.prepare(`
       UPDATE crew_battles
-      SET status = 'active', target_accepted_at = ?, target_contribution_usd = ?,
-          target_paid_by = ?, prize_pool_usd = ?
+      SET status = 'active',
+          target_accepted_at = ?,
+          target_contribution_usd = entry_contribution_usd,
+          target_paid_by = ?,
+          prize_pool_minor = ?,
+          prize_pool_usd = ?
       WHERE id = ?
-    `).bind(now, battle.entry_contribution_usd, userId, newPrizePool, battleId),
-  ]);
+        AND status = 'pending'
+        AND financial_status = 'funded'
+        AND target_accepted_at IS NULL
+    `).bind(
+      now,
+      userId,
+      totalMinor,
+      Number(fromMinorUnits(totalMinor, 2)),
+      battleId
+    ).run();
 
-  return {
-    accepted:       true,
-    battle_id:      battleId,
-    prize_pool_usd: newPrizePool,
-  };
+    if (update.meta?.changes !== 1) {
+      return { error: 'Battle funding succeeded but acceptance needs reconciliation' };
+    }
+
+    return {
+      accepted: true,
+      battle_id: battleId,
+      prize_pool_usd: Number(fromMinorUnits(totalMinor, 2)),
+      prize_pool_minor: totalMinor,
+      currency_code: 'USD',
+    };
+  } catch (error) {
+    console.error('[crew-battle-accept]', error);
+    return { error: error.message || 'Crew Battle acceptance failed' };
+  }
 }
-
 // ── DECLINE CREW BATTLE (target crew's captain only) ──────────
 // Refunds the challenger's escrowed stake — the battle never happened.
 
 export async function declineCrewBattle(battleId, clerkId, db) {
-  const userRow = await db.prepare(`SELECT id FROM users WHERE clerk_id = ?`).bind(clerkId).first();
-  if (!userRow) return { error: 'User not found' };
-  const userId = userRow.id;
+  try {
+    const userRow = await db.prepare(
+      `SELECT id FROM users WHERE clerk_id = ?`
+    ).bind(clerkId).first();
 
-  const battle = await db.prepare(`SELECT * FROM crew_battles WHERE id = ?`).bind(battleId).first();
-  if (!battle)                     return { error: 'Crew battle not found' };
-  if (battle.status !== 'pending') return { error: `Battle is already ${battle.status}` };
+    if (!userRow) return { error: 'User not found' };
 
-  const membership = await db
-    .prepare(`SELECT role FROM crew_members WHERE crew_id = ? AND user_id = ?`)
-    .bind(battle.target_crew_id, userId)
-    .first();
-  if (!membership)                   return { error: 'You are not a member of the target crew' };
-  if (membership.role !== 'captain') return { error: 'Only the target crew\'s captain can decline a battle' };
+    const userId = userRow.id;
+    const battle = await db.prepare(
+      `SELECT * FROM crew_battles WHERE id = ?`
+    ).bind(battleId).first();
 
-  const now = nowISO();
+    if (!battle) return { error: 'Crew battle not found' };
+    if (battle.status !== 'pending') return { error: `Battle is already ${battle.status}` };
 
-  await db.batch([
-    db.prepare(`UPDATE crew_battles SET status = 'cancelled' WHERE id = ?`).bind(battleId),
-    db.prepare(`
-      UPDATE wallets SET balance_usd = balance_usd + ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(battle.entry_contribution_usd, now, battle.challenger_paid_by),
-  ]);
+    const membership = await db.prepare(`
+      SELECT role FROM crew_members
+      WHERE crew_id = ? AND user_id = ?
+    `).bind(battle.target_crew_id, userId).first();
 
-  return { declined: true, battle_id: battleId };
+    if (!membership || membership.role !== 'captain') {
+      return { error: 'Only the target crew captain can decline this battle' };
+    }
+
+    const financial = new CrewBattleFinancialService(db);
+
+    await financial.refundContributions({
+      battleId,
+      moderatorId: userId,
+      reason: 'Target crew declined the battle',
+    });
+
+    return { declined: true, battle_id: battleId };
+  } catch (error) {
+    console.error('[crew-battle-decline]', error);
+    return { error: error.message || 'Crew Battle refund failed' };
+  }
 }
 
 // ── RESOLVE CREW BATTLE (admin — moderatorId not clerk-resolved,
 //    kept as-is since it's only used for logging/attribution) ──
 
 export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db) {
-  const battle = await db
-    .prepare(`SELECT * FROM crew_battles WHERE id = ?`)
-    .bind(battleId)
-    .first();
+  try {
+    const battle = await db.prepare(
+      `SELECT * FROM crew_battles WHERE id = ?`
+    ).bind(battleId).first();
 
-    if (!battle)                        return { error: 'Crew battle not found' };
-  if (battle.status === 'resolved')   return { error: 'Battle already resolved' };
-  if (battle.status === 'cancelled')  return { error: 'Battle was cancelled' };
-  if (battle.payout_released)         return { error: 'Payout already released for this battle' };
+    if (!battle) return { error: 'Crew battle not found' };
+    if (battle.status === 'resolved') return { error: 'Battle already resolved' };
+    if (battle.status === 'cancelled') return { error: 'Battle was cancelled' };
+    if (battle.payout_released) return { error: 'Payout already released' };
 
-  if (winnerCrewId !== battle.challenger_crew_id && winnerCrewId !== battle.target_crew_id) {
-    return { error: 'Winner must be one of the battling crews' };
-  }
+    if (
+      winnerCrewId !== battle.challenger_crew_id &&
+      winnerCrewId !== battle.target_crew_id
+    ) {
+      return { error: 'Winner must be one of the battling crews' };
+    }
 
-  const now       = nowISO();
-  const prizePool = battle.prize_pool_usd ?? 0;
-  const { platformFee, netPayout } = calcNetPayout(prizePool);
+    if (battle.financial_status === 'legacy') {
+      return { error: 'Legacy Crew Battle requires financial reconciliation before settlement' };
+    }
 
-  await db
-    .prepare(`
-      UPDATE crew_battles
-      SET status = 'resolved', winner_crew_id = ?, dispute_status = 'none', payout_released = 1
-      WHERE id = ?
-    `)
-    .bind(winnerCrewId, battleId)
-    .run();
+    const financial = new CrewBattleFinancialService(db);
 
-  // Credit net prize pool (after platform fee) into the winning crew's shared wallet
-  const crewWallet = await getOrCreateCrewWallet(winnerCrewId, db);
-  const newBalance = crewWallet.balance_usd + netPayout;
-
-  await db
-    .prepare(`
-      UPDATE crew_wallets
-      SET balance_usd = ?, total_funded_usd = total_funded_usd + ?, updated_at = ?
-      WHERE id = ?
-    `)
-    .bind(newBalance, netPayout, now, crewWallet.id)
-    .run();
-
-  await db
-    .prepare(`
-      INSERT INTO crew_wallet_transactions
-        (id, crew_id, crew_wallet_id, type, amount_usd, balance_after_usd, initiated_by, reason, status, reference, created_at)
-      VALUES (?, ?, ?, 'battle_payout', ?, ?, ?, ?, 'executed', ?, ?)
-    `)
-    .bind(
-      crypto.randomUUID(),
-      winnerCrewId,
-      crewWallet.id,
-      netPayout,
-      newBalance,
-      moderatorId ?? null,
-      `Prize payout for battle: ${battle.title} (5% platform fee: $${platformFee})`,
+    await financial.settleWinner({
       battleId,
-      now,
-    )
-    .run();
+      winnerCrewId,
+      moderatorId,
+    });
 
-  // Award crew_battle_win score to all members of winning crew
-  const { results: winners } = await db
-    .prepare(`SELECT user_id FROM crew_members WHERE crew_id = ?`)
-    .bind(winnerCrewId)
-    .all();
+    const { results: winners } = await db.prepare(`
+      SELECT user_id FROM crew_members WHERE crew_id = ?
+    `).bind(winnerCrewId).all();
 
-  for (const member of winners) {
-    await addScoreEvent(
-      member.user_id,
-      'crew_battle_win',
-      null,
-      { note: `Won crew battle: ${battle.title}` },
-      db,
-    );
+    for (const member of winners) {
+      await addScoreEvent(
+        member.user_id,
+        'crew_battle_win',
+        null,
+        { note: `Won crew battle: ${battle.title}` },
+        db
+      );
+    }
+
+    const winnerCrew = await db.prepare(
+      `SELECT name FROM crews WHERE id = ?`
+    ).bind(winnerCrewId).first();
+
+    return {
+      resolved: true,
+      battle_id: battleId,
+      winner_crew_id: winnerCrewId,
+      winner_crew_name: winnerCrew?.name,
+      prize_pool_usd: battle.currency_code === 'USD'
+        ? Number(fromMinorUnits(battle.prize_pool_minor, 2))
+        : null,
+      prize_pool_minor: battle.prize_pool_minor,
+      currency_code: battle.currency_code,
+      members_awarded: winners.length,
+    };
+  } catch (error) {
+    console.error('[crew-battle-resolve]', error);
+    return { error: error.message || 'Crew Battle settlement failed' };
   }
-
-  // Get winning crew info for response
-  const winnerCrew = await db
-    .prepare(`SELECT name FROM crews WHERE id = ?`)
-    .bind(winnerCrewId)
-    .first();
-
-  return {
-    resolved:          true,
-    battle_id:         battleId,
-    winner_crew_id:    winnerCrewId,
-    winner_crew_name:  winnerCrew?.name,
-    prize_pool_usd:    prizePool,
-    members_awarded:   winners.length,
-  };
 }
-
 // ── GET CREW BY ID ───────────────────────────────────────────
 
 export async function getCrewById(crewId, db) {
