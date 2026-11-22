@@ -159,6 +159,64 @@ export async function handleWalletRoutes(pathname, request, env) {
     }
   }
 
+	  // ── GET /api/wallet/account ──────────────────────────────────
+  if (pathname === "/api/wallet/account" && request.method === "GET") {
+    const auth = await requireAuth(request, env);
+    if (auth.error) return json({ error: auth.error }, auth.status);
+
+    try {
+      const user = await env.DB
+        .prepare(`
+          SELECT id, email, username, display_name
+          FROM users
+          WHERE clerk_id = ?
+        `)
+        .bind(auth.id)
+        .first();
+
+      if (!user) return json({ error: "User not found" }, 404);
+
+      const wallet = await env.DB
+        .prepare(`
+          SELECT currency_preference
+          FROM wallets
+          WHERE user_id = ?
+        `)
+        .bind(user.id)
+        .first();
+
+      const currencies = await env.DB.prepare(`
+        SELECT currency_code, minor_unit_exponent
+        FROM financial_currencies
+        WHERE is_enabled = 1
+        ORDER BY currency_code
+      `).all();
+
+      const accounts = await getLedgerWalletAccounts(user.id, env.DB);
+
+      return json({
+        account: {
+          user_id: user.id,
+          email: user.email,
+          username: user.username,
+          display_name: user.display_name,
+          currency_preference: wallet?.currency_preference || "USD",
+        },
+        supported_wallet_currencies: currencies.results || [],
+        accounts: accounts.map(account => ({
+          currency_code: account.currency_code,
+          minor_unit_exponent: account.minor_unit_exponent,
+        })),
+        source: "ledger",
+      });
+    } catch (err) {
+      console.error("Wallet account information error:", err);
+      return json({
+        error: "Unable to fetch wallet account information.",
+      }, 500);
+    }
+  }
+	
     // ── GET /api/wallet/balance ─────────────────────────────────
   if (pathname === "/api/wallet/balance" && request.method === "GET") {
     const auth = await requireAuth(request, env);
@@ -409,7 +467,7 @@ export async function handleWalletRoutes(pathname, request, env) {
     }
   }
 
-    // ── GET /api/wallet/transactions ────────────────────────────
+      // ── GET /api/wallet/transactions ────────────────────────────
   if (pathname === "/api/wallet/transactions" && request.method === "GET") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
@@ -439,18 +497,14 @@ export async function handleWalletRoutes(pathname, request, env) {
 
       const accounts = await getLedgerWalletAccounts(user.id, env.DB);
 
-      const accountIds = accounts.flatMap(account => [
-        account.available_account_id,
-        account.held_account_id,
-      ]);
-
-      if (currencyCode && !accounts.some(
-        account => account.currency_code === currencyCode
-      )) {
+      if (
+        currencyCode &&
+        !accounts.some(account => account.currency_code === currencyCode)
+      ) {
         return json({ error: "Unsupported wallet currency" }, 400);
       }
 
-      if (accountIds.length === 0) {
+      if (accounts.length === 0) {
         return json({
           transactions: [],
           limit,
@@ -459,31 +513,96 @@ export async function handleWalletRoutes(pathname, request, env) {
         });
       }
 
+      const accountIds = accounts.flatMap(account => [
+        account.available_account_id,
+        account.held_account_id,
+      ]);
+
       const placeholders = accountIds.map(() => "?").join(",");
 
-      let currencyFilter = "";
-      const bindings = [...accountIds];
+      const currencyFilter = currencyCode
+        ? "AND le.currency_code = ?"
+        : "";
 
-      if (currencyCode) {
-        currencyFilter = "AND le.currency_code = ?";
-        bindings.push(currencyCode);
-      }
+      const bindings = [
+        user.id,
+        ...accountIds,
+      ];
+
+      if (currencyCode) bindings.push(currencyCode);
 
       bindings.push(limit, offset);
 
       const result = await env.DB.prepare(`
         SELECT
           lt.id AS transaction_id,
+          lt.source_module,
           lt.transaction_type,
           lt.description,
           lt.reference,
-          lt.status,
+          lt.metadata_json,
           lt.created_at,
           lt.posted_at,
+
           le.currency_code,
-          le.entry_side,
-          le.amount_minor,
-          la.account_code
+
+          MAX(le.amount_minor) AS amount_minor,
+
+          SUM(
+            CASE
+              WHEN la.account_code LIKE 'USER:AVAILABLE:%'
+                AND le.entry_side = 'credit'
+              THEN le.amount_minor
+
+              WHEN la.account_code LIKE 'USER:AVAILABLE:%'
+                AND le.entry_side = 'debit'
+              THEN -le.amount_minor
+
+              ELSE 0
+            END
+          ) AS available_delta_minor,
+
+          SUM(
+            CASE
+              WHEN la.account_code LIKE 'USER:HELD:%'
+                AND le.entry_side = 'credit'
+              THEN le.amount_minor
+
+              WHEN la.account_code LIKE 'USER:HELD:%'
+                AND le.entry_side = 'debit'
+              THEN -le.amount_minor
+
+              ELSE 0
+            END
+          ) AS held_delta_minor,
+
+          SUM(
+            CASE
+              WHEN le.entry_side = 'credit'
+              THEN le.amount_minor
+              ELSE -le.amount_minor
+            END
+          ) AS net_amount_minor,
+
+          CASE
+            WHEN SUM(
+              CASE
+                WHEN le.entry_side = 'credit'
+                THEN le.amount_minor
+                ELSE -le.amount_minor
+              END
+            ) > 0 THEN 'credit'
+
+            WHEN SUM(
+              CASE
+                WHEN le.entry_side = 'credit'
+                THEN le.amount_minor
+                ELSE -le.amount_minor
+              END
+            ) < 0 THEN 'debit'
+
+            ELSE 'movement'
+          END AS direction
 
         FROM ledger_entries le
 
@@ -499,12 +618,16 @@ export async function handleWalletRoutes(pathname, request, env) {
           AND le.account_id IN (${placeholders})
           ${currencyFilter}
 
-        ORDER BY lt.created_at DESC, le.id DESC
+        GROUP BY
+          lt.id,
+          le.currency_code
+
+        ORDER BY
+          COALESCE(lt.posted_at, lt.created_at) DESC,
+          lt.id DESC
+
         LIMIT ? OFFSET ?
-      `).bind(
-        user.id,
-        ...bindings
-      ).all();
+      `).bind(...bindings).all();
 
       return json({
         transactions: result.results || [],
@@ -519,7 +642,7 @@ export async function handleWalletRoutes(pathname, request, env) {
       }, 500);
     }
   }
-
+	
   // ── POST /api/wallet/bank-details ───────────────────────────
   // Fix 2: save withdrawal bank details for a user.
   // Resolves internal DB user id from Clerk id before any write.
