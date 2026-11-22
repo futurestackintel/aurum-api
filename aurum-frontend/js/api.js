@@ -328,6 +328,7 @@ const WalletAPI = {
 
   getBankDetails: () =>
     apiRequest('GET', '/api/wallet/bank-details'),
+  getAccount: () => apiRequest('GET', '/api/wallet/account'),
 };
 
 /* --- Founding Member --- */
