@@ -643,21 +643,43 @@ export async function handleWalletRoutes(pathname, request, env) {
     }
   }
 	
-  // ── POST /api/wallet/bank-details ───────────────────────────
-  // Fix 2: save withdrawal bank details for a user.
-  // Resolves internal DB user id from Clerk id before any write.
+    // ── POST /api/wallet/bank-details ───────────────────────────
   if (pathname === "/api/wallet/bank-details" && request.method === "POST") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
-    const body = await request.json();
-    const { bank_name, account_number, account_name, bank_code } = body;
-
-    if (!bank_name || !account_number || !account_name) {
-      return json({ error: "bank_name, account_number, and account_name are required" }, 400);
-    }
-
     try {
+      const body = await request.json();
+
+      const bankName = typeof body.bank_name === "string"
+        ? body.bank_name.trim()
+        : "";
+
+      const accountNumber = typeof body.account_number === "string"
+        ? body.account_number.trim()
+        : "";
+
+      const accountName = typeof body.account_name === "string"
+        ? body.account_name.trim()
+        : "";
+
+      const bankCode = typeof body.bank_code === "string"
+        ? body.bank_code.trim()
+        : "";
+
+      if (
+        bankName.length < 2 ||
+        bankName.length > 80 ||
+        accountName.length < 2 ||
+        accountName.length > 100 ||
+        !/^\d{10}$/.test(accountNumber) ||
+        !/^[A-Za-z0-9_-]{2,20}$/.test(bankCode)
+      ) {
+        return json({
+          error: "Enter a valid bank name, 10-digit account number, account name and bank code."
+        }, 400);
+      }
+
       const user = await env.DB
         .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
         .bind(auth.id)
@@ -673,37 +695,46 @@ export async function handleWalletRoutes(pathname, request, env) {
         .first();
 
       if (existing) {
-        await env.DB
-          .prepare(`
-            UPDATE user_bank_details
-            SET bank_name = ?, account_number = ?, account_name = ?,
-                bank_code = ?, updated_at = ?
-            WHERE user_id = ?
-          `)
-          .bind(bank_name, account_number, account_name, bank_code ?? null, now, user.id)
-          .run();
+        await env.DB.prepare(`
+          UPDATE user_bank_details
+          SET bank_name = ?, account_number = ?, account_name = ?,
+              bank_code = ?, updated_at = ?
+          WHERE user_id = ?
+        `).bind(
+          bankName,
+          accountNumber,
+          accountName,
+          bankCode,
+          now,
+          user.id
+        ).run();
       } else {
-        await env.DB
-          .prepare(`
-            INSERT INTO user_bank_details
-              (id, user_id, bank_name, account_number, account_name,
-               bank_code, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `)
-          .bind(
-            crypto.randomUUID(), user.id, bank_name, account_number,
-            account_name, bank_code ?? null, now, now
-          )
-          .run();
+        await env.DB.prepare(`
+          INSERT INTO user_bank_details
+            (id, user_id, bank_name, account_number, account_name,
+             bank_code, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          crypto.randomUUID(),
+          user.id,
+          bankName,
+          accountNumber,
+          accountName,
+          bankCode,
+          now,
+          now
+        ).run();
       }
 
       return json({ saved: true });
     } catch (err) {
       console.error("Save bank details error:", err);
-      return json({ error: "Unable to save bank details. Please try again." }, 500);
+      return json({
+        error: "Unable to save bank details. Please try again."
+      }, 500);
     }
   }
-
+	
   // ── GET /api/wallet/bank-details ────────────────────────────
   // Fix 2: return saved withdrawal bank details for the user.
   if (pathname === "/api/wallet/bank-details" && request.method === "GET") {
@@ -720,7 +751,12 @@ export async function handleWalletRoutes(pathname, request, env) {
 
       const details = await env.DB
         .prepare(`
-          SELECT bank_name, account_number, account_name, bank_code, updated_at
+          SELECT bank_name, account_name, bank_code, updated_at,
+       CASE
+         WHEN account_number IS NOT NULL AND LENGTH(account_number) >= 4
+         THEN '••••' || SUBSTR(account_number, -4)
+         ELSE NULL
+       END AS account_number
           FROM user_bank_details
           WHERE user_id = ?
         `)
