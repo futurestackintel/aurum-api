@@ -374,4 +374,282 @@ export class CrewBattleFinancialService {
       currency_code: currencyCode,
     };
   }
+	  async refundContributions({
+    battleId,
+    moderatorId = 'system',
+    reason = 'Crew Battle cancelled',
+  }) {
+    battleId = requireText(battleId, 'Battle ID');
+    reason = requireText(reason, 'Refund reason');
+
+    const battle = await this.db.prepare(`
+      SELECT *
+      FROM crew_battles
+      WHERE id = ?
+    `).bind(battleId).first();
+
+    if (!battle) throw new Error('Crew Battle not found');
+
+    if (battle.financial_status === 'refunded') {
+      return { refunded: true, already_refunded: true };
+    }
+
+    if (battle.financial_status === 'settled') {
+      throw new Error('A settled Crew Battle cannot be refunded');
+    }
+
+    if (!['funded', 'refunding'].includes(battle.financial_status)) {
+      throw new Error('Crew Battle is not ready for refunds');
+    }
+
+    const currencyCode = validateCurrencyCode(battle.currency_code);
+    const poolMinor = battle.prize_pool_minor;
+
+    assertSafeMinorUnits(poolMinor);
+
+    if (poolMinor <= 0) {
+      throw new Error('Crew Battle has no funded prize pool');
+    }
+
+    await this.db.prepare(`
+      UPDATE crew_battles
+      SET financial_status = 'refunding'
+      WHERE id = ?
+        AND financial_status IN ('funded', 'refunding')
+    `).bind(battleId).run();
+
+    const terminal = await this.db.prepare(`
+      SELECT outcome, ledger_transaction_id
+      FROM financial_escrow_terminal_operations
+      WHERE escrow_type = 'CREW_BATTLE'
+        AND escrow_id = ?
+    `).bind(battleId).first();
+
+    if (terminal) {
+      if (terminal.outcome !== 'refund') {
+        throw new Error('Crew Battle escrow already has a settlement outcome');
+      }
+
+      await this.db.prepare(`
+        UPDATE crew_battles
+        SET financial_status = 'refunded',
+            status = 'cancelled'
+        WHERE id = ?
+          AND financial_status = 'refunding'
+      `).bind(battleId).run();
+
+      return {
+        refunded: true,
+        already_refunded: true,
+        ledger_transaction_id: terminal.ledger_transaction_id,
+      };
+    }
+
+    const { results: contributions } = await this.db.prepare(`
+      SELECT *
+      FROM crew_battle_financial_operations
+      WHERE battle_id = ?
+        AND operation_type IN ('challenger_funding', 'target_funding')
+        AND status = 'posted'
+      ORDER BY operation_type
+    `).bind(battleId).all();
+
+    if (contributions.length !== 2) {
+      throw new Error('Both Crew Battle contributions must be verified before refund');
+    }
+
+    let verifiedTotal = 0;
+    const entries = [];
+
+    for (const contribution of contributions) {
+      if (
+        contribution.owner_type !== 'user' ||
+        contribution.currency_code !== currencyCode ||
+        !Number.isSafeInteger(contribution.amount_minor) ||
+        contribution.amount_minor <= 0
+      ) {
+        throw new Error('Contribution requires financial reconciliation');
+      }
+
+      verifiedTotal += contribution.amount_minor;
+
+      if (!Number.isSafeInteger(verifiedTotal)) {
+        throw new Error('Refund total exceeds safe limits');
+      }
+
+      const recipient = await this.financial.getOwnerAvailableAccount({
+        ownerType: 'user',
+        ownerId: contribution.owner_id,
+        currencyCode,
+      });
+
+      entries.push({
+        accountId: recipient.id,
+        currencyCode,
+        side: 'credit',
+        amountMinor: contribution.amount_minor,
+        description: 'Crew Battle contribution refund',
+      });
+    }
+
+    if (verifiedTotal !== poolMinor) {
+      throw new Error('Contribution total does not match the funded prize pool');
+    }
+
+    const escrow = await this.financial.getEscrowAccount({
+      escrowType: 'CREW_BATTLE',
+      escrowId: battleId,
+      currencyCode,
+    });
+
+    entries.unshift({
+      accountId: escrow.id,
+      currencyCode,
+      side: 'debit',
+      amountMinor: poolMinor,
+      description: 'Crew Battle escrow refund',
+    });
+
+    const idempotencyKey = `crew-battle:${battleId}:bulk-refund:v1`;
+    const transactionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const atomicStatements = [];
+
+    for (const contribution of contributions) {
+      const refundType = contribution.operation_type === 'challenger_funding'
+        ? 'challenger_refund'
+        : 'target_refund';
+
+      const refundKey = `crew-battle:${battleId}:${refundType}:v1`;
+
+      const existing = await this.db.prepare(`
+        SELECT id, status, amount_minor, owner_id
+        FROM crew_battle_financial_operations
+        WHERE idempotency_key = ?
+      `).bind(refundKey).first();
+
+      if (existing) {
+        if (
+          existing.status !== 'pending' ||
+          existing.amount_minor !== contribution.amount_minor ||
+          existing.owner_id !== contribution.owner_id
+        ) {
+          throw new Error('Existing refund operation requires reconciliation');
+        }
+
+        throw new Error('Incomplete refund operation requires reconciliation');
+      }
+
+      atomicStatements.push(
+        this.db.prepare(`
+          INSERT INTO crew_battle_financial_operations (
+            id, battle_id, operation_type, actor_id,
+            owner_type, owner_id, currency_code,
+            amount_minor, idempotency_key,
+            ledger_transaction_id, status,
+            metadata_json, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        `).bind(
+          crypto.randomUUID(),
+          battleId,
+          refundType,
+          moderatorId,
+          contribution.owner_id,
+          currencyCode,
+          contribution.amount_minor,
+          refundKey,
+          transactionId,
+          JSON.stringify({
+            battle_id: battleId,
+            original_operation_id: contribution.id,
+            reason,
+          }),
+          now,
+          now
+        )
+      );
+    }
+
+    atomicStatements.push(
+      this.db.prepare(`
+        INSERT INTO financial_escrow_terminal_operations (
+          id, escrow_type, escrow_id, currency_code,
+          outcome, ledger_transaction_id
+        )
+        VALUES (?, 'CREW_BATTLE', ?, ?, 'refund', ?)
+      `).bind(
+        crypto.randomUUID(),
+        battleId,
+        currencyCode,
+        transactionId
+      )
+    );
+
+    const result = await this.financial.ledger.postTransaction({
+      transactionId,
+      atomicStatements,
+
+      atomicStatementsAfterPosting: [
+        this.db.prepare(`
+          UPDATE crew_battle_financial_operations
+          SET status = 'posted', updated_at = ?
+          WHERE battle_id = ?
+            AND operation_type IN ('challenger_refund', 'target_refund')
+            AND ledger_transaction_id = ?
+            AND status = 'pending'
+        `).bind(now, battleId, transactionId),
+      ],
+
+      idempotencyScope: 'crew-battle-bulk-refund',
+      idempotencyKey,
+
+      sourceModule: 'financial_service',
+      transactionType: 'escrow_refund',
+
+      actorType: moderatorId === 'system' ? 'system' : 'platform_admin',
+      actorId: moderatorId === 'system' ? null : moderatorId,
+
+      description: 'Refund Crew Battle contributions',
+      reference: battleId,
+
+      metadata: {
+        escrow_type: 'CREW_BATTLE',
+        escrow_id: battleId,
+        battle_id: battleId,
+        currency_code: currencyCode,
+        amount_minor: poolMinor,
+        reason,
+      },
+
+      entries,
+    });
+
+    await this.db.prepare(`
+      UPDATE crew_battles
+      SET financial_status = 'refunded',
+          status = 'cancelled'
+      WHERE id = ?
+        AND financial_status = 'refunding'
+    `).bind(battleId).run();
+
+    const confirmed = await this.db.prepare(`
+      SELECT financial_status
+      FROM crew_battles
+      WHERE id = ?
+    `).bind(battleId).first();
+
+    if (confirmed?.financial_status !== 'refunded') {
+      throw new Error('Refund posted but Crew Battle finalization requires reconciliation');
+    }
+
+    return {
+      refunded: true,
+      battle_id: battleId,
+      total_refunded_minor: poolMinor,
+      currency_code: currencyCode,
+      ledger_transaction_id: result.transaction.id,
+    };
+					}
         }
