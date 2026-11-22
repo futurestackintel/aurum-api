@@ -184,70 +184,100 @@ export class CrewBattleFinancialService {
           ),
         ],
         atomicStatementsAfterPosting: [
-          this.db.prepare(`
-            UPDATE crew_battle_financial_operations
-            SET status = 'posted', updated_at = ?
-            WHERE id = ?
-              AND status = 'pending'
-              AND ledger_transaction_id = ?
-          `).bind(now, operationId, transactionId),
-        ],
-      });
+  this.db.prepare(`
+    UPDATE crew_battle_financial_operations
+    SET status = 'posted', updated_at = ?
+    WHERE id = ?
+      AND status = 'pending'
+      AND ledger_transaction_id = ?
+  `).bind(now, operationId, transactionId),
 
-      const operation = await this.db.prepare(`
+  this.db.prepare(`
+    UPDATE crew_battles
+    SET financial_status = 'funded',
+        challenger_contribution_minor = CASE
+          WHEN ? = 'challenger_funding' THEN ?
+          ELSE challenger_contribution_minor
+        END,
+        target_contribution_minor = CASE
+          WHEN ? = 'target_funding' THEN ?
+          ELSE target_contribution_minor
+        END,
+        prize_pool_minor = CASE
+          WHEN ? = 'target_funding'
+            THEN challenger_contribution_minor + ?
+          ELSE ?
+        END,
+        prize_pool_usd = CASE
+          WHEN ? = 'target_funding'
+            THEN (challenger_contribution_minor + ?) / 100.0
+          ELSE ? / 100.0
+        END,
+        target_contribution_usd = CASE
+          WHEN ? = 'target_funding' THEN ? / 100.0
+          ELSE target_contribution_usd
+        END,
+        status = CASE
+          WHEN ? = 'target_funding' THEN 'active'
+          ELSE status
+        END,
+        target_accepted_at = CASE
+          WHEN ? = 'target_funding' THEN ?
+          ELSE target_accepted_at
+        END,
+        target_paid_by = CASE
+          WHEN ? = 'target_funding' THEN ?
+          ELSE target_paid_by
+        END
+    WHERE id = ?
+      AND financial_status = 'funding'
+      AND status = 'pending'
+      AND (
+        ? != 'target_funding'
+        OR target_accepted_at IS NULL
+      )
+  `).bind(
+    contributionType, amountMinor,
+    contributionType, amountMinor,
+    contributionType, amountMinor, amountMinor,
+    contributionType, amountMinor, amountMinor,
+    contributionType, amountMinor,
+    contributionType, contributionType, now,
+    contributionType, payerId,
+    battleId, contributionType
+  ),
+],
+	  });
+
+            const operation = await this.db.prepare(`
         SELECT status, ledger_transaction_id
         FROM crew_battle_financial_operations
         WHERE id = ?
       `).bind(operationId).first();
 
-      if (
-        operation?.status !== 'posted' ||
-        operation.ledger_transaction_id !== result.transaction.id
-      ) {
-        throw new Error('Contribution posting requires financial reconciliation');
-      }
-
-      const total = await this.db.prepare(`
-        SELECT COALESCE(SUM(amount_minor), 0) AS total
-        FROM crew_battle_financial_operations
-        WHERE battle_id = ?
-          AND operation_type IN ('challenger_funding', 'target_funding')
-          AND status = 'posted'
+      const finalizedBattle = await this.db.prepare(`
+        SELECT financial_status, status, prize_pool_minor
+        FROM crew_battles
+        WHERE id = ?
       `).bind(battleId).first();
 
-      const nextStatus = total.total === amountMinor &&
-        contributionType === 'challenger_funding'
-        ? 'funded'
-        : 'funded';
+      const expectedPool = contributionType === 'target_funding'
+        ? battle.challenger_contribution_minor + amountMinor
+        : amountMinor;
 
-      const finalized = await this.db.prepare(`
-        UPDATE crew_battles
-        SET financial_status = ?,
-            challenger_contribution_minor = CASE
-              WHEN ? = 'challenger_funding' THEN ?
-              ELSE challenger_contribution_minor
-            END,
-            target_contribution_minor = CASE
-              WHEN ? = 'target_funding' THEN ?
-              ELSE target_contribution_minor
-            END,
-            prize_pool_minor = ?
-        WHERE id = ?
-          AND financial_status = 'funding'
-      `).bind(
-        nextStatus,
-        contributionType,
-        amountMinor,
-        contributionType,
-        amountMinor,
-        total.total,
-        battleId
-      ).run();
-
-      if (finalized.meta?.changes !== 1) {
+      if (
+        operation?.status !== 'posted' ||
+        operation.ledger_transaction_id !== result.transaction.id ||
+        finalizedBattle?.financial_status !== 'funded' ||
+        finalizedBattle.prize_pool_minor !== expectedPool ||
+        (
+          contributionType === 'target_funding' &&
+          finalizedBattle.status !== 'active'
+        )
+      ) {
         throw new Error('Contribution posted; battle finalization requires reconciliation');
       }
-
+		
       return {
         funded: true,
         operation_id: operationId,
@@ -494,12 +524,36 @@ export class CrewBattleFinancialService {
       throw new Error('Crew Battle has no funded prize pool');
     }
 
-    await this.db.prepare(`
+        const refundOperations = await this.db.prepare(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE
+               WHEN status = 'posted'
+                 AND ledger_transaction_id = ?
+               THEN 1 ELSE 0
+             END) AS posted
+      FROM crew_battle_financial_operations
+      WHERE battle_id = ?
+        AND operation_type IN ('challenger_refund', 'target_refund')
+    `).bind(result.transaction.id, battleId).first();
+
+    if (
+      refundOperations.total !== contributions.length ||
+      refundOperations.posted !== contributions.length
+    ) {
+      throw new Error('Refund ledger posted but refund operations require reconciliation');
+    }
+
+    const finalized = await this.db.prepare(`
       UPDATE crew_battles
-      SET financial_status = 'refunding'
+      SET financial_status = 'refunded',
+          status = 'cancelled'
       WHERE id = ?
-        AND financial_status IN ('funded', 'refunding')
+        AND financial_status = 'refunding'
     `).bind(battleId).run();
+
+    if (finalized.meta?.changes !== 1) {
+      throw new Error('Refund posted but battle finalization requires reconciliation');
+    }
 
     const terminal = await this.db.prepare(`
       SELECT outcome, ledger_transaction_id
