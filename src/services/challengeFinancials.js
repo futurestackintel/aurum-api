@@ -68,9 +68,46 @@ if (challenge.status === 'cancelled') {
 
 if (challenge.status === 'completed') {
   if (challenge.financial_status === 'settled') {
+    const existing = await this.db.prepare(`
+      SELECT ledger_transaction_id, metadata_json
+      FROM challenge_financial_operations
+      WHERE challenge_id = ?
+        AND operation_type = 'winner_settlement'
+        AND actor_id = 'system'
+        AND status = 'posted'
+    `).bind(challengeId).first();
+
+    if (!existing?.ledger_transaction_id) {
+      throw new Error(
+        'Settled Challenge has no verified settlement operation'
+      );
+    }
+
+    const metadata = parseMetadata(existing.metadata_json);
+
+    if (metadata.winner_id !== winnerId) {
+      throw new Error(
+        'Winner differs from the recorded Challenge settlement'
+      );
+    }
+
+    const ledgerTransaction = await this.db.prepare(`
+      SELECT status
+      FROM ledger_transactions
+      WHERE id = ?
+    `).bind(existing.ledger_transaction_id).first();
+
+    if (ledgerTransaction?.status !== 'posted') {
+      throw new Error(
+        'Challenge settlement ledger transaction is not posted'
+      );
+    }
+
     return {
       settled: true,
       already_settled: true,
+      operation_id: existing.id,
+      ledger_transaction_id: existing.ledger_transaction_id,
       winner_id: winnerId,
     };
   }
@@ -79,7 +116,7 @@ if (challenge.status === 'completed') {
     'Challenge completion requires financial reconciliation'
   );
 }
-
+	  
 const currencyCode = validateCurrencyCode(
   challenge.currency_code
 );
