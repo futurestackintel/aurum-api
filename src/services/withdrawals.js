@@ -157,6 +157,7 @@ export class WithdrawalService {
             operation_type,
             status,
             amount_minor,
+            provider_amount_minor,
             currency_code,
             provider,
             idempotency_scope,
@@ -165,8 +166,8 @@ export class WithdrawalService {
             provider_reference,
             metadata_json
           )
-          VALUES (
-            ?, ?, 'withdrawal', 'reserved', ?, ?, ?,
+        VALUES (
+            ?, ?, 'withdrawal', 'reserved', ?, ?, ?, ?,
             ?, ?, ?, ?, ?
           )
         `)
@@ -174,14 +175,18 @@ export class WithdrawalService {
           operationId,
           userId,
           amountMinor,
+		  providerAmountMinor
           currencyCode,
           this.provider,
           scope,
           idempotencyKey,
           fingerprint,
           reference,
-          JSON.stringify({
+            JSON.stringify({
             request_id: requestId,
+            gross_amount_minor: amountMinor,
+            fee_minor: feeMinor,
+            provider_amount_minor: providerAmountMinor,
           })
         )
         .run();
@@ -335,8 +340,10 @@ export class WithdrawalService {
       const metadata = {
         request_id: requestId,
         recipient_code: recipientCode,
+        gross_amount_minor: amountMinor,
+        fee_minor: feeMinor,
+        provider_amount_minor: providerAmountMinor,
       };
-
             const metadataUpdate = await this.db
         .prepare(`
           UPDATE financial_payment_operations
