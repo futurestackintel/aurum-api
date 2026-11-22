@@ -4,8 +4,9 @@ import { PaymentService } from './payments.js';
 import {
   assertSafeMinorUnits,
   validateCurrencyCode,
+  calculateFeeMinor,
+  subtractMinorUnits,
 } from './money.js';
-
 function requireText(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`${fieldName} is required`);
@@ -62,6 +63,23 @@ export class WithdrawalService {
     if (currencyCode !== 'NGN') {
       throw new Error('Bank withdrawals currently support NGN only');
     }
+	 this.payments.assertCurrencySupported(
+      currencyCode,
+      'withdrawal',
+      this.provider
+    );
+
+    const feeMinor = calculateFeeMinor(amountMinor, 500);
+    const providerAmountMinor = subtractMinorUnits(
+      amountMinor,
+      feeMinor
+    );
+
+    if (providerAmountMinor <= 0) {
+      throw new Error(
+        'Withdrawal amount is too small after the platform fee'
+      );
+	}
 
     if (!bankDetails || typeof bankDetails !== 'object') {
       throw new Error('Saved bank details are required');
@@ -717,10 +735,11 @@ export class WithdrawalService {
   // SETTLE VERIFIED SUCCESSFUL WITHDRAWAL
   // ============================================================
 
-  async settleWithdrawal({
+    async settleWithdrawal({
     operationId,
     userId,
     amountMinor,
+    providerAmountMinor = null,
     currencyCode,
     reference,
     requestId = null,
@@ -766,6 +785,39 @@ export class WithdrawalService {
       throw new Error('Provider clearing account is unavailable');
     }
 
+		    const operation = await this.db
+      .prepare(`
+        SELECT metadata_json, provider_amount_minor
+        FROM financial_payment_operations
+        WHERE id = ?
+      `)
+      .bind(operationId)
+      .first();
+
+    let withdrawalMetadata = {};
+
+    try {
+      withdrawalMetadata = JSON.parse(operation?.metadata_json || '{}');
+    } catch {
+      throw new Error('Stored withdrawal metadata is invalid');
+    }
+
+    const netAmountMinor =
+      providerAmountMinor ??
+      operation?.provider_amount_minor ??
+      amountMinor;
+
+    const feeMinor =
+      withdrawalMetadata.fee_minor ??
+      (amountMinor - netAmountMinor);
+
+    const feeAccount = feeMinor > 0
+      ? await this.accounts.provisionPlatformAccount({
+          accountType: 'fee_revenue',
+          currencyCode,
+        })
+      : null;
+
     const posting = await this.ledger.postTransaction({
       idempotencyScope: 'wallet-withdrawal-settlement',
       idempotencyKey: operationId,
@@ -779,21 +831,28 @@ export class WithdrawalService {
         payment_operation_id: operationId,
         provider: this.provider,
       },
-      entries: [
+            entries: [
         {
           accountId: heldAccount.id,
           currencyCode,
           side: 'debit',
           amountMinor,
-          description: 'Settle reserved user withdrawal',
+          description: 'Settle gross reserved withdrawal',
         },
         {
           accountId: providerAccount.id,
           currencyCode,
           side: 'credit',
-          amountMinor,
-          description: 'Provider transfer payout',
+          amountMinor: netAmountMinor,
+          description: 'Net provider transfer payout',
         },
+        ...(feeMinor > 0 ? [{
+          accountId: feeAccount.id,
+          currencyCode,
+          side: 'credit',
+          amountMinor: feeMinor,
+          description: 'Platform withdrawal fee',
+        }] : []),
       ],
     });
 
@@ -814,7 +873,7 @@ export class WithdrawalService {
       `)
       .bind(
         posting.transaction.id,
-        amountMinor,
+        netAmountMinor,,
         currencyCode,
         now,
         now,
