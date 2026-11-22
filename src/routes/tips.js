@@ -363,6 +363,78 @@ export async function handleTipsRoutes(pathname, request, env) {
           });
         }
 
+      
+    } else {
+      const tipId = crypto.randomUUID();
+
+      try {
+        await env.DB
+          .prepare(`
+            INSERT INTO financial_tip_operations (
+              id,
+              sender_id,
+              receiver_id,
+              post_id,
+              currency_code,
+              amount_minor,
+              idempotency_key,
+              request_fingerprint,
+              status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+          `)
+          .bind(
+            tipId,
+            sender.id,
+            receiver_id,
+            post_id,
+            normalizedCurrency,
+            amount_minor,
+            idempotencyKey,
+            requestFingerprint
+          )
+          .run();
+      } catch (insertError) {
+        // A concurrent retry may have inserted this operation first.
+        operation = await env.DB
+          .prepare(`
+            SELECT *
+            FROM financial_tip_operations
+            WHERE sender_id = ?
+              AND idempotency_key = ?
+          `)
+          .bind(sender.id, idempotencyKey)
+          .first();
+
+        if (!operation) {
+          throw insertError;
+        }
+
+        if (operation.request_fingerprint !== requestFingerprint) {
+          return json({
+            error: "Idempotency key was already used for a different tip request",
+          }, 409);
+        }
+
+        if (operation.status === "completed") {
+          await applyTipEffects(
+            operation,
+            env.DB,
+            request.headers.get("cf-ray")
+          );
+
+          return json({
+            success: true,
+            tip_id: operation.id,
+            ledger_transaction_id: operation.ledger_transaction_id,
+            status: operation.status,
+            already_completed: true,
+            currency_code: operation.currency_code,
+            amount_minor: operation.amount_minor,
+          });
+        }
+      }
+
       if (!operation) {
         operation = await env.DB
           .prepare(`
