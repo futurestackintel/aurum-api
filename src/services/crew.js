@@ -1979,15 +1979,7 @@ export async function createCrewBattle(challengerCrewId, clerkId, body, db) {
     if (existing) {
       return { error: 'An active battle already exists between these crews' };
     }
-
-    const wallet = await db.prepare(
-      `SELECT balance_usd FROM wallets WHERE user_id = ?`
-    ).bind(userId).first();
-
-    if (!wallet || wallet.balance_usd < Number(entry_contribution_usd)) {
-      return { error: 'Insufficient wallet balance' };
-    }
-
+    
     const now = nowISO();
     const battleId = crypto.randomUUID();
     const endsAt = new Date(ends_at).toISOString();
@@ -2100,14 +2092,7 @@ export async function acceptCrewBattle(battleId, clerkId, db) {
       return { error: 'Battle contribution requires financial reconciliation' };
     }
 
-    const wallet = await db.prepare(
-      `SELECT balance_usd FROM wallets WHERE user_id = ?`
-    ).bind(userId).first();
-
-    if (!wallet || wallet.balance_usd < battle.entry_contribution_usd) {
-      return { error: 'Insufficient wallet balance' };
-    }
-
+    
     const financial = new CrewBattleFinancialService(db);
 
     await financial.fundContribution({
