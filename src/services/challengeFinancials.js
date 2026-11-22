@@ -1006,18 +1006,39 @@ return {
         ),
 
         this.db.prepare(`
-        UPDATE challenges
-        SET
-        participant_count = participant_count + 1,
-        pool_funded_minor = pool_funded_minor + ?,
-        financial_status = 'funded',
-        updated_at = ?
-   WHERE id = ?
-    `).bind(
-       amountMinor,
-       now,
-       challengeId
-     ),
+  UPDATE challenges
+  SET
+    participant_count = participant_count + 1,
+    pool_funded_minor = pool_funded_minor + ?,
+    financial_status = 'funded',
+    updated_at = ?
+  WHERE id = ?
+    AND status = 'open'
+    AND ends_at > ?
+    AND financial_status IN (
+      'pending',
+      'funding',
+      'funded'
+    )
+    AND (
+      max_participants IS NULL
+      OR participant_count < max_participants
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM challenge_entries ce
+      WHERE ce.id = ?
+        AND ce.challenge_id = challenges.id
+        AND ce.user_id = ?
+    )
+`).bind(
+  amountMinor,
+  now,
+  challengeId,
+  now,
+  entryId,
+  userId
+),
       ],
     });
 
