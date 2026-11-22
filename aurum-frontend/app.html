@@ -1334,12 +1334,19 @@
       try {
         const data = await AURUM.WalletAPI.getBankDetails();
         this.walletBankDetails = data.bank_details || null;
+		if (this.walletBankDetails?.needs_reentry) {
+  this.walletBankDetails.account_number = '';
+}
         const summary = document.getElementById('wallet-bank-summary');
 
         if (this.walletBankDetails) {
           const bank = this.walletBankDetails;
           const masked = String(bank.account_number || '').replace(/\d(?=\d{4})/g, '•');
-          if (summary) summary.textContent = `${bank.bank_name} · ${masked} · ${bank.account_name}`;
+          if (summary) {
+  summary.textContent = bank.needs_reentry
+    ? `${bank.bank_name} · Bank details need to be re-saved`
+    : `${bank.bank_name} · ${masked} · ${bank.account_name}`;
+}
           document.getElementById('wallet-bank-name').value = bank.bank_name || '';
           document.getElementById('wallet-bank-account').value = bank.account_number || '';
           document.getElementById('wallet-bank-holder').value = bank.account_name || '';
