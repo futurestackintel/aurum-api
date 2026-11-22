@@ -16,6 +16,10 @@ import { PaymentService } from "../services/payments.js";
 import { DepositService } from "../services/deposits.js";
 import { WithdrawalService } from "../services/withdrawals.js";
 import { buildBalanceDisplay, SUPPORTED_CURRENCIES } from "../services/currency.js";
+import {
+  encryptBankAccountNumber,
+  decryptBankAccountNumber,
+} from "../services/bankDetailsCrypto.js";
 // ── Helpers ──────────────────────────────────────────────────
 
 function json(data, status = 200) {
@@ -333,7 +337,8 @@ export async function handleWalletRoutes(pathname, request, env) {
         .prepare(`
           SELECT
             bank_name,
-            account_number,
+            account_number_ciphertext,
+            account_number_iv,
             account_name,
             bank_code
           FROM user_bank_details
@@ -344,14 +349,22 @@ export async function handleWalletRoutes(pathname, request, env) {
 
       if (
         !bankDetails ||
-        !bankDetails.account_number ||
+        !bankDetails.account_number_ciphertext ||
+        !bankDetails.account_number_iv ||
         !bankDetails.account_name ||
         !bankDetails.bank_code
       ) {
         return json({
-          error: "Please save complete bank details before withdrawing.",
+          error: "Please re-save your bank details before withdrawing.",
         }, 400);
       }
+
+      bankDetails.account_number =
+        await decryptBankAccountNumber(
+          bankDetails.account_number_ciphertext,
+          bankDetails.account_number_iv,
+          env
+        );
 
       const withdrawals = new WithdrawalService(env);
 
@@ -688,6 +701,10 @@ export async function handleWalletRoutes(pathname, request, env) {
       if (!user) return json({ error: "User not found" }, 404);
 
       const now = new Date().toISOString();
+	  const encryptedAccount = await encryptBankAccountNumber(
+        accountNumber,
+        env
+      );
 
       const existing = await env.DB
         .prepare(`SELECT id FROM user_bank_details WHERE user_id = ?`)
@@ -695,30 +712,50 @@ export async function handleWalletRoutes(pathname, request, env) {
         .first();
 
       if (existing) {
-        await env.DB.prepare(`
+                await env.DB.prepare(`
           UPDATE user_bank_details
-          SET bank_name = ?, account_number = ?, account_name = ?,
-              bank_code = ?, updated_at = ?
+          SET bank_name = ?,
+              account_number = '',
+              account_number_ciphertext = ?,
+              account_number_iv = ?,
+              account_number_last4 = ?,
+              account_name = ?,
+              bank_code = ?,
+              updated_at = ?
           WHERE user_id = ?
         `).bind(
           bankName,
-          accountNumber,
+          encryptedAccount.ciphertext,
+          encryptedAccount.iv,
+          encryptedAccount.last4,
           accountName,
           bankCode,
           now,
           user.id
         ).run();
       } else {
-        await env.DB.prepare(`
-          INSERT INTO user_bank_details
-            (id, user_id, bank_name, account_number, account_name,
-             bank_code, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                await env.DB.prepare(`
+          INSERT INTO user_bank_details (
+            id,
+            user_id,
+            bank_name,
+            account_number,
+            account_number_ciphertext,
+            account_number_iv,
+            account_number_last4,
+            account_name,
+            bank_code,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           crypto.randomUUID(),
           user.id,
           bankName,
-          accountNumber,
+          encryptedAccount.ciphertext,
+          encryptedAccount.iv,
+          encryptedAccount.last4,
           accountName,
           bankCode,
           now,
@@ -743,7 +780,28 @@ export async function handleWalletRoutes(pathname, request, env) {
 
     try {
       const user = await env.DB
-        .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
+       .prepare(`
+          SELECT
+            bank_name,
+            account_name,
+            bank_code,
+            updated_at,
+            CASE
+              WHEN account_number_last4 IS NOT NULL
+              THEN '••••' || account_number_last4
+              WHEN account_number IS NOT NULL
+                AND LENGTH(account_number) >= 4
+              THEN '••••' || SUBSTR(account_number, -4)
+              ELSE NULL
+            END AS account_number,
+            CASE
+              WHEN account_number_ciphertext IS NULL
+              THEN 1
+              ELSE 0
+            END AS needs_reentry
+          FROM user_bank_details
+          WHERE user_id = ?
+        `)
         .bind(auth.id)
         .first();
 
