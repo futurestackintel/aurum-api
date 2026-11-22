@@ -524,24 +524,7 @@ export class CrewBattleFinancialService {
       throw new Error('Crew Battle has no funded prize pool');
     }
 
-        const refundOperations = await this.db.prepare(`
-      SELECT COUNT(*) AS total,
-             SUM(CASE
-               WHEN status = 'posted'
-                 AND ledger_transaction_id = ?
-               THEN 1 ELSE 0
-             END) AS posted
-      FROM crew_battle_financial_operations
-      WHERE battle_id = ?
-        AND operation_type IN ('challenger_refund', 'target_refund')
-    `).bind(result.transaction.id, battleId).first();
-
-    if (
-      refundOperations.total !== contributions.length ||
-      refundOperations.posted !== contributions.length
-    ) {
-      throw new Error('Refund ledger posted but refund operations require reconciliation');
-    }
+        
 
     const finalized = await this.db.prepare(`
       UPDATE crew_battles
@@ -762,13 +745,36 @@ export class CrewBattleFinancialService {
       entries,
     });
 
-    await this.db.prepare(`
+        const refundOperations = await this.db.prepare(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE
+               WHEN status = 'posted'
+                 AND ledger_transaction_id = ?
+               THEN 1 ELSE 0
+             END) AS posted
+      FROM crew_battle_financial_operations
+      WHERE battle_id = ?
+        AND operation_type IN ('challenger_refund', 'target_refund')
+    `).bind(result.transaction.id, battleId).first();
+
+    if (
+      refundOperations.total !== contributions.length ||
+      refundOperations.posted !== contributions.length
+    ) {
+      throw new Error('Refund ledger posted but refund operations require reconciliation');
+    }
+
+    const finalized = await this.db.prepare(`
       UPDATE crew_battles
       SET financial_status = 'refunded',
           status = 'cancelled'
       WHERE id = ?
         AND financial_status = 'refunding'
     `).bind(battleId).run();
+
+    if (finalized.meta?.changes !== 1) {
+      throw new Error('Refund posted but battle finalization requires reconciliation');
+    }
 
     const confirmed = await this.db.prepare(`
       SELECT financial_status
