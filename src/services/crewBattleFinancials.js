@@ -524,20 +524,6 @@ export class CrewBattleFinancialService {
       throw new Error('Crew Battle has no funded prize pool');
     }
 
-        
-
-    const finalized = await this.db.prepare(`
-      UPDATE crew_battles
-      SET financial_status = 'refunded',
-          status = 'cancelled'
-      WHERE id = ?
-        AND financial_status = 'refunding'
-    `).bind(battleId).run();
-
-    if (finalized.meta?.changes !== 1) {
-      throw new Error('Refund posted but battle finalization requires reconciliation');
-    }
-
     const terminal = await this.db.prepare(`
       SELECT outcome, ledger_transaction_id
       FROM financial_escrow_terminal_operations
