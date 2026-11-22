@@ -31,7 +31,270 @@ export class ChallengeFinancialService {
     this.db = db;
     this.financial = new FinancialService(db);
   }
+/**
 
+* Settle a paid Challenge's entire escrow to its winner.
+* 
+* Uses a stable operation and ledger idempotency key so retries
+* cannot pay the winner twice.
+  */
+  async settleWinner({
+  challengeId,
+  winnerId,
+  moderatorId,
+  }) {
+  challengeId = requireText(challengeId, 'Challenge ID');
+  winnerId = requireText(winnerId, 'Winner ID');
+  moderatorId = requireText(moderatorId, 'Moderator ID');
+
+const challenge = await this.db.prepare(`
+  SELECT
+    id,
+    status,
+    financial_status,
+    currency_code,
+    pool_funded_minor
+  FROM challenges
+  WHERE id = ?
+`).bind(challengeId).first();
+
+if (!challenge) {
+  throw new Error('Challenge not found');
+}
+
+if (challenge.status === 'cancelled') {
+  throw new Error('Cancelled Challenges cannot be settled');
+}
+
+if (challenge.status === 'completed') {
+  if (challenge.financial_status === 'settled') {
+    return {
+      settled: true,
+      already_settled: true,
+      winner_id: winnerId,
+    };
+  }
+
+  throw new Error(
+    'Challenge completion requires financial reconciliation'
+  );
+}
+
+const currencyCode = validateCurrencyCode(
+  challenge.currency_code
+);
+
+const poolMinor = challenge.pool_funded_minor;
+
+assertSafeMinorUnits(poolMinor);
+
+if (poolMinor <= 0) {
+  throw new Error(
+    'This Challenge has no funded prize pool'
+  );
+}
+
+if (
+  !['funded', 'settling'].includes(
+    challenge.financial_status
+  )
+) {
+  throw new Error(
+    'Challenge is not ready for financial settlement'
+  );
+}
+
+// The authoritative pool must equal successfully posted
+// entry-funding operations. Never settle an unverified pool.
+const funding = await this.db.prepare(`
+  SELECT
+    COUNT(*) AS operation_count,
+    COALESCE(SUM(amount_minor), 0) AS total_minor
+  FROM challenge_financial_operations
+  WHERE challenge_id = ?
+    AND operation_type = 'entry_funding'
+    AND currency_code = ?
+    AND status = 'posted'
+`).bind(
+  challengeId,
+  currencyCode
+).first();
+
+if (
+  funding.total_minor !== poolMinor ||
+  funding.operation_count < 1
+) {
+  throw new Error(
+    'Challenge funding total does not reconcile with its posted ledger operations'
+  );
+}
+
+const idempotencyKey =
+  `challenge:${challengeId}:winner-settlement:v1`;
+
+const existing = await this.db.prepare(`
+  SELECT
+    id,
+    amount_minor,
+    currency_code,
+    ledger_transaction_id,
+    status,
+    metadata_json
+  FROM challenge_financial_operations
+  WHERE challenge_id = ?
+    AND operation_type = 'winner_settlement'
+    AND actor_id = 'system'
+    AND idempotency_key = ?
+`).bind(
+  challengeId,
+  idempotencyKey
+).first();
+
+let operationId;
+let metadata;
+
+if (existing) {
+  if (
+    existing.amount_minor !== poolMinor ||
+    existing.currency_code !== currencyCode
+  ) {
+    throw new Error(
+      'Existing winner settlement does not match the Challenge pool'
+    );
+  }
+
+  if (existing.status === 'posted') {
+    return {
+      settled: true,
+      already_settled: true,
+      operation_id: existing.id,
+      ledger_transaction_id:
+        existing.ledger_transaction_id,
+      winner_id: winnerId,
+    };
+  }
+
+  if (existing.status !== 'pending') {
+    throw new Error(
+      'Winner settlement requires financial reconciliation'
+    );
+  }
+
+  operationId = existing.id;
+  metadata = parseMetadata(existing.metadata_json);
+
+  if (metadata.winner_id !== winnerId) {
+    throw new Error(
+      'Winner differs from the pending settlement record'
+    );
+  }
+} else {
+  operationId = crypto.randomUUID();
+
+  metadata = {
+    challenge_id: challengeId,
+    winner_id: winnerId,
+    moderator_id: moderatorId,
+    currency_code: currencyCode,
+    gross_amount_minor: poolMinor,
+  };
+
+  await this.db.prepare(`
+    INSERT INTO challenge_financial_operations (
+      id,
+      challenge_id,
+      entry_id,
+      operation_type,
+      actor_id,
+      currency_code,
+      amount_minor,
+      idempotency_key,
+      ledger_transaction_id,
+      status,
+      metadata_json
+    )
+    VALUES (
+      ?,
+      ?,
+      NULL,
+      'winner_settlement',
+      'system',
+      ?,
+      ?,
+      ?,
+      NULL,
+      'pending',
+      ?
+    )
+  `).bind(
+    operationId,
+    challengeId,
+    currencyCode,
+    poolMinor,
+    idempotencyKey,
+    JSON.stringify(metadata)
+  ).run();
+}
+
+const result = await this.financial.settleEscrow({
+  escrowType: 'CHALLENGE',
+  escrowId: challengeId,
+  currencyCode,
+  grossAmountMinor: poolMinor,
+  recipientType: 'user',
+  recipientId: winnerId,
+  idempotencyKey,
+  actorType: 'system',
+  actorId: 'system',
+  reference: challengeId,
+  metadata,
+});
+
+const transactionId = result.transaction.id;
+const now = new Date().toISOString();
+
+const operationUpdate = await this.db.prepare(`
+  UPDATE challenge_financial_operations
+  SET
+    status = 'posted',
+    ledger_transaction_id = ?,
+    updated_at = ?
+  WHERE id = ?
+    AND status = 'pending'
+`).bind(
+  transactionId,
+  now,
+  operationId
+).run();
+
+if (operationUpdate.meta?.changes !== 1) {
+  const confirmed = await this.db.prepare(`
+    SELECT status, ledger_transaction_id
+    FROM challenge_financial_operations
+    WHERE id = ?
+  `).bind(operationId).first();
+
+  if (
+    confirmed?.status !== 'posted' ||
+    confirmed.ledger_transaction_id !== transactionId
+  ) {
+    throw new Error(
+      'Settlement posted but operation finalization requires reconciliation'
+    );
+  }
+}
+
+return {
+  settled: true,
+  already_settled: !result.created,
+  operation_id: operationId,
+  ledger_transaction_id: transactionId,
+  winner_id: winnerId,
+  gross_amount_minor: poolMinor,
+  currency_code: currencyCode,
+};
+
+		}
   /**
    * Fund one paid Challenge entry.
    *
