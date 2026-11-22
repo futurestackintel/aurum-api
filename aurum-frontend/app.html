@@ -845,34 +845,140 @@
   </div>
 
   <!-- =====================================================
-       WITHDRAW MODAL
+  <!-- =====================================================
+       AURUM WALLET
+  ====================================================== -->
+  <div class="modal-overlay" id="wallet-modal" style="display:none;">
+    <div class="modal" style="max-width:560px;width:94%;max-height:88vh;overflow-y:auto;">
+      <div class="modal-handle"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 class="modal-title">AURUM Wallet</h3>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('wallet-modal').style.display='none'">Close</button>
+      </div>
+
+      <div class="wallet-balance-display">
+        <div class="wallet-balance-amount" id="wallet-modal-balance">—</div>
+        <div class="wallet-balance-label">Selected Currency · Available</div>
+        <div id="wallet-held-balance" style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:8px;">Held: —</div>
+      </div>
+
+      <div class="input-group" style="margin-bottom:var(--space-4);">
+        <label class="input-label">Wallet Currency</label>
+        <select class="input" id="wallet-currency"></select>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:var(--space-4);">
+        <button class="btn btn-primary btn-sm" id="btn-wallet-deposit">Add Funds</button>
+        <button class="btn btn-outline btn-sm" id="btn-wallet-withdraw">Withdraw</button>
+        <button class="btn btn-outline btn-sm" id="btn-wallet-transactions">Transactions</button>
+      </div>
+
+      <div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:var(--space-4);">
+        <button class="btn btn-ghost btn-sm wallet-tab active" data-wallet-tab="overview">Overview</button>
+        <button class="btn btn-ghost btn-sm wallet-tab" data-wallet-tab="payments">Payment Methods</button>
+        <button class="btn btn-ghost btn-sm wallet-tab" data-wallet-tab="statements">Statements</button>
+        <button class="btn btn-ghost btn-sm wallet-tab" data-wallet-tab="settings">Settings</button>
+      </div>
+
+      <section id="wallet-panel-overview">
+        <h4 style="margin-bottom:var(--space-3);">Your Balances</h4>
+        <div id="wallet-balances-list"></div>
+        <h4 style="margin:var(--space-4) 0 var(--space-3);">Recent Transactions</h4>
+        <div id="wallet-tx-list" style="display:flex;flex-direction:column;gap:var(--space-2);">
+          <div class="skeleton" style="height:48px;border-radius:8px;"></div>
+        </div>
+      </section>
+
+      <section id="wallet-panel-payments" style="display:none;">
+        <h4>Saved Withdrawal Account</h4>
+        <div id="wallet-bank-summary" style="margin:12px 0;color:var(--color-text-muted);">Loading bank details...</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <input class="input" id="wallet-bank-name" placeholder="Bank name">
+          <input class="input" id="wallet-bank-code" placeholder="Bank code (if required)">
+          <input class="input" id="wallet-bank-account" placeholder="Account number" inputmode="numeric">
+          <input class="input" id="wallet-bank-holder" placeholder="Account name">
+          <button class="btn btn-primary btn-full" id="btn-wallet-save-bank">Save Withdrawal Account</button>
+          <p id="wallet-bank-error" style="display:none;color:var(--color-danger);font-size:var(--text-sm);"></p>
+        </div>
+      </section>
+
+      <section id="wallet-panel-statements" style="display:none;">
+        <h4>Transaction Statement</h4>
+        <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin:8px 0 14px;">
+          Download the transaction history currently loaded for the selected currency.
+        </p>
+        <button class="btn btn-primary btn-full" id="btn-wallet-export">Download CSV</button>
+        <div id="wallet-statement-list" style="margin-top:16px;"></div>
+      </section>
+
+      <section id="wallet-panel-settings" style="display:none;">
+        <h4>Wallet Preferences</h4>
+        <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin:8px 0;">
+          Choose your preferred display currency. This does not convert or combine your actual currency balances.
+        </p>
+        <label class="input-label" for="wallet-preferred-currency">Preferred Currency</label>
+        <select class="input" id="wallet-preferred-currency"></select>
+        <button class="btn btn-primary btn-full" id="btn-wallet-save-preference" style="margin-top:12px;">Save Preference</button>
+        <p id="wallet-settings-message" style="font-size:var(--text-sm);margin-top:10px;"></p>
+      </section>
+    </div>
+  </div>
+
+  <!-- =====================================================
+       ADD FUNDS
+  ====================================================== -->
+  <div class="modal-overlay" id="deposit-modal" style="display:none;">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title">Add Funds</h3>
+      <div style="display:flex;flex-direction:column;gap:var(--space-4);">
+        <div class="input-group">
+          <label class="input-label">Amount</label>
+          <input class="input" type="number" id="deposit-amount" placeholder="0.00" min="0.01" step="0.01">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Payment Currency</label>
+          <select class="input" id="deposit-currency"></select>
+        </div>
+        <div id="deposit-fee-preview" style="font-size:var(--text-sm);color:var(--color-text-muted);"></div>
+        <p style="font-size:var(--text-xs);color:var(--color-text-muted);line-height:1.6;">
+          A 5% funding fee is added to your entered amount. Payment is processed securely by Paystack. Only currencies enabled for payment processing will be available.
+        </p>
+        <p id="deposit-error" style="display:none;color:var(--color-danger);font-size:var(--text-sm);"></p>
+        <div style="display:flex;gap:var(--space-3);">
+          <button class="btn btn-ghost btn-full" id="btn-deposit-cancel">Cancel</button>
+          <button class="btn btn-primary btn-full" id="btn-deposit-confirm">Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================
+       WITHDRAW
   ====================================================== -->
   <div class="modal-overlay" id="withdraw-modal" style="display:none;">
     <div class="modal">
       <div class="modal-handle"></div>
-      <h3 class="modal-title">Withdraw</h3>
+      <h3 class="modal-title">Withdraw Funds</h3>
+      <div class="wallet-balance-display">
+        <div class="wallet-balance-amount" id="withdraw-modal-balance">—</div>
+        <div class="wallet-balance-label">Available Balance</div>
+      </div>
       <div style="display:flex;flex-direction:column;gap:var(--space-4);">
-        <div class="wallet-balance-display">
-          <div class="wallet-balance-amount" id="withdraw-modal-balance">₳0.00</div>
-          <div class="wallet-balance-label">Available Balance</div>
-        </div>
         <div class="input-group">
           <label class="input-label">Amount</label>
-          <input class="input" type="number" id="withdraw-amount" placeholder="10.00" min="1" step="0.01" />
+          <input class="input" type="number" id="withdraw-amount" placeholder="0.00" min="0.01" step="0.01">
         </div>
         <div class="input-group">
-          <label class="input-label">Bank Name</label>
-          <input class="input" type="text" id="withdraw-bank" placeholder="e.g. Access Bank" />
+          <label class="input-label">Currency</label>
+          <select class="input" id="withdraw-currency"></select>
         </div>
-        <div class="input-group">
-          <label class="input-label">Account Number</label>
-          <input class="input" type="text" id="withdraw-account" placeholder="0123456789" maxlength="10" inputmode="numeric" />
-        </div>
-        <div class="input-group">
-          <label class="input-label">Account Name</label>
-          <input class="input" type="text" id="withdraw-name" placeholder="As on bank statement" />
-        </div>
-        <p id="withdraw-error" style="color:var(--color-danger);font-size:var(--text-sm);display:none;"></p>
+        <div id="withdraw-fee-preview" style="font-size:var(--text-sm);color:var(--color-text-muted);"></div>
+        <div id="withdraw-bank-preview" style="font-size:var(--text-sm);color:var(--color-text-muted);"></div>
+        <p style="font-size:var(--text-xs);color:var(--color-text-muted);">
+          A 5% withdrawal fee is deducted from the requested amount. Save your bank account under Payment Methods before requesting a withdrawal.
+        </p>
+        <p id="withdraw-error" style="display:none;color:var(--color-danger);font-size:var(--text-sm);"></p>
         <div style="display:flex;gap:var(--space-3);">
           <button class="btn btn-ghost btn-full" id="btn-withdraw-cancel">Cancel</button>
           <button class="btn btn-primary btn-full" id="btn-withdraw-confirm">Request Withdrawal</button>
@@ -1077,36 +1183,235 @@
     },
 
     /* -----------------------------------------
-       WALLET BALANCE
+       LEDGER-BACKED MULTI-CURRENCY WALLET
     ----------------------------------------- */
+    walletMoney(amountMinor, exponent = 2, currency = 'NGN') {
+      const value = Number(amountMinor || 0) / (10 ** Number(exponent || 0));
+      return `${currency} ${value.toLocaleString(undefined, {
+        minimumFractionDigits: exponent,
+        maximumFractionDigits: exponent,
+      })}`;
+    },
+
+    walletMinor(amount, exponent = 2) {
+      const value = String(amount ?? '').trim();
+      if (!/^(0|[1-9]\d*)(\.\d+)?$/.test(value)) {
+        throw new Error('Enter a valid amount.');
+      }
+      const parts = value.split('.');
+      const fraction = parts[1] || '';
+      if (fraction.length > exponent) {
+        throw new Error(`This currency supports ${exponent} decimal places.`);
+      }
+      const minor = Number(parts[0]) * (10 ** exponent)
+        + Number(fraction.padEnd(exponent, '0') || 0);
+      if (!Number.isSafeInteger(minor) || minor <= 0) {
+        throw new Error('Enter a valid amount.');
+      }
+      return minor;
+    },
+
+    walletCurrencyInfo(currency) {
+      return this.walletAccounts.find(x => x.currency_code === currency)
+        || this.walletAccounts[0]
+        || { currency_code: currency, minor_unit_exponent: 2 };
+    },
+
+    walletBalanceFor(currency) {
+      return this.walletBalances.find(x => x.currency_code === currency)
+        || {
+          currency_code: currency,
+          minor_unit_exponent: this.walletCurrencyInfo(currency).minor_unit_exponent,
+          available_minor: 0,
+          held_minor: 0,
+          total_minor: 0,
+        };
+    },
+
     async loadWalletBalance() {
       try {
-        const data = await AURUM.WalletAPI.getBalance();
-        this.walletBalance = data.balance || 0;
+        const [balanceData, accountData] = await Promise.all([
+          AURUM.WalletAPI.getBalance(),
+          AURUM.WalletAPI.getAccount(),
+        ]);
+
+        this.walletBalances = balanceData.balances || [];
+        this.walletAccounts = accountData.accounts || [];
+        this.walletAccount = accountData.account || null;
+        this.walletPreferredCurrency =
+          this.walletAccount?.currency_preference || 'NGN';
+
+        if (!this.walletAccounts.some(x => x.currency_code === this.walletCurrency)) {
+          this.walletCurrency = this.walletAccounts.some(x => x.currency_code === this.walletPreferredCurrency)
+            ? this.walletPreferredCurrency
+            : (this.walletAccounts[0]?.currency_code || 'NGN');
+        }
+
+        this.walletBalance = this.walletBalanceFor(this.walletCurrency).available_minor;
+        this.renderWalletBalances();
         this.updateWalletInBar();
+        this.populateWalletCurrencySelectors();
       } catch (err) {
-        /* Wallet not available — hide from bar */
+        console.warn('Wallet load failed:', err.message);
       }
     },
 
-    updateWalletInBar() {
-      const wrap   = document.getElementById('appbar-wallet-wrap');
-      const div    = document.getElementById('appbar-divider');
-      const amount = document.getElementById('user-wallet');
-      if (wrap) wrap.style.display = 'flex';
-      if (div)  div.style.display  = 'block';
-      if (amount) amount.textContent = AURUM.formatAurum(this.walletBalance);
+    renderWalletBalances() {
+      const list = document.getElementById('wallet-balances-list');
+      if (list) {
+        list.innerHTML = this.walletBalances.map(balance => `
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:12px;background:var(--color-surface-2);border-radius:8px;margin-bottom:8px;">
+            <span>${balance.currency_code}</span>
+            <span style="text-align:right;">
+              <strong>${this.walletMoney(balance.available_minor, balance.minor_unit_exponent, balance.currency_code)}</strong>
+              <small style="display:block;color:var(--color-text-muted);">Held: ${this.walletMoney(balance.held_minor, balance.minor_unit_exponent, balance.currency_code)}</small>
+            </span>
+          </div>
+        `).join('') || '<p style="color:var(--color-text-muted);">No wallet currencies are enabled yet.</p>';
+      }
+
+      const selected = this.walletBalanceFor(this.walletCurrency);
+      const balance = document.getElementById('wallet-modal-balance');
+      const held = document.getElementById('wallet-held-balance');
+      if (balance) balance.textContent = this.walletMoney(selected.available_minor, selected.minor_unit_exponent, selected.currency_code);
+      if (held) held.textContent = `Held: ${this.walletMoney(selected.held_minor, selected.minor_unit_exponent, selected.currency_code)}`;
+      this.walletBalance = selected.available_minor;
     },
 
-    updateAppBar() {
-      const score  = document.getElementById('user-score');
-      const avatar = document.getElementById('user-avatar');
-      const username = this.user?.username
-        || this.user?.firstName
-        || this.user?.emailAddresses?.[0]?.emailAddress?.split('@')[0]
-        || '?';
-      if (score)  score.textContent  = AURUM.formatNumber(this.user?.aurum_score || 0);
-      if (avatar) avatar.innerHTML   = AURUM.avatarInnerHTML(this.user?.avatar_url, username.charAt(0).toUpperCase());
+    populateWalletCurrencySelectors() {
+      const selectors = [
+        document.getElementById('wallet-currency'),
+        document.getElementById('wallet-preferred-currency'),
+        document.getElementById('deposit-currency'),
+        document.getElementById('withdraw-currency'),
+      ].filter(Boolean);
+
+      const options = this.walletAccounts.map(account =>
+        `<option value="${account.currency_code}">${account.currency_code}</option>`
+      ).join('');
+
+      selectors.forEach(select => {
+        const previous = select.value;
+        select.innerHTML = options;
+        if ([...select.options].some(option => option.value === previous)) {
+          select.value = previous;
+        }
+      });
+
+      const walletSelect = document.getElementById('wallet-currency');
+      const preferredSelect = document.getElementById('wallet-preferred-currency');
+      if (walletSelect) walletSelect.value = this.walletCurrency;
+      if (preferredSelect) preferredSelect.value = this.walletPreferredCurrency;
+
+      /* Paystack currently defaults to NGN. Do not expose other
+         currencies as deposit/withdrawal options unless configured
+         separately in the frontend in a later provider-capability task. */
+      ['deposit-currency', 'withdraw-currency'].forEach(id => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        const ngn = this.walletAccounts.find(x => x.currency_code === 'NGN');
+        select.innerHTML = ngn
+          ? '<option value="NGN">NGN</option>'
+          : '<option value="">No supported payment currency</option>';
+        select.disabled = !ngn;
+      });
+    },
+
+    updateWalletInBar() {
+      const wrap = document.getElementById('appbar-wallet-wrap');
+      const div = document.getElementById('appbar-divider');
+      const amount = document.getElementById('user-wallet');
+      const selected = this.walletBalanceFor(this.walletPreferredCurrency);
+      if (wrap) wrap.style.display = 'flex';
+      if (div) div.style.display = 'block';
+      if (amount) amount.textContent = this.walletMoney(
+        selected.available_minor,
+        selected.minor_unit_exponent,
+        selected.currency_code
+      );
+    },
+
+    async openWalletModal() {
+      await this.loadWalletBalance();
+      document.getElementById('wallet-modal').style.display = 'flex';
+      this.showWalletTab('overview');
+      await Promise.all([
+        this.loadWalletTransactions(),
+        this.loadWalletBankDetails(),
+      ]);
+    },
+
+    showWalletTab(tab) {
+      ['overview', 'payments', 'statements', 'settings'].forEach(name => {
+        const panel = document.getElementById(`wallet-panel-${name}`);
+        if (panel) panel.style.display = name === tab ? 'block' : 'none';
+      });
+      document.querySelectorAll('.wallet-tab').forEach(button => {
+        button.classList.toggle('active', button.dataset.walletTab === tab);
+      });
+    },
+
+    async loadWalletTransactions() {
+      const list = document.getElementById('wallet-tx-list');
+      const statement = document.getElementById('wallet-statement-list');
+      if (list) list.innerHTML = '<p>Loading transactions...</p>';
+
+      try {
+        const data = await AURUM.WalletAPI.getTransactions(0, this.walletCurrency);
+        this.walletTransactions = data.transactions || [];
+
+        const html = this.walletTransactions.map(tx => {
+          const amount = this.walletMoney(
+            tx.amount_minor,
+            this.walletCurrencyInfo(tx.currency_code).minor_unit_exponent,
+            tx.currency_code
+          );
+          const positive = tx.direction === 'credit';
+          const sign = positive ? '+' : tx.direction === 'debit' ? '−' : '';
+          const color = positive ? 'var(--color-success)' : 'var(--color-text)';
+          const label = (tx.description || tx.transaction_type || 'Transaction')
+            .replace(/</g, '&lt;');
+          return `
+            <div style="display:flex;justify-content:space-between;gap:10px;padding:12px;background:var(--color-surface-2);border-radius:8px;">
+              <div>
+                <div style="font-size:var(--text-sm);">${label}</div>
+                <small style="color:var(--color-text-muted);">${AURUM.timeAgo(tx.created_at)} · ${tx.currency_code}</small>
+              </div>
+              <strong style="color:${color};white-space:nowrap;">${sign}${amount}</strong>
+            </div>`;
+        }).join('') || '<p style="color:var(--color-text-muted);">No transactions yet.</p>';
+
+        if (list) list.innerHTML = html;
+        if (statement) statement.innerHTML = html;
+      } catch (err) {
+        if (list) list.textContent = 'Could not load transactions.';
+        if (statement) statement.textContent = 'Could not load transactions.';
+      }
+    },
+
+    async loadWalletBankDetails() {
+      try {
+        const data = await AURUM.WalletAPI.getBankDetails();
+        this.walletBankDetails = data.bank_details || null;
+        const summary = document.getElementById('wallet-bank-summary');
+
+        if (this.walletBankDetails) {
+          const bank = this.walletBankDetails;
+          const masked = String(bank.account_number || '').replace(/\d(?=\d{4})/g, '•');
+          if (summary) summary.textContent = `${bank.bank_name} · ${masked} · ${bank.account_name}`;
+          document.getElementById('wallet-bank-name').value = bank.bank_name || '';
+          document.getElementById('wallet-bank-account').value = bank.account_number || '';
+          document.getElementById('wallet-bank-holder').value = bank.account_name || '';
+          document.getElementById('wallet-bank-code').value = bank.bank_code || '';
+          const preview = document.getElementById('withdraw-bank-preview');
+          if (preview) preview.textContent = `Withdrawal account: ${bank.bank_name} · ${masked}`;
+        } else if (summary) {
+          summary.textContent = 'No withdrawal account saved yet.';
+        }
+      } catch (err) {
+        const summary = document.getElementById('wallet-bank-summary');
+        if (summary) summary.textContent = 'Could not load bank details.';
+      }
     },
 
     /* -----------------------------------------
@@ -1508,6 +1813,76 @@
     const wBal = document.getElementById('withdraw-modal-balance');
     if (wBal) wBal.textContent = AURUM.formatAurum(App.walletBalance);
     document.getElementById('withdraw-modal').style.display = 'flex';
+  });
+
+	    document.querySelectorAll('.wallet-tab').forEach(button => {
+    button.addEventListener('click', () => App.showWalletTab(button.dataset.walletTab));
+  });
+
+  document.getElementById('wallet-currency').addEventListener('change', async e => {
+    App.walletCurrency = e.target.value;
+    App.renderWalletBalances();
+    await App.loadWalletTransactions();
+  });
+
+  document.getElementById('btn-wallet-transactions').addEventListener('click', async () => {
+    App.showWalletTab('overview');
+    await App.loadWalletTransactions();
+  });
+
+  document.getElementById('btn-wallet-save-bank').addEventListener('click', async () => {
+    const error = document.getElementById('wallet-bank-error');
+    error.style.display = 'none';
+    try {
+      await AURUM.WalletAPI.saveBankDetails({
+        bank_name: document.getElementById('wallet-bank-name').value.trim(),
+        account_number: document.getElementById('wallet-bank-account').value.trim(),
+        account_name: document.getElementById('wallet-bank-holder').value.trim(),
+        bank_code: document.getElementById('wallet-bank-code').value.trim() || undefined,
+      });
+      AURUM.showToast('Withdrawal account saved.', 'gold');
+      await App.loadWalletBankDetails();
+    } catch (err) {
+      error.textContent = err.message || 'Could not save bank details.';
+      error.style.display = 'block';
+    }
+  });
+
+  document.getElementById('btn-wallet-save-preference').addEventListener('click', async () => {
+    const currency = document.getElementById('wallet-preferred-currency').value;
+    const message = document.getElementById('wallet-settings-message');
+    try {
+      await AURUM.WalletAPI.setCurrency({ currency });
+      App.walletPreferredCurrency = currency;
+      App.updateWalletInBar();
+      message.textContent = 'Preferred currency saved.';
+    } catch (err) {
+      message.textContent = err.message || 'Could not save preference.';
+    }
+  });
+
+  document.getElementById('btn-wallet-export').addEventListener('click', () => {
+    const rows = App.walletTransactions || [];
+    if (!rows.length) {
+      AURUM.showToast('No transactions to export.', 'error');
+      return;
+    }
+
+    const columns = ['created_at', 'transaction_type', 'description', 'currency_code', 'amount_minor', 'direction', 'reference'];
+    const csv = [
+      columns.join(','),
+      ...rows.map(row => columns.map(key =>
+        `"${String(row[key] ?? '').replace(/"/g, '""')}"`
+      ).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `aurum-wallet-${App.walletCurrency}-statement.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   });
 
   /* =====================================================
