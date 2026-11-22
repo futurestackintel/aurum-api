@@ -2119,30 +2119,19 @@ export async function acceptCrewBattle(battleId, clerkId, db) {
       idempotencyKey: `crew-battle:${battleId}:target-funding:v1`,
     });
 
-    const now = nowISO();
-    const totalMinor = amountMinor * 2;
+        const totalMinor = amountMinor * 2;
 
-    const update = await db.prepare(`
-      UPDATE crew_battles
-      SET status = 'active',
-          target_accepted_at = ?,
-          target_contribution_usd = entry_contribution_usd,
-          target_paid_by = ?,
-          prize_pool_minor = ?,
-          prize_pool_usd = ?
+    const finalized = await db.prepare(`
+      SELECT status, financial_status, prize_pool_minor
+      FROM crew_battles
       WHERE id = ?
-        AND status = 'pending'
-        AND financial_status = 'funded'
-        AND target_accepted_at IS NULL
-    `).bind(
-      now,
-      userId,
-      totalMinor,
-      Number(fromMinorUnits(totalMinor, 2)),
-      battleId
-    ).run();
+    `).bind(battleId).first();
 
-    if (update.meta?.changes !== 1) {
+    if (
+      finalized?.status !== 'active' ||
+      finalized.financial_status !== 'funded' ||
+      finalized.prize_pool_minor !== totalMinor
+    ) {
       return { error: 'Battle funding succeeded but acceptance needs reconciliation' };
     }
 
@@ -2211,7 +2200,12 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
     ).bind(battleId).first();
 
     if (!battle) return { error: 'Crew battle not found' };
-    if (battle.status === 'resolved') return { error: 'Battle already resolved' };
+        if (
+      battle.status === 'resolved' &&
+      battle.financial_status !== 'settled'
+    ) {
+      return { error: 'Resolved battle requires financial reconciliation' };
+    }
     if (battle.status === 'cancelled') return { error: 'Battle was cancelled' };
     if (battle.payout_released) return { error: 'Payout already released' };
 
@@ -2243,7 +2237,10 @@ export async function resolveCrewBattle(battleId, winnerCrewId, moderatorId, db)
         member.user_id,
         'crew_battle_win',
         null,
-        { note: `Won crew battle: ${battle.title}` },
+                {
+          note: `Won crew battle: ${battle.title}`,
+          event_id: `crew-battle-win:${battleId}:${winnerCrewId}:${member.user_id}`,
+        },
         db
       );
     }
