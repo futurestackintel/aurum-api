@@ -13,7 +13,8 @@ export default defineWorkersConfig(async () => {
 
   return {
     test: {
-      poolOptions: {
+     setupFiles: ["./test/setup.js"],
+       poolOptions: {
         workers: {
           wrangler: { configPath: "./wrangler.jsonc" },
           miniflare: {
