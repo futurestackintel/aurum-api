@@ -1,17 +1,7 @@
 
-import {
-  env,
-  createExecutionContext,
-  waitOnExecutionContext,
-  SELF,
-	applyD1Migrations,
-} from "cloudflare:test";
 import { beforeAll, describe, it, expect } from "vitest";
 import worker from "../src";
 
-beforeAll(async () => {
-  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
-});
 
 async function expectAuthDenial(path) {
   const record = await env.DB.prepare(`
