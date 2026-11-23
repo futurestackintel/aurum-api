@@ -37,7 +37,7 @@ export async function handleSearchRoutes(path, method, request, env) {
           LIMIT 10
         `).bind(q).all(),
         db.prepare(`
-          SELECT p.id, p.content, p.created_at, p.user_id, u.username, u.stealth_mode, u.profile_visibility
+          SELECT p.id, p.content, p.created_at, p.user_id, u.username
           FROM posts p
           JOIN users u ON u.id = p.user_id
           WHERE p.content LIKE '%' || ? || '%'
