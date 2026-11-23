@@ -1,5 +1,11 @@
+import {
+  env,
+  createExecutionContext,
+  waitOnExecutionContext,
+  SELF,
+} from "cloudflare:test";
 
-import { beforeAll, describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import worker from "../src";
 
 
