@@ -256,6 +256,7 @@ describe('LedgerService transaction posting', () => {
     });
 
     input.entries[0].currencyCode = 'USD';
+		input.entries[1].currencyCode = 'USD';
 
             await expect(
       service.postTransaction(input)
