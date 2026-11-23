@@ -2,13 +2,16 @@ import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import notificationPreferenceMigration from '../migrations/0028_add_message_crew_notification_preferences.sql?raw';
 
-vi.mock('../src/middleware/auth.js', async importOriginal => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    requireAuth: async () => ({ id: 'clerk-notification-preferences-test' }),
-  };
-});
+const auth = vi.hoisted(() => ({
+  requireAuth: vi.fn(async () => ({
+    id: 'clerk-notification-preferences-test',
+  })),
+}));
+
+vi.mock('../src/middleware/auth.js', async importOriginal => ({
+  ...await importOriginal(),
+  ...auth,
+}));
 
 import worker from '../src';
 
