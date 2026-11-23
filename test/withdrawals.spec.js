@@ -164,6 +164,8 @@ async function getAccountBalance(accountCode) {
 
 function createWithdrawalPayments(status = 'success') {
   return {
+    assertCurrencySupported: vi.fn(() => true),
+
     createTransferRecipient: vi.fn(async () => ({
       recipient_code: 'RCP_TEST_123',
     })),
@@ -196,7 +198,10 @@ describe('WithdrawalService finalization claims', () => {
   it('creates a settlement claim for an active withdrawal', async () => {
     const operationId = await createWithdrawal();
 
-    const service = new WithdrawalService({ DB: env.DB });
+    const service = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     const result = await service.claimWithdrawalFinalization(
       operationId,
@@ -217,8 +222,15 @@ describe('WithdrawalService finalization claims', () => {
 	  it('allows only one outcome when settlement and release compete', async () => {
     const operationId = await createWithdrawal();
 
-    const firstService = new WithdrawalService({ DB: env.DB });
-    const secondService = new WithdrawalService({ DB: env.DB });
+    const firstService = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
+
+const secondService = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     const results = await Promise.allSettled([
       firstService.claimWithdrawalFinalization(
@@ -254,7 +266,10 @@ describe('WithdrawalService finalization claims', () => {
   it('allows retries with the same finalization outcome', async () => {
     const operationId = await createWithdrawal();
 
-    const service = new WithdrawalService({ DB: env.DB });
+    const service = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     await service.claimWithdrawalFinalization(
       operationId,
@@ -280,7 +295,10 @@ describe('WithdrawalService finalization claims', () => {
   it('blocks release after settlement has been claimed', async () => {
     const operationId = await createWithdrawal();
 
-    const service = new WithdrawalService({ DB: env.DB });
+    const service = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     await service.claimWithdrawalFinalization(
       operationId,
@@ -300,7 +318,10 @@ describe('WithdrawalService finalization claims', () => {
   it('blocks settlement after release has been claimed', async () => {
     const operationId = await createWithdrawal();
 
-    const service = new WithdrawalService({ DB: env.DB });
+    const service = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     await service.claimWithdrawalFinalization(
       operationId,
@@ -322,7 +343,10 @@ describe('WithdrawalService finalization claims', () => {
       'reconciliation_required'
     );
 
-    const service = new WithdrawalService({ DB: env.DB });
+    const service = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     const result = await service.claimWithdrawalFinalization(
       operationId,
@@ -335,7 +359,10 @@ describe('WithdrawalService finalization claims', () => {
   it('rejects claims for withdrawals that are still reserved', async () => {
     const operationId = await createWithdrawal('reserved');
 
-    const service = new WithdrawalService({ DB: env.DB });
+    const service = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     await expect(
       service.claimWithdrawalFinalization(
@@ -350,7 +377,10 @@ describe('WithdrawalService finalization claims', () => {
   it('prevents modification of an existing finalization claim', async () => {
     const operationId = await createWithdrawal();
 
-    const service = new WithdrawalService({ DB: env.DB });
+    const service = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     await service.claimWithdrawalFinalization(
       operationId,
@@ -369,7 +399,10 @@ describe('WithdrawalService finalization claims', () => {
   it('prevents deletion of finalization evidence', async () => {
     const operationId = await createWithdrawal();
 
-    const service = new WithdrawalService({ DB: env.DB });
+    const service = new WithdrawalService(
+  { DB: env.DB },
+  { payments: createWithdrawalPayments() }
+);
 
     await service.claimWithdrawalFinalization(
       operationId,
