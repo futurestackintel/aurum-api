@@ -12,6 +12,7 @@ async function processWalletDepositWebhook({
   event,
   rawBody,
   env,
+  DepositServiceClass = DepositService,
 }) {
   const data = event.data || {};
   const metadata = data.metadata || {};
@@ -183,7 +184,7 @@ eventId = existing.id;
   }
 
   try {
-    const deposits = new DepositService(env);
+    const deposits = new DepositServiceClass(env);
 
     await deposits.confirmDeposit({
       userId: operation.user_id,
@@ -226,8 +227,12 @@ eventId = existing.id;
   }
 				}
 
-export async function handleWebhookRoutes(pathname, request, env) {
-
+export async function handleWebhookRoutes(
+  pathname,
+  request,
+  env,
+  { DepositServiceClass = DepositService } = {}
+) {
   if (pathname === '/webhook/paystack' && request.method === 'POST') {
 
     // ── Signature verification ────────────────────────────
@@ -292,10 +297,11 @@ export async function handleWebhookRoutes(pathname, request, env) {
         // ── wallet_deposit ────────────────────────────────
         if (type === 'wallet_deposit') {
         await processWalletDepositWebhook({
-          event,
-          rawBody,
-          env,
-          });
+  event,
+  rawBody,
+  env,
+  DepositServiceClass,
+});
 
         // ── challenge_entry ───────────────────────────────
         } else if (type === 'challenge_entry') {
