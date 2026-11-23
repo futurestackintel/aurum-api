@@ -1,13 +1,15 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { confirmDeposit } = vi.hoisted(() => ({
-  confirmDeposit: vi.fn(),
+const { confirmDepositMock } = vi.hoisted(() => ({
+  confirmDepositMock: vi.fn(),
 }));
 
 vi.mock('../src/services/deposits.js', () => ({
   DepositService: class {
-    confirmDeposit = confirmDeposit;
+    confirmDeposit(...args) {
+      return confirmDepositMock(...args);
+    }
   },
 }));
 
