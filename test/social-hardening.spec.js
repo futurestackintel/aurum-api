@@ -6,8 +6,12 @@ const auth = vi.hoisted(() => ({
   requireAuth: vi.fn(async () => ({ id: 'clerk-hardening-viewer' })),
   optionalAuth: vi.fn(async () => ({ id: null })),
 }));
-vi.mock('../src/middleware/auth.js', async importOriginal => ({ ...await importOriginal(), ...auth }));
-
+vi.mock('../src/middleware/auth.js', () => ({
+  requireAuth: auth.requireAuth,
+  optionalAuth: auth.optionalAuth,
+  requireAuthFromQuery: vi.fn(async () => ({ id: 'clerk-test-user' })),
+  requireAdmin: vi.fn(async () => ({ id: 'clerk-test-admin' })),
+}));
 import { createComment } from '../src/services/comments.js';
 import { handlePostCheer } from '../src/index.js';
 import { handleSearchRoutes } from '../src/routes/search.js';
