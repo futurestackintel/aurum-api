@@ -128,14 +128,20 @@ async function sendWebhook(event, signatureOverride = null) {
   );
 
   return handleWebhookRoutes(
-    '/webhook/paystack',
-    request,
-    {
-      DB: env.DB,
-      PAYSTACK_SECRET_KEY: SECRET,
-    }
-  );
-}
+  '/webhook/paystack',
+  request,
+  {
+    DB: env.DB,
+    PAYSTACK_SECRET_KEY: SECRET,
+  },
+  {
+    DepositServiceClass: class {
+      async confirmDeposit(...args) {
+        return confirmDepositMock(...args);
+      }
+    },
+  }
+);
 
 beforeEach(() => {
   confirmDepositMock.mockReset();
