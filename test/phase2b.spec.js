@@ -25,15 +25,14 @@ async function createPrivacyFixtures() {
   const visibleId = crypto.randomUUID();
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
-  const insertUser = env.DB.prepare(`INSERT INTO users (
-    id, username, display_name, email, league, aurum_score, streak_current,
+    const insertUser = env.DB.prepare(`INSERT INTO users (
+    id, clerk_id, username, display_name, email, league, aurum_score, streak_current,
     created_at, is_verified, total_challenges_won, total_tips_sent_cents,
-    hide_aurum_score, hide_league, profile_visibility, stealth_mode,
-    is_suspended, account_deleted
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'public', 0, 0, 0)`);
+    hide_aurum_score, hide_league, stealth_mode, is_suspended, account_deleted
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)`);
   await env.DB.batch([
-    insertUser.bind(hiddenId, `hidden_${hiddenId}`, 'Hidden', `${hiddenId}@test.invalid`, 'gold', 900, 4, now, 0, 0, 0, 1, 1),
-    insertUser.bind(visibleId, `visible_${visibleId}`, 'Visible', `${visibleId}@test.invalid`, 'silver', 500, 2, now, 0, 0, 0, 0, 1),
+    insertUser.bind(hiddenId, `clerk-${hiddenId}`, `hidden_${hiddenId}`, 'Hidden', `${hiddenId}@test.invalid`, 'gold', 900, 4, now, 0, 0, 0, 1, 1),
+    insertUser.bind(visibleId, `clerk-${visibleId}`, `visible_${visibleId}`, 'Visible', `${visibleId}@test.invalid`, 'silver', 500, 2, now, 0, 0, 0, 0, 1),
   ]);
   await env.DB.batch([
     env.DB.prepare(`INSERT INTO leaderboard_snapshots
