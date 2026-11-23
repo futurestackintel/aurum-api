@@ -35,9 +35,9 @@ beforeAll(async () => {
 
   const fixtures = [
     [viewerId, viewerClerkId, 'hardening_viewer', 'Hardening Viewer', 'hardening-viewer@test.invalid', 0],
-    ['social-hardening-public', null, 'hardening_public', 'Public Author', 'hardening-public@test.invalid', 0],
-    ['social-hardening-private', null, 'hardening_private', 'Private Author', 'hardening-private@test.invalid', 0],
-    ['social-hardening-stealth', null, 'hardening_stealth', 'Stealth Author', 'hardening-stealth@test.invalid', 1],
+    ['social-hardening-public', 'clerk-hardening-public', 'hardening_public', 'Public Author', 'hardening-public@test.invalid', 0],
+    ['social-hardening-private', 'clerk-hardening-private', 'hardening_private', 'Private Author', 'hardening-private@test.invalid', 0],
+    ['social-hardening-stealth', 'clerk-hardening-stealth', 'hardening_stealth', 'Stealth Author', 'hardening-stealth@test.invalid', 1],
   ];
     for (const [id, clerkId, username, displayName, email, stealth] of fixtures) {
     await env.DB.prepare(`INSERT INTO users (
