@@ -42,9 +42,9 @@ verifyPayment: vi.fn(async reference => ({
   provider: 'paystack',
   providerReference: '123456',
   reference,
-  amountMinor: 500000,
-  currencyCode: 'NGN',
-  status: 'success',
+  amountMinor: 525000,
+currencyCode: 'NGN',
+status: 'success',
   metadata: {
     type: 'wallet_deposit',
     operation_id: currentOperationId,
