@@ -124,8 +124,11 @@ async function sendWebhook(event, signatureOverride = null) {
         'x-paystack-signature': signature,
       },
       body,
-    }
-  );
+      }
+);
+}
+
+beforeEach(() => {
 
   return handleWebhookRoutes(
   '/webhook/paystack',
