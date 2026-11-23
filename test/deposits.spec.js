@@ -15,7 +15,7 @@ const id = `deposit-user-${crypto.randomUUID()}`;
 await env.DB.prepare("INSERT INTO users ( id, clerk_id, username, display_name, email ) VALUES (?, ?, ?, ?, ?)").bind(
 id,
 `clerk-${id}`,
-"user-${crypto.randomUUID()}",
+`user-${id}`,
 'Deposit Test User',
 `${id}@example.com`
 ).run();
