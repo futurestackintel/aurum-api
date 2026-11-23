@@ -87,7 +87,7 @@ describe('Phase 2B notification preference migration and API', () => {
       messages: 1,
       crew_updates: 1,
     });
-
+    auth.requireAuth.mockClear();
     const response = await worker.fetch(new Request('https://aurum.test/api/users/me/notifications', {
       method: 'PATCH',
       headers: {
@@ -96,7 +96,7 @@ describe('Phase 2B notification preference migration and API', () => {
       },
       body: JSON.stringify({ messages: false, crew_updates: false }),
     }), env);
-
+    expect(auth.requireAuth).toHaveBeenCalled();
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.updated).toBe(true);
