@@ -28,6 +28,8 @@ email: `${id}@example.com`,
 
 function createPayments() {
 return {
+assertCurrencySupported: vi.fn(() => true),
+
 initializePayment: vi.fn(async ({
 reference,
 }) => ({
