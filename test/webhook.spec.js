@@ -8,8 +8,8 @@ const { confirmDepositMock } = vi.hoisted(() => ({
 vi.mock('../src/services/deposits.js', () => ({
   DepositService: class {
     confirmDeposit(...args) {
-  return confirmDepositMock(...args);
-}
+      return confirmDepositMock(...args);
+    }
   },
 }));
 
