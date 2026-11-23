@@ -8,9 +8,11 @@ const auth = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock('../src/middleware/auth.js', async importOriginal => ({
-  ...await importOriginal(),
-  ...auth,
+vi.mock('../src/middleware/auth.js', () => ({
+  requireAuth: auth.requireAuth,
+  optionalAuth: auth.optionalAuth,
+  requireAuthFromQuery: vi.fn(async () => ({ id: 'clerk-test-user' })),
+  requireAdmin: vi.fn(async () => ({ id: 'clerk-test-admin' })),
 }));
 
 import worker from '../src';
