@@ -115,6 +115,7 @@ describe('social authorization and privacy hardening', () => {
   it('includes public posts regardless of legacy stealth flags', async () => {
   auth.requireAuth.mockResolvedValue({ id: viewerClerkId });
   const response = await handleSearchRoutes('/api/search', 'GET',
+			expect(auth.requireAuth).toHaveBeenCalled();
     new Request(`https://aurum.test/api/search?q=${searchTerm}`), { DB: env.DB });
 
   expect(response.status).toBe(200);
