@@ -163,6 +163,8 @@ async function getAccountBalance(accountCode) {
 }
 
 function createWithdrawalPayments(status = 'success') {
+  let transferAmountMinor = null;
+
   return {
     assertCurrencySupported: vi.fn(() => true),
 
@@ -174,25 +176,25 @@ function createWithdrawalPayments(status = 'success') {
       reference,
       amountMinor,
       currencyCode,
-    }) => ({
-      reference,
-      amountMinor,
-      currencyCode,
-      transferCode: 'TRF_TEST_123',
-    })),
+    }) => {
+      transferAmountMinor = amountMinor;
+
+      return {
+        reference,
+        amountMinor,
+        currencyCode,
+        transferCode: 'TRF_TEST_123',
+      };
+    }),
 
     verifyTransfer: vi.fn(async reference => ({
       reference,
-      amountMinor: 25000,
+      amountMinor: transferAmountMinor,
       currencyCode: 'NGN',
       status,
     })),
   };
 }
-
-beforeEach(async () => {
-  await seedCurrencies();
-});
 
 describe('WithdrawalService finalization claims', () => {
   it('creates a settlement claim for an active withdrawal', async () => {
