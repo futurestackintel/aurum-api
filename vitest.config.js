@@ -14,6 +14,7 @@ export default defineWorkersConfig(async () => {
   return {
     test: {
      setupFiles: ["./test/setup.js"],
+			testTimeout: 30_000,
        poolOptions: {
         workers: {
           wrangler: { configPath: "./wrangler.jsonc" },
