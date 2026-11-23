@@ -190,18 +190,20 @@ describe('social authorization and privacy hardening', () => {
   });
 
   it('preserves existing notification rows and indexes in a local 0030 migration test', async () => {
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS notifications (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      type TEXT NOT NULL CHECK (type IN ('crew_mention', 'message_reaction', 'crew_join_request')),
-      title TEXT NOT NULL,
-      body TEXT NOT NULL,
-      action_url TEXT,
-      metadata TEXT,
-      is_read INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-      read_at TEXT
-    )`).run();
+    await env.DB.prepare(`DROP TABLE IF EXISTS notifications`).run();
+
+await env.DB.prepare(`CREATE TABLE notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('crew_mention', 'message_reaction', 'crew_join_request')),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  action_url TEXT,
+  metadata TEXT,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  read_at TEXT
+)`).run();
     await env.DB.prepare(`INSERT INTO notifications (id, user_id, type, title, body)
       VALUES ('social-migration-row-a', ?, 'crew_mention', 'Mention', 'Existing row A'),
              ('social-migration-row-b', ?, 'message_reaction', 'Reaction', 'Existing row B'),
