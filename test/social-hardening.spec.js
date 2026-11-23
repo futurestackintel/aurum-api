@@ -18,10 +18,9 @@ const viewerClerkId = 'clerk-hardening-viewer';
 const searchTerm = 'social_privacy_hardening_marker';
 
 beforeAll(async () => {
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS users (
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, clerk_id TEXT, username TEXT, display_name TEXT, email TEXT,
-    league TEXT, aurum_score INTEGER DEFAULT 0, hide_aurum_score INTEGER DEFAULT 0,
-    hide_league INTEGER DEFAULT 0, avatar_url TEXT, profile_visibility TEXT DEFAULT 'public',
+    league TEXT, aurum_score INTEGER DEFAULT 0,
     stealth_mode INTEGER DEFAULT 0, is_suspended INTEGER DEFAULT 0,
     account_deleted INTEGER DEFAULT 0, deleted_at TEXT
   )`).run();
@@ -35,16 +34,16 @@ beforeAll(async () => {
   )`).run();
 
   const fixtures = [
-    [viewerId, viewerClerkId, 'hardening_viewer', 'Hardening Viewer', 'hardening-viewer@test.invalid', 'public', 0],
-    ['social-hardening-public', null, 'hardening_public', 'Public Author', 'hardening-public@test.invalid', 'public', 0],
-    ['social-hardening-private', null, 'hardening_private', 'Private Author', 'hardening-private@test.invalid', 'private', 0],
-    ['social-hardening-stealth', null, 'hardening_stealth', 'Stealth Author', 'hardening-stealth@test.invalid', 'public', 1],
+    [viewerId, viewerClerkId, 'hardening_viewer', 'Hardening Viewer', 'hardening-viewer@test.invalid', 0],
+    ['social-hardening-public', null, 'hardening_public', 'Public Author', 'hardening-public@test.invalid', 0],
+    ['social-hardening-private', null, 'hardening_private', 'Private Author', 'hardening-private@test.invalid', 0],
+    ['social-hardening-stealth', null, 'hardening_stealth', 'Stealth Author', 'hardening-stealth@test.invalid', 1],
   ];
-  for (const [id, clerkId, username, displayName, email, visibility, stealth] of fixtures) {
+    for (const [id, clerkId, username, displayName, email, stealth] of fixtures) {
     await env.DB.prepare(`INSERT INTO users (
-      id, clerk_id, username, display_name, email, league, profile_visibility, stealth_mode
-    ) VALUES (?, ?, ?, ?, ?, 'gold', ?, ?) ON CONFLICT(id) DO NOTHING`)
-      .bind(id, clerkId, username, displayName, email, visibility, stealth).run();
+      id, clerk_id, username, display_name, email, league, stealth_mode
+    ) VALUES (?, ?, ?, ?, ?, 'gold', ?) ON CONFLICT(id) DO NOTHING`)
+      .bind(id, clerkId, username, displayName, email, stealth).run();
   }
   for (const [id, authorId] of [
     ['social-hardening-public-post', 'social-hardening-public'],
@@ -109,7 +108,7 @@ describe('social authorization and privacy hardening', () => {
     expect(cheerDb.statements[0]).toContain('is_suspended = 0');
   });
 
-  it('includes public posts regardless of legacy profile visibility or stealth flags', async () => {
+  it('includes public posts regardless of legacy stealth flags', async () => {
   auth.requireAuth.mockResolvedValue({ id: viewerClerkId });
   const response = await handleSearchRoutes('/api/search', 'GET',
     new Request(`https://aurum.test/api/search?q=${searchTerm}`), { DB: env.DB });
