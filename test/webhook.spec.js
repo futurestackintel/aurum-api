@@ -7,7 +7,7 @@ const { confirmDepositMock } = vi.hoisted(() => ({
 
 vi.mock('../src/services/deposits.js', () => ({
   DepositService: class {
-    confirmDeposit(...args) {
+    confirmDepositMock(...args) {
       return confirmDepositMock(...args);
     }
   },
@@ -138,8 +138,8 @@ async function sendWebhook(event, signatureOverride = null) {
 }
 
 beforeEach(() => {
-  confirmDeposit.mockReset();
-  confirmDeposit.mockResolvedValue({
+  confirmDepositMock.mockReset();
+  confirmDepositMock.mockResolvedValue({
     status: 'succeeded',
     alreadyCompleted: false,
   });
@@ -162,7 +162,7 @@ describe('Paystack wallet deposit webhook', () => {
     );
 
     expect(response.status).toBe(401);
-    expect(confirmDeposit).not.toHaveBeenCalled();
+    expect(confirmDepositMock).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid signature', async () => {
@@ -172,7 +172,7 @@ describe('Paystack wallet deposit webhook', () => {
     );
 
     expect(response.status).toBe(401);
-    expect(confirmDeposit).not.toHaveBeenCalled();
+    expect(confirmDepositMock).not.toHaveBeenCalled();
   });
 
   it('processes a verified deposit webhook and records the event', async () => {
@@ -182,8 +182,8 @@ describe('Paystack wallet deposit webhook', () => {
     const response = await sendWebhook(event);
 
     expect(response.status).toBe(200);
-    expect(confirmDeposit).toHaveBeenCalledOnce();
-    expect(confirmDeposit).toHaveBeenCalledWith(
+    expect(confirmDepositMock).toHaveBeenCalledOnce();
+    expect(confirmDepositMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: operation.userId,
         reference: operation.reference,
@@ -212,7 +212,7 @@ describe('Paystack wallet deposit webhook', () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(confirmDeposit).toHaveBeenCalledOnce();
+    expect(confirmDepositMock).toHaveBeenCalledOnce();
 
     const stored = await env.DB.prepare(`
       SELECT COUNT(*) AS total
@@ -227,7 +227,7 @@ describe('Paystack wallet deposit webhook', () => {
   const operation = await createDepositOperation();
   const event = createEvent(operation);
 
-  confirmDeposit.mockRejectedValueOnce(
+  confirmDepositMock.mockRejectedValueOnce(
     new Error('Simulated deposit settlement failure')
   );
 
@@ -251,7 +251,7 @@ describe('Paystack wallet deposit webhook', () => {
   const retryResponse = await sendWebhook(event);
 
   expect(retryResponse.status).toBe(200);
-  expect(confirmDeposit).toHaveBeenCalledTimes(2);
+  expect(confirmDepositMock).toHaveBeenCalledTimes(2);
 
   const retried = await env.DB.prepare(`
     SELECT processing_status, attempt_count, last_error
