@@ -15,7 +15,7 @@ vi.mock('../src/middleware/auth.js', () => ({
   requireAdmin: vi.fn(async () => ({ id: 'clerk-test-admin' })),
 }));
 
-import worker from '../src';
+import worker from '../src/index.js';
 
 const clerkId = 'clerk-notification-preferences-test';
 const userId = 'notification-preferences-test-user';
