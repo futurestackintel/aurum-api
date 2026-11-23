@@ -196,6 +196,10 @@ function createWithdrawalPayments(status = 'success') {
   };
 }
 
+beforeEach(async () => {
+  await seedCurrencies();
+});
+
 describe('WithdrawalService finalization claims', () => {
   it('creates a settlement claim for an active withdrawal', async () => {
     const operationId = await createWithdrawal();
