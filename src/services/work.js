@@ -904,3 +904,1010 @@ export async function acceptCrewWorkApplicationRole(
 
   return { success: true, application_id: applicationId };
     }
+
+// ── WORK ENGAGEMENTS ─────────────────────────────────────────
+
+export async function hireWorkApplication(
+  applicationId,
+  clientUserId,
+  input = {},
+  db,
+) {
+  try {
+    const application = await db.prepare(`
+      SELECT
+        a.*,
+        o.client_user_id,
+        o.pricing_model,
+        o.currency,
+        o.fixed_budget_minor,
+        o.hourly_rate_minor,
+        o.spending_limit_minor,
+        o.hire_capacity,
+        o.multi_hire_enabled,
+        o.status AS opportunity_status
+      FROM work_applications a
+      JOIN work_opportunities o ON o.id = a.opportunity_id
+      WHERE a.id = ?
+    `).bind(applicationId).first();
+
+    if (!application) return { error: 'Application not found' };
+
+    if (application.client_user_id !== clientUserId) {
+      return { error: 'Only the opportunity owner can hire applicants' };
+    }
+
+    if (application.opportunity_status !== 'open') {
+      return { error: 'This opportunity is no longer accepting hires' };
+    }
+
+    if (!['submitted', 'under_review', 'shortlisted'].includes(application.status)) {
+      return { error: 'This application cannot be hired' };
+    }
+
+    const existing = await db.prepare(`
+      SELECT id FROM work_engagements WHERE application_id = ?
+    `).bind(applicationId).first();
+
+    if (existing) return { error: 'This application already has an engagement' };
+
+    const hireCount = await db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM work_engagements
+      WHERE opportunity_id = ?
+        AND status NOT IN ('cancelled')
+    `).bind(application.opportunity_id).first();
+
+    if (Number(hireCount?.count || 0) >= application.hire_capacity) {
+      return { error: 'This opportunity has reached its hiring capacity' };
+    }
+
+    let fixedAmount = null;
+    let hourlyRate = null;
+    let spendingLimit = null;
+
+    if (application.pricing_model === 'fixed') {
+      fixedAmount = input.agreed_fixed_amount_minor
+        ?? application.proposed_fixed_amount_minor
+        ?? application.fixed_budget_minor;
+
+      if (!validMinorAmount(fixedAmount)) {
+        return { error: 'A valid agreed fixed amount is required' };
+      }
+    } else {
+      hourlyRate = input.agreed_hourly_rate_minor
+        ?? application.proposed_hourly_rate_minor
+        ?? application.hourly_rate_minor;
+
+      spendingLimit = input.agreed_spending_limit_minor
+        ?? application.spending_limit_minor;
+
+      if (
+        !validMinorAmount(hourlyRate) ||
+        !validMinorAmount(spendingLimit) ||
+        hourlyRate > spendingLimit ||
+        spendingLimit > application.spending_limit_minor
+      ) {
+        return { error: 'Invalid agreed hourly rate or spending limit' };
+      }
+    }
+
+    const engagementId = newId();
+    const now = nowISO();
+
+    const statements = [
+      db.prepare(`
+        INSERT INTO work_engagements (
+          id,
+          opportunity_id,
+          application_id,
+          client_user_id,
+          provider_type,
+          provider_user_id,
+          provider_crew_id,
+          pricing_model,
+          currency,
+          agreed_fixed_amount_minor,
+          agreed_hourly_rate_minor,
+          agreed_spending_limit_minor,
+          status,
+          created_at,
+          updated_at
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          'pending_acceptance', ?, ?
+        WHERE (
+          SELECT COUNT(*)
+          FROM work_engagements
+          WHERE opportunity_id = ?
+            AND status <> 'cancelled'
+        ) < ?
+      `).bind(
+        engagementId,
+        application.opportunity_id,
+        applicationId,
+        clientUserId,
+        application.applicant_type,
+        application.applicant_user_id,
+        application.applicant_crew_id,
+        application.pricing_model,
+        application.currency,
+        fixedAmount,
+        hourlyRate,
+        spendingLimit,
+        now,
+        now,
+        application.opportunity_id,
+        application.hire_capacity,
+      ),
+      db.prepare(`
+        UPDATE work_applications
+        SET status = 'hired', updated_at = ?
+        WHERE id = ?
+          AND status IN ('submitted', 'under_review', 'shortlisted')
+      `).bind(now, applicationId),
+    ];
+
+    let selectedMembers = [];
+
+    if (application.applicant_type === 'crew') {
+      const governance = await db.prepare(`
+        SELECT
+          COUNT(*) AS eligible_count,
+          SUM(CASE WHEN a.vote = 'approve' THEN 1 ELSE 0 END) AS approvals,
+          MAX(
+            CASE
+              WHEN a.is_captain_approval = 1 AND a.vote = 'approve'
+              THEN 1 ELSE 0
+            END
+          ) AS captain_approved
+        FROM work_crew_application_voter_snapshot s
+        LEFT JOIN work_crew_application_approvals a
+          ON a.application_id = s.application_id
+         AND a.user_id = s.user_id
+        WHERE s.application_id = ?
+          AND s.crew_id = ?
+      `).bind(applicationId, application.applicant_crew_id).first();
+
+      const eligibleCount = Number(governance?.eligible_count || 0);
+      const approvals = Number(governance?.approvals || 0);
+
+      if (
+        !eligibleCount ||
+        approvals <= eligibleCount / 2 ||
+        Number(governance.captain_approved || 0) !== 1
+      ) {
+        return { error: 'Crew governance approval is incomplete' };
+      }
+
+      const proposed = await db.prepare(`
+        SELECT user_id, proposed_role, role_accepted
+        FROM work_application_crew_members
+        WHERE application_id = ?
+          AND crew_id = ?
+      `).bind(applicationId, application.applicant_crew_id).all();
+
+      const proposedMembers = proposed.results || [];
+      const requestedIds = input.selected_member_user_ids;
+
+      if (
+        !Array.isArray(requestedIds) ||
+        requestedIds.length < 1 ||
+        new Set(requestedIds).size !== requestedIds.length
+      ) {
+        return { error: 'Select the Crew members who will participate' };
+      }
+
+      const proposedById = new Map(
+        proposedMembers.map(member => [member.user_id, member]),
+      );
+
+      for (const userId of requestedIds) {
+        const member = proposedById.get(userId);
+
+        if (!member || !member.role_accepted) {
+          return {
+            error: 'Every selected Crew participant must have accepted their proposed role',
+          };
+        }
+
+        const activeMembership = await getActiveMembership(
+          application.applicant_crew_id,
+          userId,
+          db,
+        );
+
+        if (!activeMembership) {
+          return {
+            error: 'A selected participant is no longer an active Crew member',
+          };
+        }
+
+        selectedMembers.push(member);
+      }
+
+      const snapshot = await db.prepare(`
+        SELECT user_id, role_snapshot
+        FROM work_crew_application_voter_snapshot
+        WHERE application_id = ?
+          AND crew_id = ?
+      `).bind(applicationId, application.applicant_crew_id).all();
+
+      for (const voter of snapshot.results || []) {
+        const current = await getActiveMembership(
+          application.applicant_crew_id,
+          voter.user_id,
+          db,
+        );
+
+        if (!current || current.role !== voter.role_snapshot) {
+          return {
+            error: 'Crew membership or leadership changed after voting. Submit a new proposal for fresh approval.',
+          };
+        }
+      }
+
+      for (const member of selectedMembers) {
+        statements.push(db.prepare(`
+          INSERT INTO work_engagement_participants (
+            id,
+            engagement_id,
+            user_id,
+            assigned_role,
+            accepted_at,
+            status
+          )
+          VALUES (?, ?, ?, ?, ?, 'accepted')
+        `).bind(
+          newId(),
+          engagementId,
+          member.user_id,
+          member.proposed_role,
+          now,
+        ));
+      }
+    } else {
+      selectedMembers = [{
+        user_id: application.applicant_user_id,
+        proposed_role: 'Individual provider',
+      }];
+
+      statements.push(db.prepare(`
+        INSERT INTO work_engagement_participants (
+          id,
+          engagement_id,
+          user_id,
+          assigned_role,
+          accepted_at,
+          status
+        )
+        VALUES (?, ?, ?, ?, NULL, 'pending')
+      `).bind(
+        newId(),
+        engagementId,
+        application.applicant_user_id,
+        'Individual provider',
+      ));
+    }
+
+    const result = await db.batch(statements);
+
+    if (!result[0]?.meta?.changes) {
+      return { error: 'Hiring capacity was reached or engagement creation failed' };
+    }
+
+    if (!result[1]?.meta?.changes) {
+      return { error: 'Application status changed. Please refresh and try again.' };
+    }
+
+    return {
+      success: true,
+      engagement_id: engagementId,
+      status: 'pending_acceptance',
+      provider_type: application.applicant_type,
+      participant_count: selectedMembers.length,
+    };
+  } catch (error) {
+    if (error.message?.includes('UNIQUE')) {
+      return { error: 'An engagement already exists for this application' };
+    }
+
+    return { error: error.message || 'Unable to create engagement' };
+  }
+}
+
+
+// ── PROVIDER ROLE ACCEPTANCE ──────────────────────────────────
+
+export async function acceptWorkEngagementRole(
+  engagementId,
+  userId,
+  db,
+) {
+  const participant = await db.prepare(`
+    SELECT
+      p.id,
+      p.status,
+      e.status AS engagement_status,
+      e.provider_type,
+      e.provider_crew_id
+    FROM work_engagement_participants p
+    JOIN work_engagements e ON e.id = p.engagement_id
+    WHERE p.engagement_id = ?
+      AND p.user_id = ?
+  `).bind(engagementId, userId).first();
+
+  if (!participant) return { error: 'Engagement participant not found' };
+
+  if (participant.status !== 'pending') {
+    return { error: 'This participation is no longer pending' };
+  }
+
+  if (participant.engagement_status !== 'pending_acceptance') {
+    return { error: 'This engagement is no longer awaiting acceptance' };
+  }
+
+  if (participant.provider_type === 'crew') {
+    const membership = await getActiveMembership(
+      participant.provider_crew_id,
+      userId,
+      db,
+    );
+
+    if (!membership) {
+      return { error: 'You must remain an active Crew member to participate' };
+    }
+  }
+
+  const result = await db.prepare(`
+    UPDATE work_engagement_participants
+    SET status = 'accepted',
+        accepted_at = ?
+    WHERE id = ?
+      AND status = 'pending'
+  `).bind(nowISO(), participant.id).run();
+
+  if (!result.meta.changes) {
+    return { error: 'Your acceptance could not be recorded' };
+  }
+
+  return { success: true, engagement_id: engagementId };
+}
+
+
+// ── ENGAGEMENT ACTIVATION ─────────────────────────────────────
+
+export async function activateWorkEngagement(
+  engagementId,
+  clientUserId,
+  db,
+) {
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+      AND client_user_id = ?
+  `).bind(engagementId, clientUserId).first();
+
+  if (!engagement) return { error: 'Engagement not found' };
+
+  if (engagement.status !== 'pending_acceptance') {
+    return { error: 'Engagement is not awaiting activation' };
+  }
+
+  const participants = await db.prepare(`
+    SELECT user_id, status
+    FROM work_engagement_participants
+    WHERE engagement_id = ?
+  `).bind(engagementId).all();
+
+  const rows = participants.results || [];
+
+  if (!rows.length || rows.some(row => row.status !== 'accepted')) {
+    return { error: 'Every selected provider must accept before activation' };
+  }
+
+  if (engagement.provider_type === 'crew') {
+    for (const participant of rows) {
+      const membership = await getActiveMembership(
+        engagement.provider_crew_id,
+        participant.user_id,
+        db,
+      );
+
+      if (!membership) {
+        return {
+          error: 'A selected participant is no longer an active Crew member',
+        };
+      }
+    }
+
+    const captain = await db.prepare(`
+      SELECT user_id
+      FROM crew_members
+      WHERE crew_id = ?
+        AND role = 'captain'
+    `).bind(engagement.provider_crew_id).first();
+
+    if (!captain) {
+      return { error: 'Crew leadership must be restored before activation' };
+    }
+
+    const application = await db.prepare(`
+      SELECT id FROM work_applications
+      WHERE id = ?
+    `).bind(engagement.application_id).first();
+
+    const snapshot = await db.prepare(`
+      SELECT user_id, role_snapshot
+      FROM work_crew_application_voter_snapshot
+      WHERE application_id = ?
+        AND crew_id = ?
+    `).bind(
+      application.id,
+      engagement.provider_crew_id,
+    ).all();
+
+    for (const voter of snapshot.results || []) {
+      const membership = await getActiveMembership(
+        engagement.provider_crew_id,
+        voter.user_id,
+        db,
+      );
+
+      if (!membership || membership.role !== voter.role_snapshot) {
+        return {
+          error: 'Crew membership changed after approval. This engagement cannot be activated.',
+        };
+      }
+    }
+  }
+
+  const now = nowISO();
+
+  const result = await db.prepare(`
+    UPDATE work_engagements
+    SET status = 'active',
+        activated_at = ?,
+        updated_at = ?
+    WHERE id = ?
+      AND client_user_id = ?
+      AND status = 'pending_acceptance'
+  `).bind(now, now, engagementId, clientUserId).run();
+
+  if (!result.meta.changes) {
+    return { error: 'Engagement activation failed. Refresh and try again.' };
+  }
+
+  return { success: true, engagement_id: engagementId, status: 'active' };
+}
+
+
+// ── MILESTONES ────────────────────────────────────────────────
+
+export async function createWorkMilestone(
+  engagementId,
+  clientUserId,
+  input,
+  db,
+) {
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+      AND client_user_id = ?
+      AND status IN ('active', 'revision_requested')
+      AND pricing_model = 'fixed'
+  `).bind(engagementId, clientUserId).first();
+
+  if (!engagement) {
+    return { error: 'Active fixed-price engagement not found' };
+  }
+
+  if (!validText(input?.title, 3, 160)) {
+    return { error: 'Milestone title must be between 3 and 160 characters' };
+  }
+
+  if (
+    input.description != null &&
+    !validText(input.description, 1, 5000)
+  ) {
+    return { error: 'Invalid milestone description' };
+  }
+
+  if (!validMinorAmount(input.amount_minor)) {
+    return { error: 'A valid milestone amount is required' };
+  }
+
+  const totals = await db.prepare(`
+    SELECT COALESCE(SUM(amount_minor), 0) AS total
+    FROM work_milestones
+    WHERE engagement_id = ?
+      AND status <> 'cancelled'
+  `).bind(engagementId).first();
+
+  if (
+    Number(totals?.total || 0) + input.amount_minor >
+    engagement.agreed_fixed_amount_minor
+  ) {
+    return { error: 'Milestone amounts cannot exceed the agreed engagement amount' };
+  }
+
+  const dueAt = input.due_at ?? null;
+
+  if (dueAt && (!Number.isFinite(Date.parse(dueAt)) || Date.parse(dueAt) <= Date.now())) {
+    return { error: 'Milestone due date must be a valid future date' };
+  }
+
+  const position = await db.prepare(`
+    SELECT COALESCE(MAX(position), 0) + 1 AS next_position
+    FROM work_milestones
+    WHERE engagement_id = ?
+  `).bind(engagementId).first();
+
+  const id = newId();
+  const now = nowISO();
+
+  await db.prepare(`
+    INSERT INTO work_milestones (
+      id, engagement_id, title, description,
+      amount_minor, due_at, position, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    id,
+    engagementId,
+    input.title.trim(),
+    input.description?.trim() || null,
+    input.amount_minor,
+    dueAt,
+    position.next_position,
+    now,
+    now,
+  ).run();
+
+  return { success: true, milestone_id: id };
+}
+
+
+// ── WORK SUBMISSIONS ──────────────────────────────────────────
+
+async function canUserDeliverForEngagement(engagement, userId, db) {
+  if (
+    engagement.provider_type === 'individual' &&
+    engagement.provider_user_id === userId
+  ) {
+    return true;
+  }
+
+  if (engagement.provider_type === 'crew') {
+    const participant = await db.prepare(`
+      SELECT id
+      FROM work_engagement_participants
+      WHERE engagement_id = ?
+        AND user_id = ?
+        AND status = 'accepted'
+    `).bind(engagement.id, userId).first();
+
+    if (!participant) return false;
+
+    return !!(await getActiveMembership(
+      engagement.provider_crew_id,
+      userId,
+      db,
+    ));
+  }
+
+  return false;
+}
+
+export async function submitWorkDeliverable(
+  engagementId,
+  submittingUserId,
+  input,
+  db,
+) {
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+      AND status IN ('active', 'revision_requested')
+      AND pricing_model = 'fixed'
+  `).bind(engagementId).first();
+
+  if (!engagement) return { error: 'Active fixed-price engagement not found' };
+
+  if (!(await canUserDeliverForEngagement(engagement, submittingUserId, db))) {
+    return { error: 'You are not an accepted provider on this engagement' };
+  }
+
+  if (!validText(input?.message, 5, 12000)) {
+    return { error: 'Submission message must be between 5 and 12,000 characters' };
+  }
+
+  const milestoneId = input.milestone_id ?? null;
+
+  if (milestoneId) {
+    const milestone = await db.prepare(`
+      SELECT id, status
+      FROM work_milestones
+      WHERE id = ?
+        AND engagement_id = ?
+    `).bind(milestoneId, engagementId).first();
+
+    if (!milestone) return { error: 'Milestone not found' };
+
+    if (!['pending', 'in_progress', 'revision_requested'].includes(milestone.status)) {
+      return { error: 'This milestone is not accepting submissions' };
+    }
+  }
+
+  const id = newId();
+  const now = nowISO();
+
+  const statements = [
+    db.prepare(`
+      INSERT INTO work_submissions (
+        id, engagement_id, milestone_id,
+        submitted_by_user_id, message, status, submitted_at
+      )
+      VALUES (?, ?, ?, ?, ?, 'submitted', ?)
+    `).bind(
+      id,
+      engagementId,
+      milestoneId,
+      submittingUserId,
+      input.message.trim(),
+      now,
+    ),
+    db.prepare(`
+      UPDATE work_engagements
+      SET status = 'submitted', updated_at = ?
+      WHERE id = ?
+        AND status IN ('active', 'revision_requested')
+    `).bind(now, engagementId),
+  ];
+
+  if (milestoneId) {
+    statements.push(db.prepare(`
+      UPDATE work_milestones
+      SET status = 'submitted', updated_at = ?
+      WHERE id = ?
+    `).bind(now, milestoneId));
+  }
+
+  await db.batch(statements);
+
+  return { success: true, submission_id: id };
+}
+
+
+// ── CLIENT SUBMISSION REVIEW ──────────────────────────────────
+
+export async function reviewWorkSubmission(
+  submissionId,
+  clientUserId,
+  decision,
+  message,
+  db,
+) {
+  if (!['approve', 'request_revision', 'reject'].includes(decision)) {
+    return { error: 'Invalid submission decision' };
+  }
+
+  if (
+    decision === 'request_revision' &&
+    !validText(message, 3, 5000)
+  ) {
+    return { error: 'A revision explanation is required' };
+  }
+
+  const submission = await db.prepare(`
+    SELECT
+      s.*,
+      e.client_user_id,
+      e.id AS engagement_id,
+      e.status AS engagement_status
+    FROM work_submissions s
+    JOIN work_engagements e ON e.id = s.engagement_id
+    WHERE s.id = ?
+  `).bind(submissionId).first();
+
+  if (!submission) return { error: 'Submission not found' };
+
+  if (submission.client_user_id !== clientUserId) {
+    return { error: 'Only the client can review this submission' };
+  }
+
+  if (submission.status !== 'submitted') {
+    return { error: 'This submission has already been reviewed' };
+  }
+
+  const now = nowISO();
+
+  const submissionStatus = decision === 'approve'
+    ? 'approved'
+    : decision === 'request_revision'
+      ? 'revision_requested'
+      : 'rejected';
+
+  const engagementStatus = decision === 'approve'
+    ? 'active'
+    : decision === 'request_revision'
+      ? 'revision_requested'
+      : 'disputed';
+
+  const statements = [
+    db.prepare(`
+      UPDATE work_submissions
+      SET status = ?,
+          reviewed_at = ?,
+          reviewed_by_user_id = ?
+      WHERE id = ?
+        AND status = 'submitted'
+    `).bind(
+      submissionStatus,
+      now,
+      clientUserId,
+      submissionId,
+    ),
+    db.prepare(`
+      UPDATE work_engagements
+      SET status = ?, updated_at = ?
+      WHERE id = ?
+        AND status = 'submitted'
+    `).bind(
+      engagementStatus,
+      now,
+      submission.engagement_id,
+    ),
+  ];
+
+  if (submission.milestone_id) {
+    const milestoneStatus = decision === 'approve'
+      ? 'approved'
+      : decision === 'request_revision'
+        ? 'revision_requested'
+        : 'cancelled';
+
+    statements.push(db.prepare(`
+      UPDATE work_milestones
+      SET status = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(milestoneStatus, now, submission.milestone_id));
+  }
+
+  if (decision === 'approve' && !submission.milestone_id) {
+    statements.push(db.prepare(`
+      UPDATE work_engagements
+      SET status = 'completed',
+          completed_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).bind(now, now, submission.engagement_id));
+  }
+
+  if (decision === 'request_revision') {
+    statements.push(db.prepare(`
+      INSERT INTO work_submission_revisions (
+        id, submission_id, author_user_id, message, created_at
+      )
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(
+      newId(),
+      submissionId,
+      clientUserId,
+      message.trim(),
+      now,
+    ));
+  }
+
+  await db.batch(statements);
+
+  return {
+    success: true,
+    submission_id: submissionId,
+    status: submissionStatus,
+  };
+}
+
+
+// ── HOURLY TIME ENTRIES ───────────────────────────────────────
+
+export async function submitWorkTimeEntry(
+  engagementId,
+  submittingUserId,
+  input,
+  db,
+) {
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+      AND status = 'active'
+      AND pricing_model = 'hourly'
+  `).bind(engagementId).first();
+
+  if (!engagement) return { error: 'Active hourly engagement not found' };
+
+  if (!(await canUserDeliverForEngagement(engagement, submittingUserId, db))) {
+    return { error: 'You are not an accepted provider on this engagement' };
+  }
+
+  if (!validText(input?.description, 5, 2000)) {
+    return { error: 'Time entry description must be between 5 and 2,000 characters' };
+  }
+
+  const start = Date.parse(input.started_at);
+  const end = Date.parse(input.ended_at);
+
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end <= start
+  ) {
+    return { error: 'Valid start and end timestamps are required' };
+  }
+
+  const durationMinutes = Math.round((end - start) / 60000);
+
+  if (durationMinutes < 1) {
+    return { error: 'Time entry must be at least one minute' };
+  }
+
+  const existing = await db.prepare(`
+    SELECT id
+    FROM work_time_entries
+    WHERE engagement_id = ?
+      AND user_id = ?
+      AND status <> 'rejected'
+      AND started_at < ?
+      AND ended_at > ?
+    LIMIT 1
+  `).bind(
+    engagementId,
+    submittingUserId,
+    new Date(end).toISOString(),
+    new Date(start).toISOString(),
+  ).first();
+
+  if (existing) {
+    return { error: 'This time entry overlaps an existing entry' };
+  }
+
+  const used = await db.prepare(`
+    SELECT COALESCE(SUM(duration_minutes), 0) AS minutes
+    FROM work_time_entries
+    WHERE engagement_id = ?
+      AND status IN ('submitted', 'approved', 'disputed')
+  `).bind(engagementId).first();
+
+  const alreadyUsedMinor =
+    Math.ceil(Number(used?.minutes || 0) * engagement.agreed_hourly_rate_minor / 60);
+
+  const proposedMinor =
+    Math.ceil(durationMinutes * engagement.agreed_hourly_rate_minor / 60);
+
+  if (
+    alreadyUsedMinor + proposedMinor >
+    engagement.agreed_spending_limit_minor
+  ) {
+    return { error: 'This time entry would exceed the agreed spending limit' };
+  }
+
+  const id = newId();
+
+  await db.prepare(`
+    INSERT INTO work_time_entries (
+      id, engagement_id, user_id, description,
+      started_at, ended_at, duration_minutes,
+      status, submitted_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'submitted', ?)
+  `).bind(
+    id,
+    engagementId,
+    submittingUserId,
+    input.description.trim(),
+    new Date(start).toISOString(),
+    new Date(end).toISOString(),
+    durationMinutes,
+    nowISO(),
+  ).run();
+
+  return {
+    success: true,
+    time_entry_id: id,
+    duration_minutes: durationMinutes,
+    status: 'submitted',
+  };
+}
+
+
+// ── CLIENT TIME ENTRY REVIEW ──────────────────────────────────
+
+export async function reviewWorkTimeEntry(
+  timeEntryId,
+  clientUserId,
+  decision,
+  db,
+) {
+  if (!['approve', 'reject', 'dispute'].includes(decision)) {
+    return { error: 'Invalid time entry decision' };
+  }
+
+  const entry = await db.prepare(`
+    SELECT
+      t.*,
+      e.client_user_id,
+      e.id AS engagement_id,
+      e.agreed_hourly_rate_minor,
+      e.agreed_spending_limit_minor
+    FROM work_time_entries t
+    JOIN work_engagements e ON e.id = t.engagement_id
+    WHERE t.id = ?
+  `).bind(timeEntryId).first();
+
+  if (!entry) return { error: 'Time entry not found' };
+
+  if (entry.client_user_id !== clientUserId) {
+    return { error: 'Only the client can review time entries' };
+  }
+
+  if (entry.status !== 'submitted') {
+    return { error: 'This time entry has already been reviewed' };
+  }
+
+  if (decision === 'approve') {
+    const approved = await db.prepare(`
+      SELECT COALESCE(SUM(duration_minutes), 0) AS minutes
+      FROM work_time_entries
+      WHERE engagement_id = ?
+        AND status = 'approved'
+    `).bind(entry.engagement_id).first();
+
+    const approvedMinor = Math.ceil(
+      Number(approved?.minutes || 0) *
+      entry.agreed_hourly_rate_minor / 60,
+    );
+
+    const entryMinor = Math.ceil(
+      entry.duration_minutes *
+      entry.agreed_hourly_rate_minor / 60,
+    );
+
+    if (approvedMinor + entryMinor > entry.agreed_spending_limit_minor) {
+      return { error: 'Approval would exceed the agreed spending limit' };
+    }
+  }
+
+  const status = decision === 'approve'
+    ? 'approved'
+    : decision === 'dispute'
+      ? 'disputed'
+      : 'rejected';
+
+  const result = await db.prepare(`
+    UPDATE work_time_entries
+    SET status = ?,
+        reviewed_at = ?,
+        reviewed_by_user_id = ?
+    WHERE id = ?
+      AND status = 'submitted'
+  `).bind(
+    status,
+    nowISO(),
+    clientUserId,
+    timeEntryId,
+  ).run();
+
+  if (!result.meta.changes) {
+    return { error: 'Time entry review could not be recorded' };
+  }
+
+  return {
+    success: true,
+    time_entry_id: timeEntryId,
+    status,
+  };
+}
