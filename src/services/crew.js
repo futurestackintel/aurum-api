@@ -8,6 +8,7 @@
 
 import { addScoreEvent } from './aurumScore.js';
 import { notificationEnabled } from './notifications.js';
+import { publishNotification } from './notificationPublisher.js';
 import { CrewBattleFinancialService } from './crewBattleFinancials.js';
 import { toMinorUnits, fromMinorUnits } from './money.js';
 function nowISO() {
@@ -342,23 +343,28 @@ export async function inviteToCrew(crewId, clerkId, targetUsername, db) {
   const now = nowISO();
   const crewRow = await db.prepare(`SELECT name FROM crews WHERE id = ?`).bind(crewId).first();
 
-  const inviteStatements = [
-    db.prepare(`
-      INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
-      VALUES (?, ?, ?, 'invite', 'pending', ?)
-    `).bind(id, crewId, targetUserId, now),
-  ];
-  if (await notificationEnabled(targetUserId, 'crew_updates', db)) {
-    inviteStatements.push(db.prepare(`
-      INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
-      VALUES (?, ?, 'crew_invite', 'Crew Invite', ?, '/crews', ?)
-    `).bind(
-      crypto.randomUUID(),
-      targetUserId,
-      `You've been invited to join ${crewRow?.name || 'a crew'}.`,
-      now,
-    ));
-  }
+  await db.prepare(`
+  INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
+  VALUES (?, ?, ?, 'invite', 'pending', ?)
+`).bind(id, crewId, targetUserId, now).run();
+
+try {
+  await publishNotification(db, {
+    recipientUserId: targetUserId,
+    type: 'crew_invite',
+    title: 'Crew Invite',
+    body: `You've been invited to join ${crewRow?.name || 'a crew'}.`,
+    actionUrl: '/crews',
+    preference: 'crew_updates',
+    actorType: 'member',
+    actorId: userId,
+    resourceType: 'crew_join_request',
+    resourceId: id,
+    requestId: id,
+  });
+} catch (error) {
+  console.error('[crew-invite-notification]', error);
+}
   await db.batch(inviteStatements);
 
     return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
@@ -401,26 +407,30 @@ export async function requestToJoinCrew(crewId, clerkId, db) {
     .bind(crewId)
     .first();
 
-  const statements = [
-    db.prepare(`
-      INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
-      VALUES (?, ?, ?, 'request', 'pending', ?)
-    `).bind(id, crewId, userId, now),
-  ];
+  await db.prepare(`
+  INSERT INTO crew_join_requests (id, crew_id, user_id, type, status, created_at)
+  VALUES (?, ?, ?, 'request', 'pending', ?)
+`).bind(id, crewId, userId, now).run();
 
-  if (captainRow && await notificationEnabled(captainRow.user_id, 'crew_updates', db)) {
-    statements.push(
-      db.prepare(`
-        INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
-        VALUES (?, ?, 'crew_join_request', 'Join Request', ?, '/crews', ?)
-      `).bind(
-        crypto.randomUUID(),
-        captainRow.user_id,
-        `Someone requested to join ${crew.name}.`,
-        now,
-      )
-    );
+if (captainRow) {
+  try {
+    await publishNotification(db, {
+      recipientUserId: captainRow.user_id,
+      type: 'crew_join_request',
+      title: 'Join Request',
+      body: `Someone requested to join ${crew.name}.`,
+      actionUrl: '/crews',
+      preference: 'crew_updates',
+      actorType: 'member',
+      actorId: userId,
+      resourceType: 'crew_join_request',
+      resourceId: id,
+      requestId: id,
+    });
+  } catch (error) {
+    console.error('[crew-join-request-notification]', error);
   }
+}
 
   await db.batch(statements);
 
@@ -738,18 +748,23 @@ export async function kickMember(crewId, clerkId, targetUserId, db) {
     `).bind(crewId, targetUserId),
   ]);
 
-  if (await notificationEnabled(targetUserId, 'crew_updates', db)) await db.prepare(`
-      INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
-      VALUES (?, ?, 'crew_kicked', 'Removed from crew', ?, ?, ?)
-    `)
-    .bind(
-      crypto.randomUUID(),
-      targetUserId,
-      `You were removed from ${crewRow?.name || 'a crew'}.`,
-      '/crews',
-      new Date().toISOString(),
-    )
-    .run();
+  try {
+  await publishNotification(db, {
+    recipientUserId: targetUserId,
+    type: 'crew_kicked',
+    title: 'Removed from crew',
+    body: `You were removed from ${crewRow?.name || 'a crew'}.`,
+    actionUrl: '/crews',
+    preference: 'crew_updates',
+    actorType: 'member',
+    actorId: userId,
+    resourceType: 'crew',
+    resourceId: crewId,
+    requestId: `${crewId}:${targetUserId}:kicked:${kickedAt}`,
+  });
+} catch (error) {
+  console.error('[crew-kicked-notification]', error);
+}
 
   return { kicked: true, crew_id: crewId, target_user_id: targetUserId };
 }
