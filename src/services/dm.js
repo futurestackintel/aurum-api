@@ -1,4 +1,5 @@
 import { notificationEnabled } from './notifications.js';
+import { publishNotification } from './notificationPublisher.js';
 
 export async function getOrCreateDmChannel(userAId, userBId, db) {
     if (userAId === userBId) {
@@ -121,19 +122,24 @@ export async function sendDmMessage(channelId, senderId, content, db, replyToMes
   const recipientId = senderId === channel.user_a_id ? channel.user_b_id : channel.user_a_id;
   const senderRow = await db.prepare(`SELECT username FROM users WHERE id = ?`).bind(senderId).first();
   if (await notificationEnabled(recipientId, 'messages', db)) {
-    await db.prepare(`
-        INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
-        VALUES (?, ?, 'dm_received', 'New message', ?, ?, ?)
-      `)
-      .bind(
-        crypto.randomUUID(),
-        recipientId,
-        `${senderRow?.username || 'Someone'} sent you a message.`,
-        `/messages/${channelId}`,
-        new Date().toISOString(),
-      )
-      .run();
+  try {
+    await publishNotification(db, {
+      recipientUserId: recipientId,
+      type: 'dm_received',
+      title: 'New message',
+      body: `${senderRow?.username || 'Someone'} sent you a message.`,
+      actionUrl: `/messages/${channelId}`,
+      preference: 'messages',
+      actorType: 'member',
+      actorId: senderId,
+      resourceType: 'dm_message',
+      resourceId: messageId,
+      requestId: messageId,
+    });
+  } catch (error) {
+    console.error('[dm-notification]', error);
   }
+}
 
   return { message_id: messageId, reply_to_message_id: validReplyId };
 }
