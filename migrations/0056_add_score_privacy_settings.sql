@@ -1,10 +1,25 @@
--- Stage 2 test/schema reconciliation:
--- Add the existing score and league visibility preferences.
+-- Stage 2 schema reconciliation:
+-- Score privacy columns already exist in production.
+-- Enforce valid boolean values without attempting to add them again.
 
-ALTER TABLE users
-ADD COLUMN hide_aurum_score INTEGER NOT NULL DEFAULT 0
-CHECK (hide_aurum_score IN (0, 1));
+CREATE TRIGGER IF NOT EXISTS users_score_privacy_insert_guard
+BEFORE INSERT ON users
+WHEN
+  NEW.hide_aurum_score IS NULL
+  OR NEW.hide_aurum_score NOT IN (0, 1)
+  OR NEW.hide_league IS NULL
+  OR NEW.hide_league NOT IN (0, 1)
+BEGIN
+  SELECT RAISE(ABORT, 'Invalid score privacy setting');
+END;
 
-ALTER TABLE users
-ADD COLUMN hide_league INTEGER NOT NULL DEFAULT 0
-CHECK (hide_league IN (0, 1));
+CREATE TRIGGER IF NOT EXISTS users_score_privacy_update_guard
+BEFORE UPDATE OF hide_aurum_score, hide_league ON users
+WHEN
+  NEW.hide_aurum_score IS NULL
+  OR NEW.hide_aurum_score NOT IN (0, 1)
+  OR NEW.hide_league IS NULL
+  OR NEW.hide_league NOT IN (0, 1)
+BEGIN
+  SELECT RAISE(ABORT, 'Invalid score privacy setting');
+END;
