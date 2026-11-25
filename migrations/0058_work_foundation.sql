@@ -373,6 +373,35 @@ CREATE TABLE work_engagement_participants (
 CREATE INDEX idx_work_engagement_participants
 ON work_engagement_participants(engagement_id, status);
 
+-- ------------------------------------------------------------
+-- 4B. IMMUTABLE CREW APPLICATION VOTER SNAPSHOT
+-- Captures eligible voters and their roles at proposal submission.
+-- ------------------------------------------------------------
+
+CREATE TABLE work_crew_application_voter_snapshot (
+  id TEXT PRIMARY KEY,
+
+  application_id TEXT NOT NULL
+    REFERENCES work_applications(id) ON DELETE RESTRICT,
+
+  crew_id TEXT NOT NULL
+    REFERENCES crews(id) ON DELETE RESTRICT,
+
+  user_id TEXT NOT NULL
+    REFERENCES users(id) ON DELETE RESTRICT,
+
+  role_snapshot TEXT NOT NULL,
+
+  created_at TEXT NOT NULL DEFAULT (
+    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  ),
+
+  UNIQUE(application_id, user_id)
+);
+
+CREATE INDEX idx_work_crew_voter_snapshot
+ON work_crew_application_voter_snapshot(application_id, crew_id);
+
 
 -- ------------------------------------------------------------
 -- 7. FIXED-PRICE MILESTONES
