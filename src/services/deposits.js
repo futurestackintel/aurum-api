@@ -7,6 +7,7 @@ import {
   calculateFeeMinor,
   addMinorUnits,
 } from './money.js';
+import { publishNotification } from './notificationPublisher.js';
 function requireText(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`${fieldName} is required`);
@@ -506,6 +507,24 @@ return {
         );
       }
     }
+
+	      if (posting.created && update.meta?.changes === 1) {
+      try {
+        await publishNotification(this.db, {
+          recipientUserId: userId,
+          type: 'deposit_completed',
+          title: 'Wallet funded',
+          body: 'Your wallet deposit has been completed successfully.',
+          actionUrl: '/wallet/transactions',
+          actorType: 'system',
+          resourceType: 'payment_operation',
+          resourceId: operation.id,
+          requestId,
+        });
+      } catch (error) {
+        console.error('Deposit notification failed:', error);
+      }
+		  }
 
     return {
       operationId: operation.id,
