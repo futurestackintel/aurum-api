@@ -1042,7 +1042,7 @@ export async function hireWorkApplication(
       ),
       db.prepare(`
         UPDATE work_applications
-        SET status = 'hired', updated_at = ?
+         SET status = 'accepted', updated_at = ?
         WHERE id = ?
           AND status IN ('submitted', 'under_review', 'shortlisted')
       `).bind(now, applicationId),
