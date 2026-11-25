@@ -7,6 +7,7 @@ import {
   markAllAsRead,
   getNotificationPreferences,
   getNotificationCategories,
+  NOTIFICATION_CATEGORIES,
 } from '../services/notifications.js';
 
 import { requireAuth } from '../middleware/auth.js';
@@ -51,6 +52,7 @@ export async function handleNotificationRoutes(pathname, method, request, env) {
     const offset = validInteger(url.searchParams.get('offset'), 0, 0, 1000000);
     const status = url.searchParams.get('status') || 'all';
     const type = url.searchParams.get('type') || null;
+	const category = url.searchParams.get('category') || null;
 
     if (limit === null || offset === null) {
       return jsonResponse({ error: 'Invalid pagination parameters' }, 400);
@@ -67,16 +69,23 @@ export async function handleNotificationRoutes(pathname, method, request, env) {
       return jsonResponse({ error: 'Invalid notification type' }, 400);
     }
 
+	  if (
+  category !== null &&
+  !NOTIFICATION_CATEGORIES.some((item) => item.id === category)
+) {
+  return jsonResponse({ error: 'Invalid notification category' }, 400);
+}
+
     const notifications = await getNotifications(
       dbUser.id,
       env,
-      { limit, offset, status, type },
-    );
+	{ limit, offset, status, type, category },
+	);
 
     return jsonResponse({
       notifications,
       pagination: { limit, offset },
-      filters: { status, type },
+      filters: { status, type, category },
     });
   }
 
