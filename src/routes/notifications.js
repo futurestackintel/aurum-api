@@ -1,11 +1,13 @@
-// notifications.js (routes)
-// GET   /api/notifications              - list current user's notifications
-// GET   /api/notifications/unread-count - unread badge count
-// PATCH /api/notifications/:id/read     - mark one as read
-// PATCH /api/notifications/read-all     - mark all as read
-// All routes require auth, resolved internally (Clerk id -> internal DB id).
+// Authenticated notification routes.
 
-import { getNotifications, getUnreadCount, markAsRead, markAllAsRead } from '../services/notifications.js';
+import {
+  getNotifications,
+  getUnreadCount,
+  markAsRead,
+  markAllAsRead,
+  getNotificationPreferences,
+} from '../services/notifications.js';
+
 import { requireAuth } from '../middleware/auth.js';
 
 function jsonResponse(data, status = 200) {
@@ -13,6 +15,19 @@ function jsonResponse(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function validInteger(value, fallback, min, max) {
+  if (value === null) return fallback;
+  if (!/^\d+$/.test(value)) return null;
+
+  const number = Number(value);
+
+  if (!Number.isSafeInteger(number) || number < min || number > max) {
+    return null;
+  }
+
+  return number;
 }
 
 export async function handleNotificationRoutes(pathname, method, request, env) {
@@ -31,23 +46,63 @@ export async function handleNotificationRoutes(pathname, method, request, env) {
   const url = new URL(request.url);
 
   if (pathname === '/api/notifications' && method === 'GET') {
-    const limit  = parseInt(url.searchParams.get('limit')  || '30', 10);
-    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+    const limit = validInteger(url.searchParams.get('limit'), 30, 1, 50);
+    const offset = validInteger(url.searchParams.get('offset'), 0, 0, 1000000);
+    const status = url.searchParams.get('status') || 'all';
+    const type = url.searchParams.get('type') || null;
 
-    const notifications = await getNotifications(dbUser.id, env, limit, offset);
-    return jsonResponse({ notifications });
+    if (limit === null || offset === null) {
+      return jsonResponse({ error: 'Invalid pagination parameters' }, 400);
+    }
+
+    if (!['all', 'read', 'unread'].includes(status)) {
+      return jsonResponse({ error: 'Invalid notification status filter' }, 400);
+    }
+
+    if (
+      type !== null &&
+      !/^[a-z][a-z0-9_]{0,49}$/.test(type)
+    ) {
+      return jsonResponse({ error: 'Invalid notification type' }, 400);
+    }
+
+    const notifications = await getNotifications(
+      dbUser.id,
+      env,
+      { limit, offset, status, type },
+    );
+
+    return jsonResponse({
+      notifications,
+      pagination: { limit, offset },
+      filters: { status, type },
+    });
   }
 
   if (pathname === '/api/notifications/unread-count' && method === 'GET') {
-    const count = await getUnreadCount(dbUser.id, env);
+    const type = url.searchParams.get('type') || null;
+
+    if (
+      type !== null &&
+      !/^[a-z][a-z0-9_]{0,49}$/.test(type)
+    ) {
+      return jsonResponse({ error: 'Invalid notification type' }, 400);
+    }
+
+    const count = await getUnreadCount(dbUser.id, env, type);
     return jsonResponse({ count });
   }
 
+  if (pathname === '/api/notifications/preferences' && method === 'GET') {
+    const preferences = await getNotificationPreferences(dbUser.id, env);
+    return jsonResponse({ preferences });
+  }
+
   const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
+
   if (readMatch && method === 'PATCH') {
-    const notificationId = readMatch[1];
     try {
-      const result = await markAsRead(notificationId, dbUser.id, env);
+      const result = await markAsRead(readMatch[1], dbUser.id, env);
       return jsonResponse(result);
     } catch (err) {
       return jsonResponse({ error: err.message }, 404);
