@@ -40,6 +40,8 @@ const ALLOWED_NOTIFICATION_TYPES = new Set([
   'new_follower',
   'connection_request',
   'connection_accepted',
+	'deposit_completed',
+  'withdrawal_completed',
 ]);
 
 const ALLOWED_PREFERENCES = new Set([
