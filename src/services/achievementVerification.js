@@ -5,7 +5,7 @@
 // - On approval: writes to badges table + fires notification
 // - On rejection: updates badge_requests + fires notification with reason
 
-import { notificationEnabled } from './notifications.js';
+import { publishNotification } from './notificationPublisher.js';
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -186,19 +186,24 @@ export async function approveBadgeRequest(requestId, adminId, env) {
     WHERE id = ?
   `).bind(adminId, now, requestId).run();
 
-  // Fire notification to user
-  await sendNotification(env, {
-    userId:    req.user_id,
-    type:      'badge_awarded',
-    title:     'Badge Verified ✓',
-    body:      `Your ${formatBadgeType(req.badge_type)} badge has been approved.`,
+  // Publish badge approval notification through the central event pipeline.
+try {
+  await publishNotification(env.DB, {
+    recipientUserId: req.user_id,
+    type: 'badge_awarded',
+    title: 'Badge Verified ✓',
+    body: `Your ${formatBadgeType(req.badge_type)} badge has been approved.`,
     actionUrl: '/profile',
-    metadata:  JSON.stringify({ badge_type: req.badge_type, badge_id: badgeId }),
+    preference: 'badge_awards',
+    actorType: 'platform_admin',
+    actorId: adminId,
+    resourceType: 'badge_request',
+    resourceId: requestId,
+    requestId,
   });
-
-  return { badgeId, userId: req.user_id, badgeType: req.badge_type };
+} catch (error) {
+  console.error('[badge-approval-notification]', error);
 }
-
 /**
  * Admin rejects a badge request.
  * - Updates badge_request status to rejected
@@ -232,19 +237,24 @@ export async function rejectBadgeRequest(requestId, adminId, reason, env) {
     WHERE id = ?
   `).bind(adminId, reason.trim(), now, requestId).run();
 
-  // Fire notification to user with rejection reason
-  await sendNotification(env, {
-    userId:    req.user_id,
-    type:      'badge_awarded',
-    title:     'Badge Request Declined',
-    body:      `Your ${formatBadgeType(req.badge_type)} request was not approved. Reason: ${reason.trim()}`,
+  // Publish badge rejection notification through the central event pipeline.
+try {
+  await publishNotification(env.DB, {
+    recipientUserId: req.user_id,
+    type: 'badge_awarded',
+    title: 'Badge Request Declined',
+    body: `Your ${formatBadgeType(req.badge_type)} request was not approved. Reason: ${reason.trim()}`,
     actionUrl: '/profile',
-    metadata:  JSON.stringify({ badge_type: req.badge_type, reason: reason.trim() }),
+    preference: 'badge_awards',
+    actorType: 'platform_admin',
+    actorId: adminId,
+    resourceType: 'badge_request',
+    resourceId: requestId,
+    requestId,
   });
-
-  return { success: true, userId: req.user_id };
+} catch (error) {
+  console.error('[badge-rejection-notification]', error);
 }
-
 /**
  * Get a single badge request by ID.
  * Useful for admin to inspect before ruling.
@@ -270,15 +280,6 @@ export async function getBadgeRequest(requestId, env) {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-async function sendNotification(env, { userId, type, title, body, actionUrl, metadata }) {
-  if (type === 'badge_awarded' && !(await notificationEnabled(userId, 'badge_awards', env.DB))) return;
-  const id = crypto.randomUUID();
-  await env.DB.prepare(`
-    INSERT INTO notifications
-      (id, user_id, type, title, body, action_url, metadata)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(id, userId, type, title, body, actionUrl ?? null, metadata ?? null).run();
-}
 
 function formatBadgeType(badgeType) {
   const labels = {
