@@ -6,6 +6,7 @@ import {
   markAsRead,
   markAllAsRead,
   getNotificationPreferences,
+  getNotificationCategories,
 } from '../services/notifications.js';
 
 import { requireAuth } from '../middleware/auth.js';
@@ -96,6 +97,11 @@ export async function handleNotificationRoutes(pathname, method, request, env) {
   if (pathname === '/api/notifications/preferences' && method === 'GET') {
     const preferences = await getNotificationPreferences(dbUser.id, env);
     return jsonResponse({ preferences });
+  }
+
+	  if (pathname === '/api/notifications/categories' && method === 'GET') {
+    const categories = await getNotificationCategories(dbUser.id, env);
+    return jsonResponse({ categories });
   }
 
   const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
