@@ -15,6 +15,7 @@
 // ============================================================
 
 import { canViewPost } from './proofOfStake.js';
+import { publishNotification } from './notificationPublisher.js';
 
 const MAX_COMMENT_LENGTH = 1000;
 
