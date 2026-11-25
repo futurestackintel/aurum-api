@@ -1663,7 +1663,7 @@ export async function reviewWorkSubmission(
     ),
   ];
 
-  if (submission.milestone_id) {
+    if (submission.milestone_id) {
     const milestoneStatus = decision === 'approve'
       ? 'approved'
       : decision === 'request_revision'
@@ -1675,6 +1675,34 @@ export async function reviewWorkSubmission(
       SET status = ?, updated_at = ?
       WHERE id = ?
     `).bind(milestoneStatus, now, submission.milestone_id));
+
+    if (decision === 'approve') {
+      statements.push(db.prepare(`
+        UPDATE work_engagements
+        SET status = 'completed',
+            completed_at = ?,
+            updated_at = ?
+        WHERE id = ?
+          AND status = 'submitted'
+          AND EXISTS (
+            SELECT 1
+            FROM work_milestones
+            WHERE engagement_id = ?
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM work_milestones
+            WHERE engagement_id = ?
+              AND status <> 'approved'
+          )
+      `).bind(
+        now,
+        now,
+        submission.engagement_id,
+        submission.engagement_id,
+        submission.engagement_id,
+      ));
+    }
   }
 
   if (decision === 'approve' && !submission.milestone_id) {
@@ -1911,3 +1939,248 @@ export async function reviewWorkTimeEntry(
     status,
   };
 }
+// ── WORK ENGAGEMENT WORKSPACE ─────────────────────────────────
+
+export async function getWorkEngagementWorkspace(
+  engagementId,
+  userId,
+  db,
+) {
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+  `).bind(engagementId).first();
+
+  if (!engagement) {
+    return { error: 'Engagement not found' };
+  }
+
+  let authorized = engagement.client_user_id === userId;
+
+  if (
+    !authorized &&
+    engagement.provider_type === 'individual' &&
+    engagement.provider_user_id === userId
+  ) {
+    authorized = true;
+  }
+
+  if (!authorized && engagement.provider_type === 'crew') {
+    const participant = await db.prepare(`
+      SELECT id
+      FROM work_engagement_participants
+      WHERE engagement_id = ?
+        AND user_id = ?
+        AND status = 'accepted'
+    `).bind(engagementId, userId).first();
+
+    if (
+      participant &&
+      await getActiveMembership(
+        engagement.provider_crew_id,
+        userId,
+        db,
+      )
+    ) {
+      authorized = true;
+    }
+  }
+
+  if (!authorized) {
+    return { error: 'You are not authorized to view this engagement' };
+  }
+
+  const [
+    participants,
+    milestones,
+    submissions,
+    timeEntries,
+  ] = await Promise.all([
+    db.prepare(`
+      SELECT
+        p.id,
+        p.user_id,
+        p.assigned_role,
+        p.status,
+        p.accepted_at,
+        u.username,
+        u.full_name
+      FROM work_engagement_participants p
+      JOIN users u ON u.id = p.user_id
+      WHERE p.engagement_id = ?
+      ORDER BY p.created_at ASC
+    `).bind(engagementId).all(),
+
+    db.prepare(`
+      SELECT *
+      FROM work_milestones
+      WHERE engagement_id = ?
+      ORDER BY position ASC
+    `).bind(engagementId).all(),
+
+    db.prepare(`
+      SELECT
+        s.*,
+        u.username AS submitted_by_username,
+        u.full_name AS submitted_by_name
+      FROM work_submissions s
+      JOIN users u ON u.id = s.submitted_by_user_id
+      WHERE s.engagement_id = ?
+      ORDER BY s.submitted_at DESC
+    `).bind(engagementId).all(),
+
+    db.prepare(`
+      SELECT *
+      FROM work_time_entries
+      WHERE engagement_id = ?
+      ORDER BY submitted_at DESC
+    `).bind(engagementId).all(),
+  ]);
+
+  const submissionRows = submissions.results || [];
+
+  const revisions = submissionRows.length
+    ? await db.prepare(`
+        SELECT *
+        FROM work_submission_revisions
+        WHERE submission_id IN (
+          ${submissionRows.map(() => '?').join(',')}
+        )
+        ORDER BY created_at ASC
+      `).bind(...submissionRows.map(row => row.id)).all()
+    : { results: [] };
+
+  return {
+    success: true,
+    engagement,
+    participants: participants.results || [],
+    milestones: milestones.results || [],
+    submissions: submissionRows.map(submission => ({
+      ...submission,
+      revisions: (revisions.results || []).filter(
+        revision => revision.submission_id === submission.id,
+      ),
+    })),
+    time_entries: timeEntries.results || [],
+  };
+}
+
+
+// ── PROVIDER REVISION RESPONSE ────────────────────────────────
+
+export async function respondToWorkRevision(
+  submissionId,
+  providerUserId,
+  message,
+  db,
+) {
+  if (!validText(message, 5, 12000)) {
+    return {
+      error: 'Revision response must be between 5 and 12,000 characters',
+    };
+  }
+
+  const submission = await db.prepare(`
+    SELECT
+      s.*,
+      e.id AS engagement_id,
+      e.status AS engagement_status
+    FROM work_submissions s
+    JOIN work_engagements e ON e.id = s.engagement_id
+    WHERE s.id = ?
+  `).bind(submissionId).first();
+
+  if (!submission) {
+    return { error: 'Submission not found' };
+  }
+
+  if (submission.status !== 'revision_requested') {
+    return { error: 'This submission is not awaiting a revision' };
+  }
+
+  if (
+    submission.engagement_status !== 'revision_requested'
+  ) {
+    return { error: 'The engagement is not awaiting a revision' };
+  }
+
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+  `).bind(submission.engagement_id).first();
+
+  if (
+    !(await canUserDeliverForEngagement(
+      engagement,
+      providerUserId,
+      db,
+    ))
+  ) {
+    return {
+      error: 'You are not an accepted provider on this engagement',
+    };
+  }
+
+  const now = nowISO();
+
+  const result = await db.batch([
+    db.prepare(`
+      INSERT INTO work_submission_revisions (
+        id,
+        submission_id,
+        author_user_id,
+        message,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(
+      newId(),
+      submissionId,
+      providerUserId,
+      message.trim(),
+      now,
+    ),
+
+    db.prepare(`
+      UPDATE work_submissions
+      SET status = 'submitted',
+          submitted_at = ?,
+          reviewed_at = NULL,
+          reviewed_by_user_id = NULL
+      WHERE id = ?
+        AND status = 'revision_requested'
+    `).bind(now, submissionId),
+
+    db.prepare(`
+      UPDATE work_engagements
+      SET status = 'submitted',
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'revision_requested'
+    `).bind(now, submission.engagement_id),
+
+    ...(submission.milestone_id
+      ? [
+          db.prepare(`
+            UPDATE work_milestones
+            SET status = 'submitted',
+                updated_at = ?
+            WHERE id = ?
+              AND status = 'revision_requested'
+          `).bind(now, submission.milestone_id),
+        ]
+      : []),
+  ]);
+
+  if (!result[1]?.meta?.changes) {
+    return { error: 'Revision response could not be recorded' };
+  }
+
+  return {
+    success: true,
+    submission_id: submissionId,
+    status: 'submitted',
+  };
+		}
