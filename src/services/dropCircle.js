@@ -21,6 +21,7 @@ import {
   validateMinorUnitExponent,
 } from './money.js';
 import { ChallengeFinancialService } from './challengeFinancials.js';
+import { publishNotification } from './notificationPublisher.js';
 
 const PLATFORM_FEE_PERCENT = 5;
 
@@ -360,11 +361,28 @@ export async function joinChallenge(
     const financial = new ChallengeFinancialService(db);
 
     try {
-      const result = await financial.fundEntry({
+            const result = await financial.fundEntry({
         challengeId,
         userId,
         idempotencyKey: idempotencyKey.trim(),
       });
+
+      try {
+        await publishNotification(db, {
+          recipientUserId: challenge.creator_id,
+          type: 'challenge_joined',
+          title: 'New Challenge Participant',
+          body: `A member has joined your challenge: ${challenge.title}.`,
+          actionUrl: `/arena?challenge=${challengeId}`,
+          preference: 'challenge_updates',
+          actorType: 'member',
+          actorId: userId,
+          resourceType: 'challenge',
+          resourceId: challengeId,
+        });
+      } catch (error) {
+        console.error('[challenge-joined-notification]', error);
+      }
 
       return {
         joined: true,
@@ -522,6 +540,23 @@ const existing = await db.prepare(`
     entry_id: confirmedEntry?.id,
   };
 	}
+
+        try {
+      await publishNotification(db, {
+        recipientUserId: challenge.creator_id,
+        type: 'challenge_joined',
+        title: 'New Challenge Participant',
+        body: `A member has joined your challenge: ${challenge.title}.`,
+        actionUrl: `/arena?challenge=${challengeId}`,
+        preference: 'challenge_updates',
+        actorType: 'member',
+        actorId: userId,
+        resourceType: 'challenge',
+        resourceId: challengeId,
+      });
+    } catch (error) {
+      console.error('[challenge-joined-notification]', error);
+    }
 
     return {
       joined: true,
@@ -742,6 +777,24 @@ export async function resolveChallenge(challengeId, moderatorId, db) {
     };
   }
 
+	  // Notify winner only after challenge and financial finalization.
+  try {
+    await publishNotification(db, {
+      recipientUserId: winner.user_id,
+      type: 'challenge_won',
+      title: 'Challenge Won!',
+      body: `Congratulations! You won "${challenge.title}".`,
+      actionUrl: `/arena?challenge=${challengeId}`,
+      preference: 'challenge_updates',
+      actorType: 'platform_admin',
+      actorId: moderatorId,
+      resourceType: 'challenge',
+      resourceId: challengeId,
+    });
+  } catch (error) {
+    console.error('[challenge-won-notification]', error);
+  }
+	
   // Score rewards are separate from financial settlement.
   // Deterministic event IDs prevent duplicate rewards on retries.
   try {
