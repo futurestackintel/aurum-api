@@ -1086,6 +1086,45 @@
       }
     },
 
+		    updateAppBar() {
+      const user = this.user || {};
+
+      const avatar = document.getElementById('user-avatar');
+      const score = document.getElementById('user-score');
+
+      if (avatar) {
+        const name = user.display_name || user.username || 'AURUM';
+        const initials = name
+          .trim()
+          .split(/\s+/)
+          .slice(0, 2)
+          .map(part => part.charAt(0).toUpperCase())
+          .join('');
+
+        avatar.replaceChildren();
+
+        if (user.avatar_url) {
+          const image = document.createElement('img');
+          image.src = user.avatar_url;
+          image.alt = '';
+          image.style.width = '100%';
+          image.style.height = '100%';
+          image.style.objectFit = 'cover';
+          image.style.borderRadius = 'inherit';
+          avatar.appendChild(image);
+        } else {
+          avatar.textContent = initials || 'A';
+        }
+
+        avatar.setAttribute('aria-label', `Open profile: ${name}`);
+        avatar.title = name;
+      }
+
+      if (score) {
+        score.textContent = Number(user.aurum_score || 0).toLocaleString();
+      }
+    },
+
     /* -----------------------------------------
        PROFILE — uses cache, refreshes if stale
     ----------------------------------------- */
