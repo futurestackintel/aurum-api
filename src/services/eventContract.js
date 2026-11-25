@@ -133,7 +133,7 @@ export function createDomainEvent({
   }
 
   return Object.freeze({
-    eventId: crypto.randomUUID(),
+	eventId,
     eventType,
     schemaVersion: EVENT_SCHEMA_VERSION,
     occurredAt: new Date(occurredAt).toISOString(),
