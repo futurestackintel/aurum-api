@@ -58,7 +58,15 @@ export function createDomainEvent({
   payload = {},
   requestId = null,
   occurredAt = new Date().toISOString(),
+	eventId = crypto.randomUUID(),
 }) {
+ if (
+    typeof eventId !== 'string' ||
+    eventId.length === 0 ||
+    eventId.length > 128
+  ) {
+    throw new Error('A valid event ID is required');
+  }
   if (
     typeof eventType !== 'string' ||
     !EVENT_TYPE_PATTERN.test(eventType)
