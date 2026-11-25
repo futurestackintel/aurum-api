@@ -1,4 +1,5 @@
 import { notificationEnabled } from './notifications.js';
+import { publishNotification } from './notificationPublisher.js';
 
 const VALID_EMOJI = ['🔥', '👑', '💰', '⚔️', '😂', '🖤'];
 const VALID_TYPES = ['crew', 'dm'];
@@ -45,18 +46,19 @@ export async function setReaction(messageType, messageId, userId, emoji, db) {
       const actionUrl = messageType === 'crew'
         ? `/crews/${messageRow.crew_id}`
         : `/messages/${messageRow.channel_id}`;
-      await db.prepare(`
-          INSERT INTO notifications (id, user_id, type, title, body, action_url, created_at)
-          VALUES (?, ?, 'message_reaction', 'New reaction', ?, ?, ?)
-        `)
-        .bind(
-          crypto.randomUUID(),
-          messageRow.sender_id,
-          `${reactorName} reacted ${emoji} to your message.`,
-          actionUrl,
-          new Date().toISOString(),
-        )
-        .run();
+      await publishNotification(db, {
+  recipientUserId: messageRow.sender_id,
+  type: 'message_reaction',
+  title: 'New reaction',
+  body: `${reactorName} reacted ${emoji} to your message.`,
+  actionUrl,
+  preference,
+  actorType: 'member',
+  actorId: userId,
+  resourceType: 'message',
+  resourceId: messageId,
+  requestId: `${reactionId}:${messageRow.sender_id}`,
+});
     } catch (err) {
       // Non-fatal — reaction itself already succeeded, notification failure shouldn't break the request
     }
