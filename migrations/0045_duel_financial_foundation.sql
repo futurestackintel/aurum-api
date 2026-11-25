@@ -10,7 +10,27 @@
 
 ALTER TABLE duels ADD COLUMN currency_code TEXT
   NOT NULL DEFAULT 'USD'
-  REFERENCES financial_currencies(currency_code);
+  CHECK (length(currency_code) = 3);
+
+CREATE TRIGGER validate_duel_currency_insert
+BEFORE INSERT ON duels
+WHEN NOT EXISTS (
+  SELECT 1 FROM financial_currencies
+  WHERE currency_code = NEW.currency_code
+)
+BEGIN
+  SELECT RAISE(ABORT, 'Duel requires a registered currency');
+END;
+
+CREATE TRIGGER validate_duel_currency_update
+BEFORE UPDATE OF currency_code ON duels
+WHEN NOT EXISTS (
+  SELECT 1 FROM financial_currencies
+  WHERE currency_code = NEW.currency_code
+)
+BEGIN
+  SELECT RAISE(ABORT, 'Duel requires a registered currency');
+END;
 
 ALTER TABLE duels ADD COLUMN stake_amount_minor INTEGER
   NOT NULL DEFAULT 0
