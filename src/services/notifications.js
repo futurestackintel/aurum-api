@@ -18,11 +18,29 @@ export const NOTIFICATION_CATEGORIES = [
     description: 'Reactions, comments, follows and connections',
     preference: null,
   },
-  {
-    id: 'arena',
-    label: 'Arena & Duels',
-    description: 'Challenge and duel activity',
+    {
+    id: 'challenges',
+    label: 'Challenges',
+    description: 'Challenge entries, results and activity',
     preference: 'challenge_updates',
+  },
+  {
+    id: 'duels',
+    label: 'Duels',
+    description: 'Duel invitations, announcements and results',
+    preference: 'duel_challenges',
+  },
+  {
+    id: 'badges',
+    label: 'Badge Awards',
+    description: 'Verified achievement awards',
+    preference: 'badge_awards',
+  },
+  {
+    id: 'leagues',
+    label: 'League Updates',
+    description: 'League promotions and demotions',
+    preference: 'league_promotions',
   },
   {
     id: 'messages',
@@ -48,11 +66,29 @@ export const NOTIFICATION_CATEGORIES = [
     description: 'Tips received from other members',
     preference: 'tips_received',
   },
+    {
+    id: 'challenges',
+    label: 'Challenges',
+    description: 'Challenge entries, results and activity',
+    preference: 'challenge_updates',
+  },
   {
-    id: 'achievements',
-    label: 'Achievements & Leagues',
-    description: 'Badge awards and league changes',
+    id: 'duels',
+    label: 'Duels',
+    description: 'Duel invitations, announcements and results',
+    preference: 'duel_challenges',
+  },
+  {
+    id: 'badges',
+    label: 'Badge Awards',
+    description: 'Verified achievement awards',
     preference: 'badge_awards',
+  },
+  {
+    id: 'leagues',
+    label: 'League Updates',
+    description: 'League promotions and demotions',
+    preference: 'league_promotions',
   },
   {
     id: 'system',
@@ -70,13 +106,13 @@ const NOTIFICATION_TYPE_CATEGORIES = {
   connection_request: 'social',
   connection_accepted: 'social',
 
-  challenge_won: 'arena',
-  challenge_joined: 'arena',
-  challenge_ending_soon: 'arena',
-  duel_received: 'arena',
-  duel_accepted: 'arena',
-  duel_result: 'arena',
-  duel_announced: 'arena',
+  challenge_won: 'challenges',
+  challenge_joined: 'challenges',
+  challenge_ending_soon: 'challenges',
+  duel_received: 'duels',
+  duel_accepted: 'duels',
+  duel_result: 'duels',
+  duel_announced: 'duels',
 
   dm_received: 'messages',
   message_reaction: 'messages',
@@ -94,9 +130,9 @@ const NOTIFICATION_TYPE_CATEGORIES = {
 
   tip_received: 'tips',
 
-  badge_awarded: 'achievements',
-  league_promoted: 'achievements',
-  league_demoted: 'achievements',
+  badge_awarded: 'badges',
+  league_promoted: 'leagues',
+  league_demoted: 'leagues',
 
   stake_verified: 'system',
   stake_disputed: 'system',
