@@ -22,9 +22,10 @@ const VICE_CAPTAIN_PERMISSIONS = [
   'manage_crew_lock',
   'edit_crew_rules',
   'moderate_discussions',
+  'submit_work_proposals',
 ];
 
-async function hasCrewPermission(crewId, userId, permission, db) {
+export async function hasCrewPermission(crewId, userId, permission, db) {
   const membership = await db
     .prepare(`
       SELECT role
