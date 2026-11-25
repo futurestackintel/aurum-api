@@ -159,7 +159,13 @@ export async function getNotificationPreferences(userId, env) {
 export async function getNotifications(
   userId,
   env,
-  { limit = 30, offset = 0, status = 'all', type = null } = {},
+  {
+    limit = 30,
+    offset = 0,
+    status = 'all',
+    type = null,
+    category = null,
+  } = {},
 ) {
   let query = `
     SELECT id, type, title, body, action_url, metadata,
@@ -181,6 +187,31 @@ export async function getNotifications(
     bindings.push(type);
   }
 
+  if (category) {
+    const allTypes = Object.keys(NOTIFICATION_TYPE_CATEGORIES);
+    const categoryTypes = Object.entries(NOTIFICATION_TYPE_CATEGORIES)
+      .filter(([, value]) => value === category)
+      .map(([key]) => key);
+
+    if (category === 'system') {
+      const placeholders = categoryTypes.map(() => '?').join(', ');
+      const knownPlaceholders = allTypes.map(() => '?').join(', ');
+
+      query += ` AND (
+        type IN (${placeholders})
+        OR type NOT IN (${knownPlaceholders})
+      )`;
+
+      bindings.push(...categoryTypes, ...allTypes);
+    } else if (categoryTypes.length) {
+      const placeholders = categoryTypes.map(() => '?').join(', ');
+      query += ` AND type IN (${placeholders})`;
+      bindings.push(...categoryTypes);
+    } else {
+      query += ` AND 1 = 0`;
+    }
+  }
+
   query += ` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`;
   bindings.push(limit, offset);
 
@@ -189,7 +220,7 @@ export async function getNotifications(
     .bind(...bindings)
     .all();
 
-      return results.map((notification) => ({
+  return results.map((notification) => ({
     ...notification,
     category: NOTIFICATION_TYPE_CATEGORIES[notification.type] || 'system',
   }));
