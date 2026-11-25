@@ -2004,8 +2004,7 @@ export async function getWorkEngagementWorkspace(
         p.assigned_role,
         p.status,
         p.accepted_at,
-        u.username,
-        u.full_name
+        u.username
       FROM work_engagement_participants p
       JOIN users u ON u.id = p.user_id
       WHERE p.engagement_id = ?
@@ -2022,8 +2021,7 @@ export async function getWorkEngagementWorkspace(
     db.prepare(`
       SELECT
         s.*,
-        u.username AS submitted_by_username,
-        u.full_name AS submitted_by_name
+       u.username AS submitted_by_username
       FROM work_submissions s
       JOIN users u ON u.id = s.submitted_by_user_id
       WHERE s.engagement_id = ?
