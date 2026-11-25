@@ -262,7 +262,8 @@ const NotificationsAPI = {
     });
 
     if (filters.status) params.set('status', filters.status);
-    if (filters.type) params.set('type', filters.type);
+	if (filters.type) params.set('type', filters.type);
+	if (filters.category) params.set('category', filters.category);
 
     return apiRequest(
       'GET',
