@@ -2476,19 +2476,27 @@ getCategoryLabel(categoryId) {
     `;
   }
 },
-    async handleClick(item) {
-      const id  = item.dataset.id;
+        async handleClick(item) {
+      const id = item.dataset.id;
       const url = item.dataset.url;
 
       if (item.classList.contains('unread')) {
-        item.classList.remove('unread');
         try {
           await AURUM.NotificationsAPI.markRead(id);
+          item.classList.remove('unread');
+
+          if (this.selectedStatus === 'unread') {
+            item.remove();
+          }
+
           this.refreshUnreadCount();
-        } catch (err) { /* non-fatal */ }
+        } catch (err) {
+          /* Keep the unread state if marking read fails. */
+        }
       }
 
       this.close();
+
       if (url) {
         this.navigateToActionUrl(url);
       }
