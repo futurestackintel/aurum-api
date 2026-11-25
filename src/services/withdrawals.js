@@ -7,6 +7,7 @@ import {
   calculateFeeMinor,
   subtractMinorUnits,
 } from './money.js';
+import { publishNotification } from './notificationPublisher.js';
 function requireText(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`${fieldName} is required`);
@@ -911,6 +912,24 @@ export class WithdrawalService {
         );
       }
     }
+
+		    if (posting.created && update.meta?.changes === 1) {
+      try {
+        await publishNotification(this.db, {
+          recipientUserId: userId,
+          type: 'withdrawal_completed',
+          title: 'Withdrawal completed',
+          body: 'Your wallet withdrawal has been completed successfully.',
+          actionUrl: '/wallet/transactions',
+          actorType: 'system',
+          resourceType: 'payment_operation',
+          resourceId: operationId,
+          requestId,
+        });
+      } catch (error) {
+        console.error('Withdrawal notification failed:', error);
+      }
+			}
 
     return {
       operationId,
