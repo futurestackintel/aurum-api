@@ -1398,6 +1398,7 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
     await publishNotification(db, {
       recipientUserId: winnerId,
       type: 'duel_result',
+      preference: 'duel_challenges',
       title: 'Duel victory!',
       body: `You won the duel "${duel.title}". Your payout has been settled.`,
       actionUrl: `/duels/${duelId}`,
