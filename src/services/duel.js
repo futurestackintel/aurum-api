@@ -24,6 +24,7 @@ import {
 } from './money.js';
 import { addScoreEvent } from './aurumScore.js';
 import { notificationEnabled } from './notifications.js';
+import { publishNotification } from './notificationPublisher.js';
 
 const DUEL_EXPIRY_HOURS   = 48;
 const DEFAULT_DUEL_DAYS   = 7;
@@ -1392,6 +1393,21 @@ export async function releaseDuelEscrow(duelId, winnerId, duel, db) {
       'Ledger settlement posted but Duel finalization requires reconciliation'
     );
   }
+
+	  try {
+    await publishNotification(db, {
+      recipientUserId: winnerId,
+      type: 'duel_result',
+      title: 'Duel victory!',
+      body: `You won the duel "${duel.title}". Your payout has been settled.`,
+      actionUrl: `/duels/${duelId}`,
+      actorType: 'system',
+      resourceType: 'duel',
+      resourceId: duelId,
+    });
+  } catch (error) {
+    console.error('Duel payout notification failed:', error);
+		}
 
   await addScoreEvent(
     winnerId,
