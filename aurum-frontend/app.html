@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/components.css" />
   <link rel="stylesheet" href="css/search.css" />
+  <link rel="stylesheet" href="css/wallet.css" />
 
   <!-- Clerk — loads async, does NOT block auth form render -->
   <script
@@ -691,7 +692,7 @@
       <div class="app-bar-right">
 
         <button class="app-bar-stats-capsule" id="appbar-wallet-wrap" type="button" style="display:none;cursor:pointer;"
-          aria-label="Open wallet" title="Wallet" onclick="App.openWalletModal()">
+          aria-label="Open wallet" title="Wallet" onclick="App.navigate('wallet')">
           <span class="app-bar-stat">
             <span class="app-bar-stat-value" id="user-wallet">₳0.00</span>
             <span class="app-bar-stat-label">Balance</span>
@@ -756,6 +757,7 @@
       <div class="page-view" id="view-messages"></div>
       <div class="page-view" id="view-search"></div>
       <div class="page-view" id="view-public-profile"></div>
+	  <div class="page-view" id="view-wallet"></div>
     </main>
 
     <!-- Bottom Nav -->
@@ -781,82 +783,108 @@
 	  
   </div>
 
-    <!-- =====================================================
-       AURUM WALLET MODAL
-  ====================================================== -->
-  <div class="modal-overlay" id="wallet-modal" style="display:none;">
-    <div class="modal">
-      <div class="modal-handle"></div>
-      <h3 class="modal-title">AURUM Wallet</h3>
+<!-- =====================================================
+     AURUM WALLET PAGE
+====================================================== -->
+<div class="page-view wallet-page" id="view-wallet">
 
-      <div class="wallet-balance-display">
-        <div class="wallet-balance-amount" id="wallet-modal-balance">—</div>
-        <div class="wallet-balance-label">Selected Currency · Available</div>
-        <div id="wallet-held-balance" style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:8px;">Held: —</div>
-      </div>
-
-      <div class="input-group" style="margin-bottom:var(--space-4);">
-        <label class="input-label">Wallet Currency</label>
-        <select class="input" id="wallet-currency"></select>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:var(--space-4);">
-        <button class="btn btn-primary btn-sm" id="btn-wallet-deposit">Add Funds</button>
-        <button class="btn btn-outline btn-sm" id="btn-wallet-withdraw">Withdraw</button>
-        <button class="btn btn-outline btn-sm" id="btn-wallet-transactions">Transactions</button>
-      </div>
-
-      <div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:var(--space-4);">
-        <button class="btn btn-ghost btn-sm wallet-tab active" data-wallet-tab="overview">Overview</button>
-        <button class="btn btn-ghost btn-sm wallet-tab" data-wallet-tab="payments">Payment Methods</button>
-        <button class="btn btn-ghost btn-sm wallet-tab" data-wallet-tab="statements">Statements</button>
-        <button class="btn btn-ghost btn-sm wallet-tab" data-wallet-tab="settings">Settings</button>
-      </div>
-
-      <section id="wallet-panel-overview">
-        <h4 style="margin-bottom:var(--space-3);">Your Balances</h4>
-        <div id="wallet-balances-list"></div>
-        <h4 style="margin:var(--space-4) 0 var(--space-3);">Recent Transactions</h4>
-        <div id="wallet-tx-list" style="display:flex;flex-direction:column;gap:var(--space-2);">
-          <div class="skeleton" style="height:48px;border-radius:8px;"></div>
-        </div>
-      </section>
-
-      <section id="wallet-panel-payments" style="display:none;">
-        <h4>Saved Withdrawal Account</h4>
-        <div id="wallet-bank-summary" style="margin:12px 0;color:var(--color-text-muted);">Loading bank details...</div>
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          <input class="input" id="wallet-bank-name" placeholder="Bank name">
-          <input class="input" id="wallet-bank-code" placeholder="Bank code (if required)">
-          <input class="input" id="wallet-bank-account" placeholder="Account number" inputmode="numeric">
-          <input class="input" id="wallet-bank-holder" placeholder="Account name">
-          <button class="btn btn-primary btn-full" id="btn-wallet-save-bank">Save Withdrawal Account</button>
-          <p id="wallet-bank-error" style="display:none;color:var(--color-danger);font-size:var(--text-sm);"></p>
-        </div>
-      </section>
-
-      <section id="wallet-panel-statements" style="display:none;">
-        <h4>Transaction Statement</h4>
-        <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin:8px 0 14px;">
-          Download the transaction history currently loaded for the selected currency.
-        </p>
-        <button class="btn btn-primary btn-full" id="btn-wallet-export">Download CSV</button>
-        <div id="wallet-statement-list" style="margin-top:16px;"></div>
-      </section>
-
-      <section id="wallet-panel-settings" style="display:none;">
-        <h4>Wallet Preferences</h4>
-        <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin:8px 0;">
-          Choose your preferred display currency. This does not convert or combine your actual currency balances.
-        </p>
-        <label class="input-label" for="wallet-preferred-currency">Preferred Currency</label>
-        <select class="input" id="wallet-preferred-currency"></select>
-        <button class="btn btn-primary btn-full" id="btn-wallet-save-preference" style="margin-top:12px;">Save Preference</button>
-        <p id="wallet-settings-message" style="font-size:var(--text-sm);margin-top:10px;"></p>
-      </section>
+  <div class="wallet-page-header">
+    <div>
+      <span class="wallet-eyebrow">AURUM FINANCIAL</span>
+      <h1>My Wallet</h1>
+      <p>Manage your balances and financial activity.</p>
     </div>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="App.navigate('ledger')">
+      Back to Ledger
+    </button>
   </div>
 
+  <section class="wallet-hero">
+    <div class="wallet-hero-top">
+      <div>
+        <span class="wallet-eyebrow">AVAILABLE BALANCE</span>
+        <div class="wallet-balance-amount" id="wallet-modal-balance">—</div>
+        <div class="wallet-balance-label">Selected currency</div>
+        <div id="wallet-held-balance" class="wallet-held-balance">Held: —</div>
+      </div>
+      <div class="wallet-currency-control">
+        <label for="wallet-currency">Wallet currency</label>
+        <select class="input" id="wallet-currency"></select>
+      </div>
+    </div>
+
+    <div class="wallet-actions">
+      <button class="btn btn-primary" id="btn-wallet-deposit">Add Funds</button>
+      <button class="btn btn-outline" id="btn-wallet-withdraw">Withdraw</button>
+      <button class="btn btn-outline" id="btn-wallet-transactions">Transactions</button>
+    </div>
+  </section>
+
+  <section class="wallet-section">
+    <div class="wallet-section-heading">
+      <div>
+        <span class="wallet-eyebrow">YOUR MONEY</span>
+        <h2>Currency balances</h2>
+      </div>
+    </div>
+    <div id="wallet-balances-list" class="wallet-balances-grid"></div>
+  </section>
+
+  <section class="wallet-section">
+    <div class="wallet-tabs" role="tablist" aria-label="Wallet sections">
+      <button class="wallet-tab active" data-wallet-tab="overview">Overview</button>
+      <button class="wallet-tab" data-wallet-tab="payments">Payment Methods</button>
+      <button class="wallet-tab" data-wallet-tab="statements">Statements</button>
+      <button class="wallet-tab" data-wallet-tab="settings">Settings</button>
+    </div>
+
+    <div id="wallet-panel-overview" class="wallet-panel">
+      <div class="wallet-section-heading">
+        <h2>Recent transactions</h2>
+      </div>
+      <div id="wallet-tx-list" class="wallet-transaction-list">
+        <div class="skeleton" style="height:48px;border-radius:8px;"></div>
+      </div>
+    </div>
+
+    <div id="wallet-panel-payments" class="wallet-panel" style="display:none;">
+      <h2>Saved withdrawal account</h2>
+      <p class="wallet-description">Manage the bank account used for withdrawals.</p>
+      <div id="wallet-bank-summary" class="wallet-bank-summary">Loading bank details...</div>
+      <div class="wallet-form-grid">
+        <input class="input" id="wallet-bank-name" placeholder="Bank name">
+        <input class="input" id="wallet-bank-code" placeholder="Bank code (if required)">
+        <input class="input" id="wallet-bank-account" placeholder="Account number" inputmode="numeric">
+        <input class="input" id="wallet-bank-holder" placeholder="Account name">
+        <button class="btn btn-primary" id="btn-wallet-save-bank">Save Withdrawal Account</button>
+      </div>
+      <p id="wallet-bank-error" class="wallet-error" style="display:none;"></p>
+    </div>
+
+    <div id="wallet-panel-statements" class="wallet-panel" style="display:none;">
+      <h2>Transaction statements</h2>
+      <p class="wallet-description">
+        Download the transaction history currently loaded for your selected currency.
+      </p>
+      <button class="btn btn-primary" id="btn-wallet-export">Download CSV Statement</button>
+      <div id="wallet-statement-list" class="wallet-transaction-list"></div>
+    </div>
+
+    <div id="wallet-panel-settings" class="wallet-panel" style="display:none;">
+      <h2>Wallet preferences</h2>
+      <p class="wallet-description">
+        Choose your preferred display currency. This does not convert or combine your actual currency balances.
+      </p>
+      <label class="input-label" for="wallet-preferred-currency">Preferred currency</label>
+      <div class="wallet-preference-control">
+        <select class="input" id="wallet-preferred-currency"></select>
+        <button class="btn btn-primary" id="btn-wallet-save-preference">Save Preference</button>
+      </div>
+      <p id="wallet-settings-message" class="wallet-settings-message"></p>
+    </div>
+  </section>
+</div>
+	
   <!-- =====================================================
        ADD FUNDS
   ====================================================== -->
@@ -984,6 +1012,7 @@
     walletBalance: 0,
     walletBalances: [],
     walletAccounts: [],
+	supportedWalletCurrencies: [],
     walletTransactions: [],
     walletAccount: null,
     walletBankDetails: null,
@@ -1216,7 +1245,9 @@
         ]);
 
         this.walletBalances = balanceData.balances || [];
-        this.walletAccounts = accountData.accounts || [];
+		this.walletAccounts = accountData.accounts || [];
+		this.supportedWalletCurrencies =
+		  accountData.supported_wallet_currencies || this.walletAccounts;
         this.walletAccount = accountData.account || null;
         this.walletPreferredCurrency =
           this.walletAccount?.currency_preference || 'NGN';
@@ -1259,44 +1290,52 @@
     },
 
     populateWalletCurrencySelectors() {
-      const selectors = [
-        document.getElementById('wallet-currency'),
-        document.getElementById('wallet-preferred-currency'),
-        document.getElementById('deposit-currency'),
-        document.getElementById('withdraw-currency'),
-      ].filter(Boolean);
+  const currencies = this.supportedWalletCurrencies || [];
 
-      const options = this.walletAccounts.map(account =>
-        `<option value="${account.currency_code}">${account.currency_code}</option>`
-      ).join('');
+  const walletOptions = currencies.map(currency =>
+    `<option value="${currency.currency_code}">${currency.currency_code}</option>`
+  ).join('');
 
-      selectors.forEach(select => {
-        const previous = select.value;
-        select.innerHTML = options;
-        if ([...select.options].some(option => option.value === previous)) {
-          select.value = previous;
-        }
-      });
+  const walletSelect = document.getElementById('wallet-currency');
+  const preferredSelect = document.getElementById('wallet-preferred-currency');
 
-      const walletSelect = document.getElementById('wallet-currency');
-      const preferredSelect = document.getElementById('wallet-preferred-currency');
-      if (walletSelect) walletSelect.value = this.walletCurrency;
-      if (preferredSelect) preferredSelect.value = this.walletPreferredCurrency;
+  if (walletSelect) {
+    walletSelect.innerHTML = walletOptions ||
+      '<option value="">No wallet currencies available</option>';
 
-      /* Paystack currently defaults to NGN. Do not expose other
-         currencies as deposit/withdrawal options unless configured
-         separately in the frontend in a later provider-capability task. */
-      ['deposit-currency', 'withdraw-currency'].forEach(id => {
-        const select = document.getElementById(id);
-        if (!select) return;
-        const ngn = this.walletAccounts.find(x => x.currency_code === 'NGN');
-        select.innerHTML = ngn
-          ? '<option value="NGN">NGN</option>'
-          : '<option value="">No supported payment currency</option>';
-        select.disabled = !ngn;
-      });
-    },
+    if (currencies.some(x => x.currency_code === this.walletCurrency)) {
+      walletSelect.value = this.walletCurrency;
+    } else if (currencies.length) {
+      this.walletCurrency = currencies[0].currency_code;
+      walletSelect.value = this.walletCurrency;
+    }
+  }
 
+  if (preferredSelect) {
+    preferredSelect.innerHTML = walletOptions ||
+      '<option value="">No currencies available</option>';
+
+    if (currencies.some(x => x.currency_code === this.walletPreferredCurrency)) {
+      preferredSelect.value = this.walletPreferredCurrency;
+    } else if (currencies.length) {
+      preferredSelect.value = currencies[0].currency_code;
+    }
+  }
+
+  // Paystack funding and withdrawal remain NGN-only.
+  const ngnEnabled = currencies.some(x => x.currency_code === 'NGN');
+
+  ['deposit-currency', 'withdraw-currency'].forEach(id => {
+    const select = document.getElementById(id);
+    if (!select) return;
+
+    select.innerHTML = ngnEnabled
+      ? '<option value="NGN">NGN</option>'
+      : '<option value="">NGN payment is unavailable</option>';
+
+    select.disabled = !ngnEnabled;
+  });
+},
     updateWalletInBar() {
       const wrap = document.getElementById('appbar-wallet-wrap');
       const div = document.getElementById('appbar-divider');
@@ -1312,14 +1351,8 @@
     },
 
     async openWalletModal() {
-      await this.loadWalletBalance();
-      document.getElementById('wallet-modal').style.display = 'flex';
-      this.showWalletTab('overview');
-      await Promise.all([
-        this.loadWalletTransactions(),
-        this.loadWalletBankDetails(),
-      ]);
-    },
+  this.navigate('wallet');
+},
 
     showWalletTab(tab) {
       ['overview', 'payments', 'statements', 'settings'].forEach(name => {
@@ -1497,6 +1530,12 @@
         messages:    () => window.DmPage?.init('view-messages'),
         search:      () => window.SearchPage?.init('view-search'),
         'public-profile': () => window.PublicProfilePage?.open('view-public-profile', window.PublicProfilePage.username),
+		wallet: () => {
+  App.loadWalletBalance();
+  App.showWalletTab('overview');
+  App.loadWalletTransactions();
+  App.loadWalletBankDetails();
+},
       };
       loaders[view]?.();
     },
@@ -1737,146 +1776,131 @@
   });
 
   /* =====================================================
-     WALLET MODAL EVENTS
-  ===================================================== */
+   WALLET PAGE EVENTS
+===================================================== */
 
-  document.getElementById('wallet-modal').addEventListener('click', e => {
-    if (e.target.id === 'wallet-modal') {
-      e.target.style.display = 'none';
-    }
+document.getElementById('btn-wallet-deposit').addEventListener('click', () => {
+  const currency = document.getElementById('deposit-currency');
+  if (currency) currency.value = 'NGN';
+
+  document.getElementById('deposit-error').style.display = 'none';
+  document.getElementById('deposit-modal').style.display = 'flex';
+});
+
+document.getElementById('btn-wallet-withdraw').addEventListener('click', async () => {
+  const currency = document.getElementById('withdraw-currency');
+  if (currency) currency.value = 'NGN';
+
+  const balance = App.walletBalanceFor('NGN');
+  const info = App.walletCurrencyInfo('NGN');
+  const wBal = document.getElementById('withdraw-modal-balance');
+
+  if (wBal) {
+    wBal.textContent = App.walletMoney(
+      balance.available_minor,
+      info.minor_unit_exponent,
+      'NGN'
+    );
+  }
+
+  document.getElementById('withdraw-error').style.display = 'none';
+  document.getElementById('withdraw-modal').style.display = 'flex';
+
+  await App.loadWalletBankDetails();
+});
+
+document.querySelectorAll('.wallet-tab').forEach(button => {
+  button.addEventListener('click', () => {
+    App.showWalletTab(button.dataset.walletTab);
   });
+});
 
-  document.getElementById('btn-wallet-deposit').addEventListener('click', () => {
-    document.getElementById('wallet-modal').style.display = 'none';
+document.getElementById('wallet-currency').addEventListener('change', async e => {
+  App.walletCurrency = e.target.value;
+  App.renderWalletBalances();
+  await App.loadWalletTransactions();
+});
 
-    const currency = document.getElementById('deposit-currency');
-    if (currency) currency.value = 'NGN';
+document.getElementById('btn-wallet-transactions').addEventListener('click', async () => {
+  App.showWalletTab('overview');
+  await App.loadWalletTransactions();
+});
 
-    document.getElementById('deposit-error').style.display = 'none';
-    document.getElementById('deposit-modal').style.display = 'flex';
-  });
+// Save withdrawal bank details
+document.getElementById('btn-wallet-save-bank').addEventListener('click', async () => {
+  const error = document.getElementById('wallet-bank-error');
+  error.style.display = 'none';
 
-  document.getElementById('btn-wallet-withdraw').addEventListener('click', async () => {
-    document.getElementById('wallet-modal').style.display = 'none';
+  try {
+    await AURUM.WalletAPI.saveBankDetails({
+      bank_name: document.getElementById('wallet-bank-name').value.trim(),
+      account_number: document.getElementById('wallet-bank-account').value.trim(),
+      account_name: document.getElementById('wallet-bank-holder').value.trim(),
+      bank_code: document.getElementById('wallet-bank-code').value.trim() || undefined,
+    });
 
-    const currency = document.getElementById('withdraw-currency');
-    if (currency) currency.value = 'NGN';
-
-    const balance = App.walletBalanceFor('NGN');
-    const info = App.walletCurrencyInfo('NGN');
-    const wBal = document.getElementById('withdraw-modal-balance');
-
-    if (wBal) {
-      wBal.textContent = App.walletMoney(
-        balance.available_minor,
-        info.minor_unit_exponent,
-        'NGN'
-      );
-    }
-
-    document.getElementById('withdraw-error').style.display = 'none';
-    document.getElementById('withdraw-modal').style.display = 'flex';
-
+    AURUM.showToast('Withdrawal account saved.', 'gold');
     await App.loadWalletBankDetails();
-  });
+  } catch (err) {
+    error.textContent = err.message || 'Could not save bank details.';
+    error.style.display = 'block';
+  }
+});
 
-  // Wallet tabs
-  document.querySelectorAll('.wallet-tab').forEach(button => {
-    button.addEventListener('click', () => {
-      App.showWalletTab(button.dataset.walletTab);
-    });
-  });
+// Save preferred wallet currency
+document.getElementById('btn-wallet-save-preference').addEventListener('click', async () => {
+  const currency = document.getElementById('wallet-preferred-currency').value;
+  const message = document.getElementById('wallet-settings-message');
 
-  // Currency selection
-  document.getElementById('wallet-currency').addEventListener('change', async e => {
-    App.walletCurrency = e.target.value;
-    App.renderWalletBalances();
-    await App.loadWalletTransactions();
-  });
+  try {
+    await AURUM.WalletAPI.setCurrency({ currency });
 
-  document.getElementById('btn-wallet-transactions').addEventListener('click', async () => {
-    App.showWalletTab('overview');
-    await App.loadWalletTransactions();
-  });
+    App.walletPreferredCurrency = currency;
+    App.updateWalletInBar();
 
-  // Save withdrawal bank details
-  document.getElementById('btn-wallet-save-bank').addEventListener('click', async () => {
-    const error = document.getElementById('wallet-bank-error');
-    error.style.display = 'none';
+    message.textContent = 'Preferred currency saved.';
+  } catch (err) {
+    message.textContent = err.message || 'Could not save preference.';
+  }
+});
 
-    try {
-      await AURUM.WalletAPI.saveBankDetails({
-        bank_name: document.getElementById('wallet-bank-name').value.trim(),
-        account_number: document.getElementById('wallet-bank-account').value.trim(),
-        account_name: document.getElementById('wallet-bank-holder').value.trim(),
-        bank_code: document.getElementById('wallet-bank-code').value.trim() || undefined,
-      });
+// Export loaded transaction history
+document.getElementById('btn-wallet-export').addEventListener('click', () => {
+  const rows = App.walletTransactions || [];
 
-      AURUM.showToast('Withdrawal account saved.', 'gold');
-      await App.loadWalletBankDetails();
-    } catch (err) {
-      error.textContent = err.message || 'Could not save bank details.';
-      error.style.display = 'block';
-    }
-  });
+  if (!rows.length) {
+    AURUM.showToast('No transactions to export.', 'error');
+    return;
+  }
 
-  // Save preferred wallet currency
-  document.getElementById('btn-wallet-save-preference').addEventListener('click', async () => {
-    const currency = document.getElementById('wallet-preferred-currency').value;
-    const message = document.getElementById('wallet-settings-message');
+  const columns = [
+    'created_at',
+    'transaction_type',
+    'description',
+    'currency_code',
+    'amount_minor',
+    'direction',
+    'reference'
+  ];
 
-    try {
-      await AURUM.WalletAPI.setCurrency({ currency });
+  const csv = [
+    columns.join(','),
+    ...rows.map(row => columns.map(key =>
+      `"${String(row[key] ?? '').replace(/"/g, '""')}"`
+    ).join(','))
+  ].join('\\n');
 
-      App.walletPreferredCurrency = currency;
-      App.updateWalletInBar();
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
 
-      message.textContent = 'Preferred currency saved.';
-    } catch (err) {
-      message.textContent = err.message || 'Could not save preference.';
-    }
-  });
+  link.href = url;
+  link.download = `aurum-wallet-${App.walletCurrency}-statement.csv`;
+  link.click();
 
-  // Export loaded transaction history
-  document.getElementById('btn-wallet-export').addEventListener('click', () => {
-    const rows = App.walletTransactions || [];
-
-    if (!rows.length) {
-      AURUM.showToast('No transactions to export.', 'error');
-      return;
-    }
-
-    const columns = [
-      'created_at',
-      'transaction_type',
-      'description',
-      'currency_code',
-      'amount_minor',
-      'direction',
-      'reference'
-    ];
-
-    const csv = [
-      columns.join(','),
-      ...rows.map(row => columns.map(key =>
-        `"${String(row[key] ?? '').replace(/"/g, '""')}"`
-      ).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csv], {
-      type: 'text/csv;charset=utf-8;'
-    });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-
-    link.href = url;
-    link.download = `aurum-wallet-${App.walletCurrency}-statement.csv`;
-    link.click();
-
-    URL.revokeObjectURL(url);
-  });
-
+  URL.revokeObjectURL(url);
+});
+	  
   /* =====================================================
      DEPOSIT MODAL
   ===================================================== */
