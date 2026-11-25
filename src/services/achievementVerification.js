@@ -204,6 +204,10 @@ try {
 } catch (error) {
   console.error('[badge-approval-notification]', error);
 }
+
+return { badgeId, userId: req.user_id, badgeType: req.badge_type };
+}
+
 /**
  * Admin rejects a badge request.
  * - Updates badge_request status to rejected
@@ -255,6 +259,10 @@ try {
 } catch (error) {
   console.error('[badge-rejection-notification]', error);
 }
+
+return { success: true, userId: req.user_id };
+}
+
 /**
  * Get a single badge request by ID.
  * Useful for admin to inspect before ruling.
