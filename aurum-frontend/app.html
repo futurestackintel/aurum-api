@@ -1221,10 +1221,11 @@
     },
 
     walletCurrencyInfo(currency) {
-      return this.walletAccounts.find(x => x.currency_code === currency)
-        || this.walletAccounts[0]
-        || { currency_code: currency, minor_unit_exponent: 2 };
-    },
+  return this.walletAccounts.find(x => x.currency_code === currency)
+    || this.supportedWalletCurrencies.find(x => x.currency_code === currency)
+    || this.walletAccounts[0]
+    || { currency_code: currency, minor_unit_exponent: 2 };
+},
 
     walletBalanceFor(currency) {
       return this.walletBalances.find(x => x.currency_code === currency)
