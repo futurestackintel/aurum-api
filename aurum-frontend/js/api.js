@@ -255,14 +255,39 @@ const CommentsAPI = {
 
 /* --- Notifications --- */
 const NotificationsAPI = {
-  getAll: (limit = 30, offset = 0) =>
-    apiRequest('GET', `/api/notifications?limit=${limit}&offset=${offset}`),
+  getAll: (limit = 30, offset = 0, filters = {}) => {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    });
 
-  getUnreadCount: () =>
-    apiRequest('GET', '/api/notifications/unread-count'),
+    if (filters.status) params.set('status', filters.status);
+    if (filters.type) params.set('type', filters.type);
+
+    return apiRequest(
+      'GET',
+      `/api/notifications?${params.toString()}`
+    );
+  },
+
+  getUnreadCount: (type = null) => {
+    const params = new URLSearchParams();
+
+    if (type) params.set('type', type);
+
+    const query = params.toString();
+
+    return apiRequest(
+      'GET',
+      `/api/notifications/unread-count${query ? `?${query}` : ''}`
+    );
+  },
+
+  getPreferences: () =>
+    apiRequest('GET', '/api/users/me/notifications'),
 
   markRead: (id) =>
-    apiRequest('PATCH', `/api/notifications/${id}/read`),
+    apiRequest('PATCH', `/api/notifications/${encodeURIComponent(id)}/read`),
 
   markAllRead: () =>
     apiRequest('PATCH', '/api/notifications/read-all'),
@@ -298,6 +323,9 @@ const BadgeAPI = {
 const SettingsAPI = {
   updateProfile: (data) =>
     apiRequest('PATCH', '/api/users/me', data),
+
+ getNotifications: () =>
+    apiRequest('GET', '/api/users/me/notifications'),
 
   updateNotifications: (data) =>
     apiRequest('PATCH', '/api/users/me/notifications', data),
