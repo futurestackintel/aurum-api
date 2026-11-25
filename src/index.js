@@ -18,6 +18,7 @@ import { handlePostRoutes }             from './routes/posts.js';
 import { handleSocialRoutes }           from './routes/social.js';
 import { handleChallengeRoutes }        from './routes/dropCircle.js';
 import { handleDuelRoutes }             from './routes/duel.js';
+import { handleWorkRoutes }             from './routes/work.js';
 import { handleAdminRoutes }            from './routes/admin.js';
 import { handleWalletRoutes }           from './routes/wallet.js';
 import { handleFoundingRoutes }         from './routes/founding.js';
@@ -885,6 +886,7 @@ export default {
         (await handleSocialRoutes(pathname, request.method, request, env))    ||
         (await handleChallengeRoutes(pathname, request.method, request, env)) ||
         (await handleDuelRoutes(pathname, request.method, request, env))      ||
+        (await handleWorkRoutes(pathname, request.method, request, env))      ||
         (await handleCrewRoutes(pathname, request.method, request, env))      ||
         (await handleDmRoutes(pathname, request.method, request, env))        ||
         (await handleUserSearchRoutes(pathname, request.method, request, env)) ||
