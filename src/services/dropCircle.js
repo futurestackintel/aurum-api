@@ -367,8 +367,9 @@ export async function joinChallenge(
         idempotencyKey: idempotencyKey.trim(),
       });
 
-      try {
-        await publishNotification(db, {
+            if (!result.already_funded) {
+        try {
+          await publishNotification(db, {
           recipientUserId: challenge.creator_id,
           type: 'challenge_joined',
           title: 'New Challenge Participant',
@@ -381,9 +382,9 @@ export async function joinChallenge(
           resourceId: challengeId,
         });
       } catch (error) {
-        console.error('[challenge-joined-notification]', error);
+          console.error('[challenge-joined-notification]', error);
+        }
       }
-
       return {
         joined: true,
         ...result,
