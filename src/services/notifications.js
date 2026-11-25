@@ -11,6 +11,110 @@ export const NOTIFICATION_PREFERENCES = [
   'weekly_summary',
 ];
 
+export const NOTIFICATION_CATEGORIES = [
+  {
+    id: 'social',
+    label: 'Social',
+    description: 'Reactions, comments, follows and connections',
+    preference: null,
+  },
+  {
+    id: 'arena',
+    label: 'Arena & Duels',
+    description: 'Challenge and duel activity',
+    preference: 'challenge_updates',
+  },
+  {
+    id: 'messages',
+    label: 'Messages',
+    description: 'Direct messages and message reactions',
+    preference: 'messages',
+  },
+  {
+    id: 'crews',
+    label: 'Crews',
+    description: 'Crew invitations, requests and activity',
+    preference: 'crew_updates',
+  },
+  {
+    id: 'wallet',
+    label: 'Wallet',
+    description: 'Completed deposits and withdrawals',
+    preference: null,
+  },
+  {
+    id: 'tips',
+    label: 'Tips',
+    description: 'Tips received from other members',
+    preference: 'tips_received',
+  },
+  {
+    id: 'achievements',
+    label: 'Achievements & Leagues',
+    description: 'Badge awards and league changes',
+    preference: 'badge_awards',
+  },
+  {
+    id: 'system',
+    label: 'Security & System',
+    description: 'Security, account and platform notices',
+    preference: null,
+  },
+];
+
+const NOTIFICATION_TYPE_CATEGORIES = {
+  post_reacted: 'social',
+  post_tipped: 'social',
+  post_commented: 'social',
+  new_follower: 'social',
+  connection_request: 'social',
+  connection_accepted: 'social',
+
+  challenge_won: 'arena',
+  challenge_joined: 'arena',
+  challenge_ending_soon: 'arena',
+  duel_received: 'arena',
+  duel_accepted: 'arena',
+  duel_result: 'arena',
+  duel_announced: 'arena',
+
+  dm_received: 'messages',
+  message_reaction: 'messages',
+
+  crew_promoted: 'crews',
+  crew_demoted: 'crews',
+  crew_kicked: 'crews',
+  crew_mention: 'crews',
+  crew_invite: 'crews',
+  crew_join_request: 'crews',
+  room_invited: 'crews',
+
+  deposit_completed: 'wallet',
+  withdrawal_completed: 'wallet',
+
+  tip_received: 'tips',
+
+  badge_awarded: 'achievements',
+  league_promoted: 'achievements',
+  league_demoted: 'achievements',
+
+  stake_verified: 'system',
+  stake_disputed: 'system',
+  stake_forfeited: 'system',
+  system_alert: 'system',
+};
+
+export async function getNotificationCategories(userId, env) {
+  const preferences = await getNotificationPreferences(userId, env);
+
+  return NOTIFICATION_CATEGORIES.map((category) => ({
+    ...category,
+    enabled: category.preference
+      ? !!preferences[category.preference]
+      : true,
+  }));
+}
+
 export async function notificationEnabled(userId, preference, db) {
   if (!NOTIFICATION_PREFERENCES.includes(preference)) return true;
 
@@ -73,9 +177,11 @@ export async function getNotifications(
     .bind(...bindings)
     .all();
 
-  return results;
-}
-
+    return results.map((notification) => ({
+    ...notification,
+    category: NOTIFICATION_TYPE_CATEGORIES[notification.type] || 'system',
+  }));
+	
 export async function getUnreadCount(userId, env, type = null) {
   let query = `
     SELECT COUNT(*) AS count
