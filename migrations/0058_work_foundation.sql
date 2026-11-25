@@ -226,9 +226,12 @@ CREATE TABLE work_crew_application_approvals (
     CHECK (is_captain_approval IN (0, 1)),
 
   eligible_member_snapshot INTEGER NOT NULL
-    CHECK (eligible_member_snapshot IN (0, 1)),
+  CHECK (eligible_member_snapshot IN (0, 1)),
 
-  created_at TEXT NOT NULL DEFAULT (
+eligible_member_count_snapshot INTEGER NOT NULL
+  CHECK (eligible_member_count_snapshot > 0),
+
+created_at TEXT NOT NULL DEFAULT (
     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
   ),
 
