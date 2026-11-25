@@ -49,7 +49,7 @@ export async function publishDomainEvent(db, event, consumerKeys) {
 
   const statements = [
     db.prepare(`
-      INSERT INTO domain_events (
+      INSERT OR IGNORE INTO domain_events (
         event_id,
         event_type,
         schema_version,
@@ -79,7 +79,7 @@ export async function publishDomainEvent(db, event, consumerKeys) {
   for (const consumerKey of uniqueConsumers) {
     statements.push(
       db.prepare(`
-        INSERT INTO domain_event_deliveries (
+        INSERT OR IGNORE INTO domain_event_deliveries (
           id,
           event_id,
           consumer_key
