@@ -490,98 +490,127 @@ async function handleUpdateProfile(request, env) {
     }, 500);
   }
 }
-// ── Settings: PATCH /api/users/me/notifications ──────────────
-// Fix 3 confirmed present: internal DB user id resolved from
-// Clerk id before the upsert.
+
+// ── Settings: notification preferences ──────────────────────
+const NOTIFICATION_PREFERENCE_FIELDS = [
+  'tips_received',
+  'challenge_updates',
+  'messages',
+  'crew_updates',
+  'duel_challenges',
+  'league_promotions',
+  'badge_awards',
+  'weekly_summary',
+];
+
 async function handleUpdateNotifications(request, env) {
-  const db   = env.DB;
+  const db = env.DB;
   const user = await requireAuth(request, env);
-  if (user.error) return jsonResponse({ error: user.error }, 401);
+
+  if (user.error) {
+    return jsonResponse({ error: user.error }, 401);
+  }
 
   const dbUser = await db
     .prepare(`SELECT id FROM users WHERE clerk_id = ?`)
     .bind(user.id)
     .first();
 
-  if (!dbUser) return jsonResponse({ error: 'User not found' }, 404);
+  if (!dbUser) {
+    return jsonResponse({ error: 'User not found' }, 404);
+  }
 
-  const body = await request.json();
-  const {
-    tips_received,
-    challenge_updates,
-    messages,
-    crew_updates,
-    duel_challenges,
-    league_promotions,
-    badge_awards,
-    weekly_summary,
-  } = body;
+  let body;
+
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON body' }, 400);
+  }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return jsonResponse({ error: 'Invalid preferences payload' }, 400);
+  }
+
+  const fields = Object.keys(body);
+
+  if (fields.length === 0) {
+    return jsonResponse({ error: 'No preferences provided' }, 400);
+  }
+
+  for (const field of fields) {
+    if (!NOTIFICATION_PREFERENCE_FIELDS.includes(field)) {
+      return jsonResponse({ error: `Unsupported preference: ${field}` }, 400);
+    }
+
+    if (typeof body[field] !== 'boolean') {
+      return jsonResponse({ error: `${field} must be a boolean` }, 400);
+    }
+  }
 
   const now = new Date().toISOString();
 
-  // Upsert notification preferences
   const existing = await db
     .prepare(`SELECT id FROM notification_preferences WHERE user_id = ?`)
     .bind(dbUser.id)
     .first();
 
   if (existing) {
-    const fields = [];
-    const values = [];
+    const assignments = fields.map((field) => `${field} = ?`);
+    const values = fields.map((field) => body[field] ? 1 : 0);
 
-    if (tips_received      !== undefined) { fields.push('tips_received = ?');      values.push(tips_received      ? 1 : 0); }
-    if (challenge_updates  !== undefined) { fields.push('challenge_updates = ?');   values.push(challenge_updates  ? 1 : 0); }
-    if (messages           !== undefined) { fields.push('messages = ?');            values.push(messages           ? 1 : 0); }
-    if (crew_updates       !== undefined) { fields.push('crew_updates = ?');        values.push(crew_updates       ? 1 : 0); }
-    if (duel_challenges    !== undefined) { fields.push('duel_challenges = ?');     values.push(duel_challenges    ? 1 : 0); }
-    if (league_promotions  !== undefined) { fields.push('league_promotions = ?');   values.push(league_promotions  ? 1 : 0); }
-    if (badge_awards       !== undefined) { fields.push('badge_awards = ?');        values.push(badge_awards       ? 1 : 0); }
-    if (weekly_summary     !== undefined) { fields.push('weekly_summary = ?');      values.push(weekly_summary     ? 1 : 0); }
+    assignments.push('updated_at = ?');
+    values.push(now, dbUser.id);
 
-    if (fields.length === 0) return jsonResponse({ error: 'No valid fields provided' }, 400);
-
-    fields.push('updated_at = ?');
-    values.push(now);
-    values.push(dbUser.id);
-
-    await db
-      .prepare(`UPDATE notification_preferences SET ${fields.join(', ')} WHERE user_id = ?`)
-      .bind(...values)
-      .run();
+    await db.prepare(`
+      UPDATE notification_preferences
+      SET ${assignments.join(', ')}
+      WHERE user_id = ?
+    `).bind(...values).run();
   } else {
-    await db
-      .prepare(`
-        INSERT INTO notification_preferences
-          (id, user_id, tips_received, challenge_updates, duel_challenges,
-           league_promotions, badge_awards, weekly_summary, messages, crew_updates,
-           created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .bind(
-        crypto.randomUUID(),
-        dbUser.id,
-        tips_received      !== undefined ? (tips_received      ? 1 : 0) : 1,
-        challenge_updates  !== undefined ? (challenge_updates  ? 1 : 0) : 1,
-        duel_challenges    !== undefined ? (duel_challenges    ? 1 : 0) : 1,
-        league_promotions  !== undefined ? (league_promotions  ? 1 : 0) : 1,
-        badge_awards       !== undefined ? (badge_awards       ? 1 : 0) : 1,
-        weekly_summary     !== undefined ? (weekly_summary     ? 1 : 0) : 1,
-        messages           !== undefined ? (messages           ? 1 : 0) : 1,
-        crew_updates       !== undefined ? (crew_updates       ? 1 : 0) : 1,
-        now,
-        now,
+    const valuesByField = Object.fromEntries(
+      NOTIFICATION_PREFERENCE_FIELDS.map((field) => [
+        field,
+        body[field] === undefined ? 1 : (body[field] ? 1 : 0),
+      ]),
+    );
+
+    await db.prepare(`
+      INSERT INTO notification_preferences (
+        id, user_id,
+        tips_received, challenge_updates, messages, crew_updates,
+        duel_challenges, league_promotions, badge_awards, weekly_summary,
+        created_at, updated_at
       )
-      .run();
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      dbUser.id,
+      valuesByField.tips_received,
+      valuesByField.challenge_updates,
+      valuesByField.messages,
+      valuesByField.crew_updates,
+      valuesByField.duel_challenges,
+      valuesByField.league_promotions,
+      valuesByField.badge_awards,
+      valuesByField.weekly_summary,
+      now,
+      now,
+    ).run();
   }
 
-  const prefs = await db
-    .prepare(`SELECT * FROM notification_preferences WHERE user_id = ?`)
+  const preferences = await db
+    .prepare(`
+      SELECT tips_received, challenge_updates, messages, crew_updates,
+             duel_challenges, league_promotions, badge_awards, weekly_summary
+      FROM notification_preferences
+      WHERE user_id = ?
+    `)
     .bind(dbUser.id)
     .first();
 
-  return jsonResponse({ updated: true, preferences: prefs });
+  return jsonResponse({ updated: true, preferences });
 }
-
 // ── Settings: POST /api/users/me/delete ──────────────────────
 async function handleDeleteAccount(request, env) {
   const db   = env.DB;
@@ -805,6 +834,16 @@ export default {
         const res = await handleUpdateProfile(request, env);
         return withCors(res, cors);
       }
+
+			if (pathname === '/api/users/me/notifications' && request.method === 'GET') {
+				  const res = await handleNotificationRoutes(
+			    '/api/notifications/preferences',
+			    'GET',
+				    request,
+				    env,
+				  );
+		  return withCors(res, cors);
+				}
 
       if (pathname === '/api/users/me/notifications' && request.method === 'PATCH') {
         const res = await handleUpdateNotifications(request, env);
