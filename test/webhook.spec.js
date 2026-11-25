@@ -1,17 +1,8 @@
+
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { confirmDepositMock } = vi.hoisted(() => ({
-  confirmDepositMock: vi.fn(),
-}));
-
-vi.mock('../src/services/deposits.js', () => ({
-  DepositService: class {
-    confirmDeposit(...args) {
-      return confirmDepositMock(...args);
-    }
-  },
-}));
+const confirmDepositMock = vi.fn();
 
 import { handleWebhookRoutes } from '../src/routes/webhook.js';
 
@@ -124,27 +115,25 @@ async function sendWebhook(event, signatureOverride = null) {
         'x-paystack-signature': signature,
       },
       body,
-      }
-);
-}
-
-beforeEach(() => {
+    }
+  );
 
   return handleWebhookRoutes(
-  '/webhook/paystack',
-  request,
-  {
-    DB: env.DB,
-    PAYSTACK_SECRET_KEY: SECRET,
-  },
-  {
-    DepositServiceClass: class {
-      async confirmDeposit(...args) {
-        return confirmDepositMock(...args);
-      }
+    '/webhook/paystack',
+    request,
+    {
+      DB: env.DB,
+      PAYSTACK_SECRET_KEY: SECRET,
     },
-  }
-);
+    {
+      DepositServiceClass: class {
+        async confirmDeposit(...args) {
+          return confirmDepositMock(...args);
+        }
+      },
+    }
+  );
+}
 
 beforeEach(() => {
   confirmDepositMock.mockReset();
@@ -233,43 +222,42 @@ describe('Paystack wallet deposit webhook', () => {
   });
 
   it('retries a failed webhook event and processes it successfully', async () => {
-  const operation = await createDepositOperation();
-  const event = createEvent(operation);
+    const operation = await createDepositOperation();
+    const event = createEvent(operation);
 
-  confirmDepositMock.mockRejectedValueOnce(
-    new Error('Simulated deposit settlement failure')
-  );
+    confirmDepositMock.mockRejectedValueOnce(
+      new Error('Simulated deposit settlement failure')
+    );
 
-  const firstResponse = await sendWebhook(event);
+    const firstResponse = await sendWebhook(event);
 
-  expect(firstResponse.status).toBe(500);
+    expect(firstResponse.status).toBe(500);
 
-  const failed = await env.DB.prepare(`
-    SELECT processing_status, attempt_count, last_error
-    FROM financial_provider_events
-    WHERE provider_reference = ?
-  `).bind(operation.reference).first();
+    const failed = await env.DB.prepare(`
+      SELECT processing_status, attempt_count, last_error
+      FROM financial_provider_events
+      WHERE provider_reference = ?
+    `).bind(operation.reference).first();
 
-  expect(failed.processing_status).toBe('failed');
-  expect(failed.attempt_count).toBe(1);
-  expect(failed.last_error).toContain(
-    'Simulated deposit settlement failure'
-  );
+    expect(failed.processing_status).toBe('failed');
+    expect(failed.attempt_count).toBe(1);
+    expect(failed.last_error).toContain(
+      'Simulated deposit settlement failure'
+    );
 
-  // Retry the exact same provider event.
-  const retryResponse = await sendWebhook(event);
+    const retryResponse = await sendWebhook(event);
 
-  expect(retryResponse.status).toBe(200);
-  expect(confirmDepositMock).toHaveBeenCalledTimes(2);
+    expect(retryResponse.status).toBe(200);
+    expect(confirmDepositMock).toHaveBeenCalledTimes(2);
 
-  const retried = await env.DB.prepare(`
-    SELECT processing_status, attempt_count, last_error
-    FROM financial_provider_events
-    WHERE provider_reference = ?
-  `).bind(operation.reference).first();
+    const retried = await env.DB.prepare(`
+      SELECT processing_status, attempt_count, last_error
+      FROM financial_provider_events
+      WHERE provider_reference = ?
+    `).bind(operation.reference).first();
 
-  expect(retried.processing_status).toBe('processed');
-  expect(retried.attempt_count).toBe(2);
-  expect(retried.last_error).toBeNull();
-});
+    expect(retried.processing_status).toBe('processed');
+    expect(retried.attempt_count).toBe(2);
+    expect(retried.last_error).toBeNull();
+  });
 });
