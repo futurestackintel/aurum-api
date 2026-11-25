@@ -104,11 +104,13 @@ CREATE TABLE work_applications (
   applicant_type TEXT NOT NULL
     CHECK (applicant_type IN ('individual', 'crew')),
 
-  applicant_user_id TEXT REFERENCES users(id) ON DELETE RESTRICT,
-  applicant_crew_id TEXT REFERENCES crews(id) ON DELETE RESTRICT,
+applicant_user_id TEXT REFERENCES users(id) ON DELETE RESTRICT,
+applicant_crew_id TEXT REFERENCES crews(id) ON DELETE RESTRICT,
 
-  cover_message TEXT NOT NULL,
+submitted_by_user_id TEXT NOT NULL
+  REFERENCES users(id) ON DELETE RESTRICT,
 
+cover_message TEXT NOT NULL,
   proposed_fixed_amount_minor INTEGER,
   proposed_hourly_rate_minor INTEGER,
 
