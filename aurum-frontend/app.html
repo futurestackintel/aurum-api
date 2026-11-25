@@ -1531,12 +1531,12 @@
         messages:    () => window.DmPage?.init('view-messages'),
         search:      () => window.SearchPage?.init('view-search'),
         'public-profile': () => window.PublicProfilePage?.open('view-public-profile', window.PublicProfilePage.username),
-		wallet: () => {
-  App.loadWalletBalance();
-  App.showWalletTab('overview');
-  App.loadWalletTransactions();
-  App.loadWalletBankDetails();
-},
+		wallet: async () => {
+		  await App.loadWalletBalance();
+ 		  App.showWalletTab('overview');
+		  await App.loadWalletTransactions();
+		  await App.loadWalletBankDetails();
+		},
       };
       loaders[view]?.();
     },
