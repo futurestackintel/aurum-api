@@ -25,6 +25,7 @@ import {
   listWorkDisputesAdmin,
   setWorkDisputeUnderReview,
   resolveWorkDispute,
+	listWorkApplications,
 } from '../services/work.js';
 
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -171,6 +172,28 @@ export async function handleWorkRoutes(path, method, request, env) {
       () => publishWorkOpportunity(publishMatch[1], auth.userId, db),
     );
   }
+
+	  const opportunityApplicationsMatch = path.match(
+    /^\/api\/work\/opportunities\/([^/]+)\/applications$/
+  );
+
+  if (opportunityApplicationsMatch && method === 'GET') {
+    const auth = await authenticatedUser();
+    if (auth.response) return auth.response;
+
+    const url = new URL(request.url);
+
+    return execute(() => listWorkApplications(
+      opportunityApplicationsMatch[1],
+      auth.userId,
+      {
+        status: url.searchParams.get('status'),
+        limit: url.searchParams.get('limit'),
+        offset: url.searchParams.get('offset'),
+      },
+      db,
+    ));
+	}
 
   const individualApplicationMatch = path.match(
     /^\/api\/work\/opportunities\/([^/]+)\/applications$/
