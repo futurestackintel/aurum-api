@@ -365,7 +365,6 @@ try {
 } catch (error) {
   console.error('[crew-invite-notification]', error);
 }
-  await db.batch(inviteStatements);
 
     return { invite: { id, crew_id: crewId, target_user_id: targetUserId, status: 'pending' } };
 }
@@ -431,8 +430,6 @@ if (captainRow) {
     console.error('[crew-join-request-notification]', error);
   }
 }
-
-  await db.batch(statements);
 
   return { request: { id, crew_id: crewId, status: 'pending' } };
 }
