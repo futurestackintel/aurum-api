@@ -286,6 +286,9 @@ const NotificationsAPI = {
   getPreferences: () =>
     apiRequest('GET', '/api/users/me/notifications'),
 
+  getCategories: () =>
+    apiRequest('GET', '/api/notifications/categories'),
+
   markRead: (id) =>
     apiRequest('PATCH', `/api/notifications/${encodeURIComponent(id)}/read`),
 
