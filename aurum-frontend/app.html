@@ -208,111 +208,270 @@
     .notif-bell-badge.visible { display: block; }
 
     /* ---- Notification dropdown ---- */
-    .notif-dropdown {
-      position: fixed;
-      top: calc(var(--nav-height) + env(safe-area-inset-top, 0px) + 8px);
-      right: max(var(--space-4), env(safe-area-inset-right, 0px));
-      width: 340px;
-      max-width: calc(100vw - 32px);
-      max-height: calc(100vh - var(--nav-height) - env(safe-area-inset-top, 0px) - var(--bottom-nav-h) - env(safe-area-inset-bottom, 0px) - 24px);
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
-      z-index: var(--z-overlay);
-      display: none;
-      flex-direction: column;
-      overflow: hidden;
-    }
-	  
-    .notif-dropdown.open { display: flex; }
+.notif-dropdown {
+  position: fixed;
+  top: calc(var(--nav-height) + env(safe-area-inset-top, 0px) + 10px);
+  right: max(16px, env(safe-area-inset-right, 0px));
+  width: 430px;
+  max-width: calc(100vw - 32px);
+  max-height: min(
+    680px,
+    calc(100vh - var(--nav-height) - env(safe-area-inset-top, 0px) - var(--bottom-nav-h) - env(safe-area-inset-bottom, 0px) - 24px)
+  );
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.42);
+  z-index: var(--z-overlay);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  animation: notifPanelIn 180ms ease-out;
+}
 
-    .notif-dropdown-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: var(--space-3) var(--space-4);
-      border-bottom: 1px solid var(--color-border);
-    }
+@keyframes notifPanelIn {
+  from { opacity: 0; transform: translateY(-7px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 
-    .notif-dropdown-title {
-      font-size: var(--text-sm);
-      font-weight: 500;
-      color: var(--color-text);
-    }
+.notif-dropdown.open { display: flex; }
 
-    .notif-dropdown-markall {
-      background: none;
-      border: none;
-      color: var(--color-gold);
-      font-size: var(--text-xs);
-      cursor: pointer;
-      padding: 0;
-    }
+.notif-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 15px;
+  border-bottom: 1px solid var(--color-border);
+  background:
+    radial-gradient(ellipse at top right, rgba(201,168,76,.11), transparent 65%),
+    var(--color-surface);
+}
 
-    .notif-dropdown-list {
-      overflow-y: auto;
-      flex: 1;
-    }
+.notif-dropdown-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--color-text);
+}
 
-    .notif-item {
-      display: block;
-      width: 100%;
-      text-align: left;
-      background: none;
-      border: none;
-      border-bottom: 1px solid var(--color-border);
-      padding: var(--space-3) var(--space-4);
-      cursor: pointer;
-      transition: background var(--transition-base);
-    }
+.notif-dropdown-markall {
+  background: rgba(201,168,76,.09);
+  border: 1px solid rgba(201,168,76,.2);
+  border-radius: 999px;
+  color: var(--color-gold);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 7px 11px;
+  white-space: nowrap;
+  transition: background 160ms ease, border-color 160ms ease;
+}
 
-    .notif-item:hover { background: var(--color-surface-2); }
+.notif-dropdown-markall:hover {
+  background: rgba(201,168,76,.17);
+  border-color: rgba(201,168,76,.4);
+}
 
-    .notif-item.unread {
-      background: rgba(201,168,76,0.06);
-      position: relative;
-    }
+.notif-filters {
+  padding: 13px 16px 11px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--color-surface);
+}
 
-    .notif-item.unread::before {
-      content: '';
-      position: absolute;
-      left: 6px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--color-gold);
-    }
+.notif-status-tabs {
+  display: flex;
+  gap: 5px;
+  padding: 4px;
+  border-radius: 11px;
+  background: var(--color-surface-2);
+}
 
-    .notif-item.unread { padding-left: calc(var(--space-4) + 10px); }
+.notif-status-tab {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
 
-    .notif-item-title {
-      font-size: var(--text-sm);
-      color: var(--color-text);
-      margin-bottom: 2px;
-    }
+.notif-status-tab:hover {
+  color: var(--color-text);
+}
 
-    .notif-item-body {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      line-height: 1.4;
-      margin-bottom: 4px;
-    }
+.notif-status-tab.active {
+  color: var(--color-gold);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+}
 
-    .notif-item-time {
-      font-size: 10px;
-      color: var(--color-text-dim);
-    }
+.notif-category-tabs {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 1px 0 3px;
+  -webkit-overflow-scrolling: touch;
+}
 
-    .notif-dropdown-empty {
-      padding: var(--space-8) var(--space-4);
-      text-align: center;
-      font-size: var(--text-sm);
-      color: var(--color-text-muted);
-    }
+.notif-category-tabs::-webkit-scrollbar { display: none; }
 
+.notif-category-tab {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 160ms ease;
+}
+
+.notif-category-tab:hover {
+  color: var(--color-text);
+  border-color: rgba(201,168,76,.4);
+}
+
+.notif-category-tab.active {
+  color: var(--color-gold);
+  background: rgba(201,168,76,.1);
+  border-color: rgba(201,168,76,.42);
+}
+
+.notif-dropdown-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 120px;
+  overscroll-behavior: contain;
+}
+
+.notif-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  padding: 15px 18px;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.notif-item:hover {
+  background: var(--color-surface-2);
+}
+
+.notif-item.unread {
+  background: rgba(201,168,76,.055);
+  box-shadow: inset 3px 0 0 var(--color-gold);
+}
+
+.notif-item.unread:hover {
+  background: rgba(201,168,76,.1);
+}
+
+.notif-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.notif-item-category {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--color-surface-2);
+  color: var(--color-gold);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+.notif-item.unread .notif-item-category {
+  background: rgba(201,168,76,.13);
+}
+
+.notif-item-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-text);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.notif-item-body {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.notif-item-time {
+  font-size: 10px;
+  color: var(--color-text-dim);
+}
+
+.notif-dropdown-empty {
+  padding: 38px 20px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 600px) {
+  .notif-dropdown {
+    top: calc(var(--nav-height) + env(safe-area-inset-top, 0px) + 7px);
+    left: 10px;
+    right: 10px;
+    width: auto;
+    max-width: none;
+    max-height: calc(
+      100dvh - var(--nav-height) - env(safe-area-inset-top, 0px) - var(--bottom-nav-h) - env(safe-area-inset-bottom, 0px) - 18px
+    );
+    border-radius: 16px;
+  }
+
+  .notif-dropdown-header {
+    padding: 15px 15px 13px;
+  }
+
+  .notif-filters {
+    padding: 11px 12px 9px;
+    gap: 10px;
+  }
+
+  .notif-item {
+    padding: 14px 14px;
+  }
+
+  .notif-item.unread {
+    padding-left: 14px;
+  }
+
+  .notif-dropdown-empty {
+    padding: 32px 16px;
+  }
+}
     /* ---- Page content ---- */
     .page-content {
       flex: 1;
@@ -715,10 +874,23 @@
           </button>
           <div class="notif-dropdown" id="notif-dropdown" role="dialog" aria-label="Notifications">
             <div class="notif-dropdown-header">
-              <span class="notif-dropdown-title">Notifications</span>
-              <button class="notif-dropdown-markall" id="notif-markall-btn">Mark all read</button>
-            </div>
-            <div class="notif-dropdown-list" id="notif-dropdown-list">
+			  <span class="notif-dropdown-title">Notifications</span>
+			  <button class="notif-dropdown-markall" id="notif-markall-btn">Mark all read</button>
+			</div>
+
+  <div class="notif-filters">
+  <div class="notif-status-tabs" id="notif-status-tabs" role="group" aria-label="Filter notification status">
+    <button class="notif-status-tab active" type="button" data-status="all" aria-pressed="true">All</button>
+    <button class="notif-status-tab" type="button" data-status="unread" aria-pressed="false">Unread</button>
+    <button class="notif-status-tab" type="button" data-status="read" aria-pressed="false">Read</button>
+  </div>
+
+  <div class="notif-category-tabs" id="notif-category-tabs" aria-label="Filter notification category">
+    <button class="notif-category-tab active" type="button" data-category="all">All categories</button>
+  </div>
+</div>
+
+<div class="notif-dropdown-list" id="notif-dropdown-list">
               <div class="notif-dropdown-empty">Loading...</div>
             </div>
           </div>
@@ -2119,6 +2291,10 @@ document.getElementById('btn-wallet-export').addEventListener('click', () => {
   ===================================================== */
   const Notifications = {
     isOpen: false,
+	selectedStatus: 'all',
+	selectedCategory: 'all',
+	categories: [],
+	categoriesLoaded: false,
 
     init() {
       document.getElementById('notif-bell-btn').addEventListener('click', (e) => {
@@ -2129,6 +2305,36 @@ document.getElementById('btn-wallet-export').addEventListener('click', () => {
         e.stopPropagation();
         this.markAllRead();
       });
+		document.getElementById('notif-status-tabs').addEventListener('click', (e) => {
+  const button = e.target.closest('[data-status]');
+  if (!button) return;
+
+  this.selectedStatus = button.dataset.status;
+
+  document.querySelectorAll('.notif-status-tab').forEach((tab) => {
+    const active = tab.dataset.status === this.selectedStatus;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-pressed', String(active));
+  });
+
+  this.loadNotifications();
+});
+
+document.getElementById('notif-category-tabs').addEventListener('click', (e) => {
+  const button = e.target.closest('[data-category]');
+  if (!button) return;
+
+  this.selectedCategory = button.dataset.category;
+
+  document.querySelectorAll('.notif-category-tab').forEach((tab) => {
+    tab.classList.toggle(
+      'active',
+      tab.dataset.category === this.selectedCategory,
+    );
+  });
+
+  this.loadNotifications();
+});
       document.addEventListener('click', (e) => {
         const dropdown = document.getElementById('notif-dropdown');
         if (this.isOpen && !dropdown.contains(e.target)) this.close();
@@ -2143,11 +2349,12 @@ document.getElementById('btn-wallet-export').addEventListener('click', () => {
     },
 
     open() {
-      this.isOpen = true;
-      document.getElementById('notif-dropdown').classList.add('open');
-      document.getElementById('notif-bell-btn').setAttribute('aria-expanded', 'true');
-      this.loadNotifications();
-    },
+  this.isOpen = true;
+  document.getElementById('notif-dropdown').classList.add('open');
+  document.getElementById('notif-bell-btn').setAttribute('aria-expanded', 'true');
+
+  this.loadCategories().then(() => this.loadNotifications());
+},
 
     close() {
       this.isOpen = false;
@@ -2175,33 +2382,100 @@ document.getElementById('btn-wallet-export').addEventListener('click', () => {
       } catch (err) { /* silent — badge just won't update */ }
     },
 
+	  async loadCategories() {
+  if (this.categoriesLoaded) return;
+
+  try {
+    const data = await AURUM.NotificationsAPI.getCategories();
+    this.categories = data.categories || [];
+    this.categoriesLoaded = true;
+
+    const container = document.getElementById('notif-category-tabs');
+
+    container.innerHTML = `
+      <button
+        class="notif-category-tab active"
+        type="button"
+        data-category="all"
+      >All categories</button>
+      ${this.categories.map(category => `
+        <button
+          class="notif-category-tab"
+          type="button"
+          data-category="${this.escapeHTML(category.id)}"
+        >${this.escapeHTML(category.label)}</button>
+      `).join('')}
+    `;
+  } catch (err) {
+    /* Keep the All categories filter available if loading fails. */
+  }
+},
+
+getCategoryLabel(categoryId) {
+  const category = this.categories.find(item => item.id === categoryId);
+  return category?.label || 'System';
+},
+
     async loadNotifications() {
-      const list = document.getElementById('notif-dropdown-list');
-      try {
-        const data = await AURUM.NotificationsAPI.getAll(30, 0);
-        const notifs = data.notifications || [];
+  const list = document.getElementById('notif-dropdown-list');
 
-        if (!notifs.length) {
-          list.innerHTML = `<div class="notif-dropdown-empty">No notifications yet.</div>`;
-          return;
-        }
+  list.innerHTML = `<div class="notif-dropdown-empty">Loading notifications...</div>`;
 
-        list.innerHTML = notifs.map(n => `
-          <button class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${this.escapeHTML(n.id)}" data-url="${this.escapeHTML(n.action_url || '')}">
-            <div class="notif-item-title">${this.escapeHTML(n.title)}</div>
-            <div class="notif-item-body">${this.escapeHTML(n.body)}</div>
-            <div class="notif-item-time">${AURUM.timeAgo(n.created_at)}</div>
-          </button>
-        `).join('');
+  try {
+    const filters = {
+      status: this.selectedStatus,
+    };
 
-        list.querySelectorAll('.notif-item').forEach(item => {
-          item.addEventListener('click', () => this.handleClick(item));
-        });
-      } catch (err) {
-        list.innerHTML = `<div class="notif-dropdown-empty">Could not load notifications.</div>`;
-      }
-    },
+    if (this.selectedCategory !== 'all') {
+      filters.category = this.selectedCategory;
+    }
 
+    const data = await AURUM.NotificationsAPI.getAll(30, 0, filters);
+    const notifs = data.notifications || [];
+
+    if (!notifs.length) {
+      const message = this.selectedStatus === 'unread'
+        ? 'You’re all caught up. No unread notifications.'
+        : this.selectedStatus === 'read'
+          ? 'No read notifications in this category yet.'
+          : 'Nothing here yet. New activity will appear here.';
+
+      list.innerHTML = `
+        <div class="notif-dropdown-empty">${message}</div>
+      `;
+      return;
+    }
+
+    list.innerHTML = notifs.map(n => `
+      <button
+        class="notif-item ${n.is_read ? '' : 'unread'}"
+        data-id="${this.escapeHTML(n.id)}"
+        data-url="${this.escapeHTML(n.action_url || '')}"
+      >
+        <div class="notif-item-top">
+          <span class="notif-item-category">
+            ${this.escapeHTML(this.getCategoryLabel(n.category))}
+          </span>
+          <span class="notif-item-time">
+            ${this.escapeHTML(AURUM.timeAgo(n.created_at))}
+          </span>
+        </div>
+        <div class="notif-item-title">${this.escapeHTML(n.title)}</div>
+        <div class="notif-item-body">${this.escapeHTML(n.body)}</div>
+      </button>
+    `).join('');
+
+    list.querySelectorAll('.notif-item').forEach(item => {
+      item.addEventListener('click', () => this.handleClick(item));
+    });
+  } catch (err) {
+    list.innerHTML = `
+      <div class="notif-dropdown-empty">
+        Could not load notifications. Please try again.
+      </div>
+    `;
+  }
+},
     async handleClick(item) {
       const id  = item.dataset.id;
       const url = item.dataset.url;
@@ -2275,8 +2549,8 @@ document.getElementById('btn-wallet-export').addEventListener('click', () => {
     async markAllRead() {
       try {
         await AURUM.NotificationsAPI.markAllRead();
-        document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
         this.refreshUnreadCount();
+		this.loadNotifications();
       } catch (err) {
         AURUM.showToast('Could not mark all as read.', 'error');
       }
