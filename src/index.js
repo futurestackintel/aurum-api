@@ -36,6 +36,7 @@ import { processDuelCron }              from './services/duel.js';
 import { processCrewBattleCron }        from './services/crew.js';
 import { requireAuth }                   from './middleware/auth.js';
 import { addScoreEvent }                from './services/aurumScore.js';
+import { publishNotification } from './services/notificationPublisher.js';
 import './services/notificationEventConsumer.js';
 import { processRegisteredEventDeliveries } from './services/eventConsumerRegistry.js';
 export { CrewChatRoom } from './durableObjects/CrewChatRoom.js';
@@ -695,18 +696,25 @@ export async function handlePostCheer(postId, request, env) {
     .bind(crypto.randomUUID(), postId, dbUser.id, now)
     .run();
 
-  // Notify post author
+    // Notify post author through the shared event pipeline.
   if (post.user_id !== dbUser.id) {
-    await db
-      .prepare(`
-        INSERT INTO notifications
-          (id, user_id, type, title, body, action_url, created_at)
-        VALUES (?, ?, 'post_reacted', 'Someone cheered your post', 'Your Wealth Journey post received a cheer!', ?, ?)
-      `)
-      .bind(crypto.randomUUID(), post.user_id, `/posts/${postId}`, now)
-      .run();
+    try {
+      await publishNotification(db, {
+        recipientUserId: post.user_id,
+        type: 'post_reacted',
+        title: 'Someone cheered your post',
+        body: 'Your Wealth Journey post received a cheer!',
+        actionUrl: `/posts/${postId}`,
+        actorType: 'member',
+        actorId: dbUser.id,
+        resourceType: 'post',
+        resourceId: postId,
+        requestId: `post-cheer:${postId}:${dbUser.id}`,
+      });
+    } catch (error) {
+      console.error('Post cheer notification failed:', error?.name);
+    }
   }
-
   // Award 1 Aurum Score to the cheerer
   await addScoreEvent(
     dbUser.id,
