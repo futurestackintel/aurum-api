@@ -1729,6 +1729,36 @@ export async function reviewWorkSubmission(
       now,
     ));
   }
+	
+  // A rejected submission creates a formal dispute record.
+  // This records the disagreement only; no financial action occurs.
+  if (decision === 'reject') {
+    const disputeId = newId();
+    const disputeDescription = validText(message, 10, 12000)
+      ? message.trim()
+      : 'The client rejected a submitted deliverable. Further details were not provided.';
+
+    statements.push(db.prepare(`
+      INSERT INTO work_disputes (
+        id,
+        engagement_id,
+        opened_by_user_id,
+        category,
+        description,
+        status,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, 'delivery_rejected', ?, 'open', ?, ?)
+    `).bind(
+      disputeId,
+      submission.engagement_id,
+      clientUserId,
+      disputeDescription,
+      now,
+      now,
+    ));
+  }
 
   await db.batch(statements);
 
@@ -2182,3 +2212,527 @@ export async function respondToWorkRevision(
     status: 'submitted',
   };
 		}
+// ── WORK REVIEWS ─────────────────────────────────────────────
+
+export async function createWorkReview(
+  engagementId,
+  reviewerUserId,
+  input,
+  db,
+) {
+  if (!Number.isInteger(input?.rating) || input.rating < 1 || input.rating > 5) {
+    return { error: 'Rating must be an integer between 1 and 5' };
+  }
+
+  const reviewText = input.review_text ?? null;
+
+  if (
+    reviewText !== null &&
+    !validText(reviewText, 1, 3000)
+  ) {
+    return { error: 'Review text must be between 1 and 3,000 characters' };
+  }
+
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+      AND status = 'completed'
+  `).bind(engagementId).first();
+
+  if (!engagement) {
+    return { error: 'Only completed engagements can be reviewed' };
+  }
+
+  let direction;
+  let revieweeType;
+  let revieweeUserId = null;
+  let revieweeCrewId = null;
+
+  if (engagement.client_user_id === reviewerUserId) {
+    direction = 'client_to_provider';
+
+    if (engagement.provider_type === 'individual') {
+      revieweeType = 'user';
+      revieweeUserId = engagement.provider_user_id;
+    } else {
+      revieweeType = 'crew';
+      revieweeCrewId = engagement.provider_crew_id;
+    }
+  } else {
+    const isProvider = await canUserDeliverForEngagement(
+      engagement,
+      reviewerUserId,
+      db,
+    );
+
+    if (!isProvider) {
+      return { error: 'You are not authorized to review this engagement' };
+    }
+
+    direction = 'provider_to_client';
+    revieweeType = 'user';
+    revieweeUserId = engagement.client_user_id;
+  }
+
+  try {
+    const reviewId = newId();
+    const now = nowISO();
+
+    await db.prepare(`
+      INSERT INTO work_reviews (
+        id,
+        engagement_id,
+        reviewer_user_id,
+        direction,
+        reviewee_type,
+        reviewee_user_id,
+        reviewee_crew_id,
+        rating,
+        review_text,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      reviewId,
+      engagementId,
+      reviewerUserId,
+      direction,
+      revieweeType,
+      revieweeUserId,
+      revieweeCrewId,
+      input.rating,
+      reviewText?.trim() || null,
+      now,
+    ).run();
+
+    return {
+      success: true,
+      review_id: reviewId,
+      direction,
+    };
+  } catch (error) {
+    if (error.message?.includes('UNIQUE')) {
+      return { error: 'A review has already been submitted in this direction' };
+    }
+
+    return { error: error.message || 'Unable to submit review' };
+  }
+}
+
+
+export async function listWorkReviews({
+  userId = null,
+  crewId = null,
+  limit = 20,
+  offset = 0,
+} = {}, db) {
+  if ((!userId && !crewId) || (userId && crewId)) {
+    return { error: 'Specify either a user or a Crew reviewee' };
+  }
+
+  limit = Math.max(1, Math.min(50, Number.parseInt(limit, 10) || 20));
+  offset = Math.max(0, Number.parseInt(offset, 10) || 0);
+
+  const column = userId ? 'reviewee_user_id' : 'reviewee_crew_id';
+  const revieweeId = userId || crewId;
+
+  const result = await db.prepare(`
+    SELECT
+      r.id,
+      r.engagement_id,
+      r.reviewer_user_id,
+      r.direction,
+      r.reviewee_type,
+      r.rating,
+      r.review_text,
+      r.created_at,
+      u.username AS reviewer_username,
+      u.display_name AS reviewer_display_name
+    FROM work_reviews r
+    JOIN users u ON u.id = r.reviewer_user_id
+    WHERE r.${column} = ?
+      AND u.account_deleted = 0
+      AND u.deleted_at IS NULL
+      AND u.is_suspended = 0
+    ORDER BY r.created_at DESC
+    LIMIT ? OFFSET ?
+  `).bind(revieweeId, limit, offset).all();
+
+  return { reviews: result.results || [] };
+}
+
+
+// ── WORK DISPUTE ACCESS ───────────────────────────────────────
+
+async function canAccessWorkEngagement(
+  engagement,
+  userId,
+  db,
+) {
+  if (engagement.client_user_id === userId) return true;
+
+  return canUserDeliverForEngagement(engagement, userId, db);
+}
+
+
+export async function openWorkDispute(
+  engagementId,
+  userId,
+  input,
+  db,
+) {
+  if (!validText(input?.category, 2, 80)) {
+    return { error: 'Dispute category must be between 2 and 80 characters' };
+  }
+
+  if (!validText(input?.description, 10, 12000)) {
+    return { error: 'Dispute description must be between 10 and 12,000 characters' };
+  }
+
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+  `).bind(engagementId).first();
+
+  if (!engagement) return { error: 'Engagement not found' };
+
+  if (!(await canAccessWorkEngagement(engagement, userId, db))) {
+    return { error: 'You are not a party to this engagement' };
+  }
+
+  if (engagement.status === 'cancelled') {
+    return { error: 'Cancelled engagements cannot be disputed' };
+  }
+
+  const existing = await db.prepare(`
+    SELECT id, status
+    FROM work_disputes
+    WHERE engagement_id = ?
+  `).bind(engagementId).first();
+
+  if (existing) {
+    return {
+      error: 'A dispute already exists for this engagement',
+      dispute_id: existing.id,
+      status: existing.status,
+    };
+  }
+
+  const disputeId = newId();
+  const now = nowISO();
+
+  try {
+    await db.batch([
+      db.prepare(`
+        INSERT INTO work_disputes (
+          id,
+          engagement_id,
+          opened_by_user_id,
+          category,
+          description,
+          status,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, 'open', ?, ?)
+      `).bind(
+        disputeId,
+        engagementId,
+        userId,
+        input.category.trim(),
+        input.description.trim(),
+        now,
+        now,
+      ),
+
+      db.prepare(`
+        UPDATE work_engagements
+        SET status = 'disputed',
+            updated_at = ?
+        WHERE id = ?
+          AND status <> 'cancelled'
+      `).bind(now, engagementId),
+    ]);
+
+    return {
+      success: true,
+      dispute_id: disputeId,
+      status: 'open',
+    };
+  } catch (error) {
+    if (error.message?.includes('UNIQUE')) {
+      return { error: 'A dispute already exists for this engagement' };
+    }
+
+    return { error: error.message || 'Unable to open dispute' };
+  }
+}
+
+
+export async function addWorkDisputeMessage(
+  disputeId,
+  userId,
+  message,
+  db,
+) {
+  if (!validText(message, 2, 12000)) {
+    return { error: 'Message must be between 2 and 12,000 characters' };
+  }
+
+  const dispute = await db.prepare(`
+    SELECT
+      d.id,
+      d.status,
+      e.*
+    FROM work_disputes d
+    JOIN work_engagements e ON e.id = d.engagement_id
+    WHERE d.id = ?
+  `).bind(disputeId).first();
+
+  if (!dispute) return { error: 'Dispute not found' };
+
+  if (!['open', 'under_review'].includes(dispute.status)) {
+    return { error: 'This dispute is no longer accepting messages' };
+  }
+
+  if (!(await canAccessWorkEngagement(dispute, userId, db))) {
+    return { error: 'You are not a party to this engagement' };
+  }
+
+  const messageId = newId();
+
+  await db.prepare(`
+    INSERT INTO work_dispute_messages (
+      id,
+      dispute_id,
+      author_user_id,
+      message,
+      author_type,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, 'participant', ?)
+  `).bind(
+    messageId,
+    disputeId,
+    userId,
+    message.trim(),
+    nowISO(),
+  ).run();
+
+  return {
+    success: true,
+    message_id: messageId,
+  };
+}
+
+
+export async function getWorkDispute(
+  disputeId,
+  userId,
+  db,
+) {
+  const dispute = await db.prepare(`
+    SELECT
+      d.*,
+      e.client_user_id,
+      e.provider_type,
+      e.provider_user_id,
+      e.provider_crew_id
+    FROM work_disputes d
+    JOIN work_engagements e ON e.id = d.engagement_id
+    WHERE d.id = ?
+  `).bind(disputeId).first();
+
+  if (!dispute) return { error: 'Dispute not found' };
+
+  const engagement = {
+    client_user_id: dispute.client_user_id,
+    provider_type: dispute.provider_type,
+    provider_user_id: dispute.provider_user_id,
+    provider_crew_id: dispute.provider_crew_id,
+    id: dispute.engagement_id,
+  };
+
+  if (!(await canAccessWorkEngagement(engagement, userId, db))) {
+    return { error: 'You are not authorized to view this dispute' };
+  }
+
+  const messages = await db.prepare(`
+    SELECT
+      m.id,
+      m.author_user_id,
+      m.message,
+      m.author_type,
+      m.created_at,
+      u.username,
+      u.display_name
+    FROM work_dispute_messages m
+    JOIN users u ON u.id = m.author_user_id
+    WHERE m.dispute_id = ?
+    ORDER BY m.created_at ASC
+  `).bind(disputeId).all();
+
+  return {
+    success: true,
+    dispute,
+    messages: messages.results || [],
+  };
+}
+
+
+// ── PLATFORM ADMIN DISPUTE OPERATIONS ─────────────────────────
+
+export async function listWorkDisputesAdmin(
+  status,
+  limit,
+  offset,
+  db,
+) {
+  if (
+    status &&
+    !['open', 'under_review', 'resolved', 'closed'].includes(status)
+  ) {
+    return { error: 'Invalid dispute status filter' };
+  }
+
+  limit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 30));
+  offset = Math.max(0, Number.parseInt(offset, 10) || 0);
+
+  let query = `
+    SELECT
+      d.*,
+      e.client_user_id,
+      e.provider_type,
+      e.provider_user_id,
+      e.provider_crew_id,
+      e.currency,
+      e.pricing_model,
+      e.status AS engagement_status
+    FROM work_disputes d
+    JOIN work_engagements e ON e.id = d.engagement_id
+  `;
+
+  const bindings = [];
+
+  if (status) {
+    query += ' WHERE d.status = ?';
+    bindings.push(status);
+  }
+
+  query += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?';
+  bindings.push(limit, offset);
+
+  const result = await db.prepare(query).bind(...bindings).all();
+
+  return { disputes: result.results || [] };
+}
+
+
+export async function setWorkDisputeUnderReview(
+  disputeId,
+  adminUserId,
+  db,
+) {
+  const now = nowISO();
+
+  const result = await db.prepare(`
+    UPDATE work_disputes
+    SET status = 'under_review',
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'open'
+  `).bind(now, disputeId).run();
+
+  if (!result.meta.changes) {
+    return { error: 'Dispute not found or is not open' };
+  }
+
+  return {
+    success: true,
+    dispute_id: disputeId,
+    status: 'under_review',
+  };
+}
+
+
+export async function resolveWorkDispute(
+  disputeId,
+  adminUserId,
+  resolutionSummary,
+  db,
+) {
+  if (!validText(resolutionSummary, 10, 12000)) {
+    return {
+      error: 'Resolution summary must be between 10 and 12,000 characters',
+    };
+  }
+
+  const dispute = await db.prepare(`
+    SELECT id, engagement_id, status
+    FROM work_disputes
+    WHERE id = ?
+  `).bind(disputeId).first();
+
+  if (!dispute) return { error: 'Dispute not found' };
+
+  if (!['open', 'under_review'].includes(dispute.status)) {
+    return { error: 'This dispute has already been resolved or closed' };
+  }
+
+  const now = nowISO();
+
+  try {
+    await db.batch([
+      db.prepare(`
+        UPDATE work_disputes
+        SET status = 'resolved',
+            resolution_summary = ?,
+            resolved_by_admin_id = ?,
+            resolved_at = ?,
+            updated_at = ?
+        WHERE id = ?
+          AND status IN ('open', 'under_review')
+      `).bind(
+        resolutionSummary.trim(),
+        adminUserId,
+        now,
+        now,
+        disputeId,
+      ),
+
+      db.prepare(`
+        INSERT INTO security_audit_log (
+          actor_id,
+          actor_type,
+          action,
+          resource_type,
+          resource_id,
+          outcome,
+          metadata_json,
+          created_at
+        )
+        VALUES (?, 'platform_admin', 'work_dispute_resolved',
+          'work_dispute', ?, 'success', ?, ?)
+      `).bind(
+        adminUserId,
+        disputeId,
+        JSON.stringify({
+          engagement_id: dispute.engagement_id,
+          financial_action_taken: false,
+        }),
+        now,
+      ),
+    ]);
+
+    return {
+      success: true,
+      dispute_id: disputeId,
+      status: 'resolved',
+      financial_action_taken: false,
+    };
+  } catch (error) {
+    return { error: error.message || 'Unable to resolve dispute' };
+  }
+	  }
