@@ -400,6 +400,92 @@ export async function listWorkOpportunities({
   };
 }
 
+export async function listWorkApplications(
+  opportunityId,
+  viewerUserId,
+  { status = null, limit = 20, offset = 0 } = {},
+  db,
+) {
+  if (!viewerUserId) {
+    return { error: 'Authentication required' };
+  }
+
+  limit = Math.max(1, Math.min(50, Number.parseInt(limit, 10) || 20));
+  offset = Math.max(0, Number.parseInt(offset, 10) || 0);
+
+  const opportunity = await db.prepare(`
+    SELECT id, client_user_id
+    FROM work_opportunities
+    WHERE id = ?
+  `).bind(opportunityId).first();
+
+  if (!opportunity) {
+    return { error: 'Opportunity not found' };
+  }
+
+  if (opportunity.client_user_id !== viewerUserId) {
+    return { error: 'Only the opportunity owner can view its applications' };
+  }
+
+  const allowedStatuses = [
+    'submitted',
+    'under_review',
+    'shortlisted',
+    'accepted',
+    'rejected',
+    'withdrawn',
+  ];
+
+  if (status && !allowedStatuses.includes(status)) {
+    return { error: 'Invalid application status filter' };
+  }
+
+  let query = `
+    SELECT
+      a.id,
+      a.opportunity_id,
+      a.applicant_type,
+      a.applicant_user_id,
+      a.applicant_crew_id,
+      a.submitted_by_user_id,
+      a.cover_message,
+      a.proposed_fixed_amount_minor,
+      a.proposed_hourly_rate_minor,
+      a.status,
+      a.created_at,
+      a.updated_at,
+      u.username AS applicant_username,
+      u.display_name AS applicant_display_name,
+      u.avatar_url AS applicant_avatar_url,
+      submitter.username AS submitted_by_username,
+      submitter.display_name AS submitted_by_display_name
+    FROM work_applications a
+    LEFT JOIN users u ON u.id = a.applicant_user_id
+    JOIN users submitter ON submitter.id = a.submitted_by_user_id
+    WHERE a.opportunity_id = ?
+  `;
+
+  const bindings = [opportunityId];
+
+  if (status) {
+    query += ' AND a.status = ?';
+    bindings.push(status);
+  }
+
+  query += `
+    ORDER BY a.created_at DESC, a.id DESC
+    LIMIT ? OFFSET ?
+  `;
+
+  bindings.push(limit, offset);
+
+  const result = await db.prepare(query).bind(...bindings).all();
+
+  return {
+    applications: result.results || [],
+  };
+}
+
 export async function submitIndividualWorkApplication(
   opportunityId,
   applicantUserId,
