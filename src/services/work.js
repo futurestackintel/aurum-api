@@ -666,7 +666,27 @@ export async function submitCrewWorkApplication(
         now,
       ));
     }
-
+		
+    // Freeze the eligible voting membership at submission time.
+    for (const member of eligibleMembers) {
+      statements.push(db.prepare(`
+        INSERT INTO work_crew_application_voter_snapshot (
+          id,
+          application_id,
+          crew_id,
+          user_id,
+          role_snapshot
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(
+        newId(),
+        applicationId,
+        crewId,
+        member.user_id,
+        member.role,
+      ));
+		}
+		
     await db.batch(statements);
 
     return {
@@ -711,34 +731,49 @@ export async function castCrewWorkApplicationVote(
     return { error: 'This application is no longer accepting votes' };
   }
 
-  const membership = await getActiveMembership(
+    const membership = await getActiveMembership(
     application.applicant_crew_id,
     voterUserId,
     db,
   );
 
   if (!membership) {
-    return { error: 'Only active eligible Crew members can vote' };
+    return { error: 'Only active Crew members can vote' };
   }
 
-  const eligibleMembers = await getEligibleCrewMembers(
+  const voterSnapshot = await db.prepare(`
+    SELECT role_snapshot
+    FROM work_crew_application_voter_snapshot
+    WHERE application_id = ?
+      AND crew_id = ?
+      AND user_id = ?
+  `).bind(
+    applicationId,
     application.applicant_crew_id,
-    db,
-  );
+    voterUserId,
+  ).first();
 
-  const eligibleCount = eligibleMembers.length;
+  if (!voterSnapshot) {
+    return { error: 'You were not eligible to vote when this proposal was submitted' };
+  }
+
+  const snapshotCount = await db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM work_crew_application_voter_snapshot
+    WHERE application_id = ?
+      AND crew_id = ?
+  `).bind(
+    applicationId,
+    application.applicant_crew_id,
+  ).first();
+
+  const eligibleCount = Number(snapshotCount?.count || 0);
 
   if (!eligibleCount) {
-    return { error: 'Crew has no eligible members' };
+    return { error: 'Crew voting snapshot is unavailable' };
   }
 
-  const eligibleIds = new Set(eligibleMembers.map(member => member.user_id));
-
-  if (!eligibleIds.has(voterUserId)) {
-    return { error: 'You are not eligible to vote on this proposal' };
-  }
-
-  const captain = membership.role === 'captain';
+  const captain = voterSnapshot.role_snapshot === 'captain';
   const now = nowISO();
 
   try {
@@ -778,15 +813,12 @@ export async function castCrewWorkApplicationVote(
       COUNT(*) AS total_votes,
       SUM(CASE WHEN vote = 'approve' THEN 1 ELSE 0 END) AS approvals,
       SUM(CASE WHEN vote = 'reject' THEN 1 ELSE 0 END) AS rejections,
-      MAX(is_captain_approval) AS captain_voted,
-      MAX(
+            MAX(
         CASE
           WHEN is_captain_approval = 1 AND vote = 'approve' THEN 1
           ELSE 0
         END
-      ) AS captain_approved,
-      MIN(eligible_member_count_snapshot) AS min_snapshot,
-      MAX(eligible_member_count_snapshot) AS max_snapshot
+      ) AS captain_approved
     FROM work_crew_application_approvals
     WHERE application_id = ?
       AND crew_id = ?
@@ -797,10 +829,9 @@ export async function castCrewWorkApplicationVote(
 
   const captainApproved = Number(tally.captain_approved || 0) === 1;
 
-  const snapshotsConsistent =
-    Number(tally.min_snapshot) === eligibleCount &&
-    Number(tally.max_snapshot) === eligibleCount;
-
+  
+  const snapshotsConsistent = true;
+	
   return {
     success: true,
     vote,
