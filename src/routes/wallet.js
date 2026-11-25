@@ -771,16 +771,26 @@ export async function handleWalletRoutes(pathname, request, env) {
       }, 500);
     }
   }
-	
+
   // ── GET /api/wallet/bank-details ────────────────────────────
-  // Fix 2: return saved withdrawal bank details for the user.
   if (pathname === "/api/wallet/bank-details" && request.method === "GET") {
     const auth = await requireAuth(request, env);
     if (auth.error) return json({ error: auth.error }, auth.status);
 
     try {
       const user = await env.DB
-       .prepare(`
+        .prepare(`
+          SELECT id
+          FROM users
+          WHERE clerk_id = ?
+        `)
+        .bind(auth.id)
+        .first();
+
+      if (!user) return json({ error: "User not found" }, 404);
+
+      const details = await env.DB
+        .prepare(`
           SELECT
             bank_name,
             account_name,
@@ -796,25 +806,10 @@ export async function handleWalletRoutes(pathname, request, env) {
             END AS account_number,
             CASE
               WHEN account_number_ciphertext IS NULL
+                OR account_number_iv IS NULL
               THEN 1
               ELSE 0
             END AS needs_reentry
-          FROM user_bank_details
-          WHERE user_id = ?
-        `)
-        .bind(auth.id)
-        .first();
-
-      if (!user) return json({ error: "User not found" }, 404);
-
-      const details = await env.DB
-        .prepare(`
-          SELECT bank_name, account_name, bank_code, updated_at,
-       CASE
-         WHEN account_number IS NOT NULL AND LENGTH(account_number) >= 4
-         THEN '••••' || SUBSTR(account_number, -4)
-         ELSE NULL
-       END AS account_number
           FROM user_bank_details
           WHERE user_id = ?
         `)
@@ -824,10 +819,13 @@ export async function handleWalletRoutes(pathname, request, env) {
       return json({ bank_details: details ?? null });
     } catch (err) {
       console.error("Get bank details error:", err);
-      return json({ error: "Unable to fetch bank details. Please try again." }, 500);
+      return json({
+        error: "Unable to fetch bank details. Please try again."
+      }, 500);
     }
   }
-
+	
+  
   // ── POST /api/admin/wallet/migrate ──────────────────────────
   // One-time: creates wallets for all existing users who don't have one
   if (pathname === "/api/admin/wallet/migrate" && request.method === "POST") {
