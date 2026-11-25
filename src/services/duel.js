@@ -1206,6 +1206,87 @@ export async function reportDuelCheating(duelId, clerkId, reason, db) {
 }
 
 // ── ADMIN: DECIDE DUEL DISPUTE ────────────────────────────────
+// upheld: the report is valid; the reporting loser becomes winner.
+// rejected: the original winner keeps the win.
+// winnerIdOverride: allows an admin to resolve a tied Duel manually.
+
+export async function decideDuelDispute(
+  duelId,
+  decision,
+  adminId,
+  db,
+  winnerIdOverride = null
+) {
+  const duel = await db
+    .prepare(`SELECT * FROM duels WHERE id = ?`)
+    .bind(duelId)
+    .first();
+
+  if (!duel) return { error: 'Duel not found' };
+
+  if (duel.dispute_status !== 'reported') {
+    return { error: 'This Duel has no pending dispute decision' };
+  }
+
+  if (duel.payout_released || duel.financial_status === 'settled') {
+    return { error: 'Duel payout has already been released' };
+  }
+
+  if (duel.financial_status !== 'funded') {
+    return { error: 'Duel financial state requires reconciliation' };
+  }
+
+  let winnerId = winnerIdOverride;
+
+  if (winnerId) {
+    if (winnerId !== duel.challenger_id && winnerId !== duel.target_id) {
+      return { error: 'Winner must be a Duel participant' };
+    }
+  } else {
+    if (decision !== 'upheld' && decision !== 'rejected') {
+      return { error: 'Decision must be upheld or rejected' };
+    }
+
+    if (!duel.winner_id || !duel.dispute_reported_by) {
+      return {
+        error: 'A winner_id is required to resolve a tied Duel',
+      };
+    }
+
+    winnerId = decision === 'upheld'
+      ? duel.dispute_reported_by
+      : duel.winner_id;
+  }
+
+  const payout = await releaseDuelEscrow(duelId, winnerId, duel, db);
+
+  if (payout.error) return payout;
+
+  const now = nowISO();
+
+  await db.prepare(`
+    UPDATE duels
+    SET
+      winner_id = ?,
+      status = 'resolved',
+      dispute_status = 'resolved',
+      resolved_at = ?
+    WHERE id = ?
+      AND payout_released = 1
+      AND financial_status = 'settled'
+  `).bind(winnerId, now, duelId).run();
+
+  return {
+    duel_id: duelId,
+    decision: decision ?? 'manual',
+    winner_id: winnerId,
+    decided_by: adminId,
+    settled: true,
+    payout,
+  };
+}
+
+// ── ADMIN: DECIDE DUEL DISPUTE ────────────────────────────────
 // decision: 'upheld' (report was valid — flip the winner to the
 // original loser and release escrow to them) or 'rejected' (report
 // was invalid — release escrow to the original winner as normal).
