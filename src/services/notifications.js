@@ -66,30 +66,6 @@ export const NOTIFICATION_CATEGORIES = [
     description: 'Tips received from other members',
     preference: 'tips_received',
   },
-    {
-    id: 'challenges',
-    label: 'Challenges',
-    description: 'Challenge entries, results and activity',
-    preference: 'challenge_updates',
-  },
-  {
-    id: 'duels',
-    label: 'Duels',
-    description: 'Duel invitations, announcements and results',
-    preference: 'duel_challenges',
-  },
-  {
-    id: 'badges',
-    label: 'Badge Awards',
-    description: 'Verified achievement awards',
-    preference: 'badge_awards',
-  },
-  {
-    id: 'leagues',
-    label: 'League Updates',
-    description: 'League promotions and demotions',
-    preference: 'league_promotions',
-  },
   {
     id: 'system',
     label: 'Security & System',
@@ -213,10 +189,11 @@ export async function getNotifications(
     .bind(...bindings)
     .all();
 
-    return results.map((notification) => ({
+      return results.map((notification) => ({
     ...notification,
     category: NOTIFICATION_TYPE_CATEGORIES[notification.type] || 'system',
   }));
+}
 	
 export async function getUnreadCount(userId, env, type = null) {
   let query = `
