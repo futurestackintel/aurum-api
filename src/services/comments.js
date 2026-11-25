@@ -117,23 +117,25 @@ export async function createComment(postId, clerkId, body, db) {
   }
 
   for (const targetUserId of notifyTargets) {
-    await db
-      .prepare(`
-        INSERT INTO notifications
-          (id, user_id, type, title, body, action_url, created_at)
-        VALUES (?, ?, 'post_commented', 'New comment', ?, ?, ?)
-      `)
-      .bind(
-        crypto.randomUUID(),
-        targetUserId,
-        parent_comment_id
-          ? 'Someone replied to your comment'
-          : 'Someone commented on your post',
-        `/posts/${postId}`,
-        now,
-      )
-      .run();
+  try {
+    await publishNotification(db, {
+      recipientUserId: targetUserId,
+      type: 'post_commented',
+      title: 'New comment',
+      body: parent_comment_id
+        ? 'Someone replied to your comment'
+        : 'Someone commented on your post',
+      actionUrl: `/posts/${postId}`,
+      actorType: 'member',
+      actorId: userId,
+      resourceType: 'post_comment',
+      resourceId: commentId,
+      requestId: `${commentId}:${targetUserId}`,
+    });
+  } catch (error) {
+    console.error('[comment-notification]', error);
   }
+}
 
   const author = await db
     .prepare(`SELECT username, league FROM users WHERE id = ?`)
