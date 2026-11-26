@@ -486,6 +486,142 @@ export async function listWorkApplications(
   };
 }
 
+export async function updateWorkApplicationStatus(
+  applicationId,
+  clientUserId,
+  nextStatus,
+  db,
+) {
+  const transitions = {
+    submitted: ['under_review', 'shortlisted', 'rejected'],
+    under_review: ['shortlisted', 'rejected'],
+    shortlisted: ['rejected'],
+  };
+
+  if (!Object.values(transitions).some(states => states.includes(nextStatus))) {
+    return { error: 'Invalid application status transition' };
+  }
+
+  const application = await db.prepare(`
+    SELECT a.id, a.status, o.client_user_id
+    FROM work_applications a
+    JOIN work_opportunities o ON o.id = a.opportunity_id
+    WHERE a.id = ?
+  `).bind(applicationId).first();
+
+  if (!application) return { error: 'Application not found' };
+
+  if (application.client_user_id !== clientUserId) {
+    return { error: 'Only the opportunity owner can update applications' };
+  }
+
+  if (!transitions[application.status]?.includes(nextStatus)) {
+    return {
+      error: `Cannot move application from ${application.status} to ${nextStatus}`,
+    };
+  }
+
+  const result = await db.prepare(`
+    UPDATE work_applications
+    SET status = ?, updated_at = ?
+    WHERE id = ? AND status = ?
+  `).bind(
+    nextStatus,
+    nowISO(),
+    applicationId,
+    application.status,
+  ).run();
+
+  if (!result.meta.changes) {
+    return { error: 'Application status changed. Refresh and try again.' };
+  }
+
+  return {
+    success: true,
+    application_id: applicationId,
+    status: nextStatus,
+  };
+}
+
+
+export async function withdrawWorkApplication(
+  applicationId,
+  applicantUserId,
+  db,
+) {
+  const applicant = await getActiveUser(applicantUserId, db);
+
+  if (!applicant) return { error: 'Your account is unavailable' };
+
+  const application = await db.prepare(`
+    SELECT
+      id,
+      applicant_type,
+      applicant_user_id,
+      applicant_crew_id,
+      submitted_by_user_id,
+      status
+    FROM work_applications
+    WHERE id = ?
+  `).bind(applicationId).first();
+
+  if (!application) return { error: 'Application not found' };
+
+  if (application.applicant_type === 'individual') {
+    if (application.applicant_user_id !== applicantUserId) {
+      return { error: 'You cannot withdraw another user’s application' };
+    }
+  } else {
+    if (application.submitted_by_user_id !== applicantUserId) {
+      return { error: 'Only the original Crew proposal submitter can withdraw it' };
+    }
+
+    const membership = await getActiveMembership(
+      application.applicant_crew_id,
+      applicantUserId,
+      db,
+    );
+
+    if (!membership) {
+      return { error: 'You must remain an active Crew member to withdraw this proposal' };
+    }
+  }
+
+  if (!['submitted', 'under_review', 'shortlisted'].includes(application.status)) {
+    return { error: 'This application can no longer be withdrawn' };
+  }
+
+  const engagement = await db.prepare(`
+    SELECT id
+    FROM work_engagements
+    WHERE application_id = ?
+  `).bind(applicationId).first();
+
+  if (engagement) {
+    return { error: 'An application with an engagement cannot be withdrawn' };
+  }
+
+  const result = await db.prepare(`
+    UPDATE work_applications
+    SET status = 'withdrawn', updated_at = ?
+    WHERE id = ? AND status = ?
+  `).bind(
+    nowISO(),
+    applicationId,
+    application.status,
+  ).run();
+
+  if (!result.meta.changes) {
+    return { error: 'Application status changed. Refresh and try again.' };
+  }
+
+  return {
+    success: true,
+    application_id: applicationId,
+    status: 'withdrawn',
+  };
+}
+
 export async function submitIndividualWorkApplication(
   opportunityId,
   applicantUserId,
