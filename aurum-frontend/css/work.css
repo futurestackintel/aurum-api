@@ -1434,3 +1434,45 @@
 .work-governance .work-action-row {
   margin-top: 13px;
 }
+
+
+/* Crew participant selection during Work hiring */
+
+.work-crew-select-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(212, 175, 55, .12);
+  cursor: pointer;
+}
+
+.work-crew-select-row input {
+  margin-top: 4px;
+  accent-color: #c9a84c;
+}
+
+.work-crew-select-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.work-crew-select-row strong {
+  color: #e5d5a0;
+  font-size: 12px;
+}
+
+.work-crew-select-row small {
+  color: #a49a87;
+  font-size: 10px;
+}
+
+.work-crew-select-row input:disabled {
+  cursor: not-allowed;
+}
+
+.work-action-row button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
