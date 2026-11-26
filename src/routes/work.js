@@ -407,15 +407,6 @@ export async function handleWorkRoutes(path, method, request, env) {
       () => payWorkEngagement(match[1], auth.userId, db),
     );
   }
-
-  if (match && method === 'POST') {
-    const auth = await authenticatedUser();
-    if (auth.response) return auth.response;
-
-    return execute(
-      () => payWorkEngagement(match[1], auth.userId, db),
-    );
-  }
 	
   if (match && method === 'GET') {
     const auth = await authenticatedUser();
