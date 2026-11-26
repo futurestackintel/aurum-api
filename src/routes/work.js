@@ -616,6 +616,19 @@ export async function handleWorkRoutes(path, method, request, env) {
   }
 
   match = path.match(
+    /^\/api\/admin\/work\/disputes\/([^/]+)$/
+  );
+
+  if (match && method === 'GET') {
+    const admin = await adminUser();
+    if (admin.response) return admin.response;
+
+    return execute(
+      () => getWorkDisputeAdmin(match[1], db),
+    );
+  }	
+
+  match = path.match(
     /^\/api\/admin\/work\/disputes\/([^/]+)\/under-review$/
   );
 
