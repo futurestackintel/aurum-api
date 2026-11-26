@@ -1019,17 +1019,19 @@ window.WorkPage = {
     }
   },
 
+
   renderEngagementWorkspace(target, data) {
     const e = data.engagement;
     const isClient = e.client_user_id === App.user?.id;
     const fixed = e.pricing_model === 'fixed';
+    const currentUserId = App.user?.id;
 
     const participants = (data.participants || []).map(p => `
-      <div class="work-card">
-        <strong>${this.escape(p.username || 'Crew member')}</strong>
-        <span class="work-tag">${this.escape(p.assigned_role)}</span>
+      <article class="work-card">
+        <strong>${this.escape(p.display_name || p.username || 'Crew member')}</strong>
+        <span class="work-tag">${this.escape(p.assigned_role || 'Participant')}</span>
         <span class="work-tag">${this.escape(p.status)}</span>
-      </div>
+      </article>
     `).join('');
 
     const milestones = (data.milestones || []).map(m => `
@@ -1043,36 +1045,47 @@ window.WorkPage = {
       </article>
     `).join('');
 
-    const submissions = (data.submissions || []).map(s => `
-      <article class="work-card">
-        <div class="work-card-top">
-          <strong>Submission</strong>
-          <span class="work-tag">${this.escape(s.status)}</span>
+    const submissions = (data.submissions || []).map(s => {
+      const revisions = (s.revisions || []).map(r => `
+        <div class="work-revision-entry">
+          <strong>Revision history</strong>
+          <p>${this.escape(r.message || r.revision_message || '')}</p>
+          <small>${this.escape(r.created_at || '')}</small>
         </div>
-        <p>${this.escape(s.message)}</p>
-        <small>Submitted by ${this.escape(s.submitted_by_username || 'Provider')}</small>
-        ${s.status === 'submitted' && isClient ? `
-          <div class="work-action-row">
-            <button class="btn btn-primary btn-sm"
-              data-ws-action="approve-submission"
-              data-id="${this.escape(s.id)}">Approve</button>
-            <button class="btn btn-outline btn-sm"
-              data-ws-action="request-revision"
-              data-id="${this.escape(s.id)}">Request revision</button>
-            <button class="btn btn-danger btn-sm"
-              data-ws-action="reject-submission"
-              data-id="${this.escape(s.id)}">Reject</button>
+      `).join('');
+
+      return `
+        <article class="work-card">
+          <div class="work-card-top">
+            <strong>Deliverable</strong>
+            <span class="work-tag">${this.escape(s.status)}</span>
           </div>
-        ` : ''}
-        ${s.status === 'revision_requested' ? `
-          <form data-ws-form="revision" data-id="${this.escape(s.id)}">
-            <textarea class="input" name="message" minlength="3"
-              maxlength="5000" required placeholder="Describe the revision..."></textarea>
-            <button class="btn btn-primary btn-sm">Submit revision response</button>
-          </form>
-        ` : ''}
-      </article>
-    `).join('');
+          <p>${this.escape(s.message)}</p>
+          <small>Submitted by ${this.escape(s.submitted_by_username || 'Provider')}</small>
+          ${revisions}
+          ${s.status === 'submitted' && isClient ? `
+            <div class="work-action-row">
+              <button class="btn btn-primary btn-sm"
+                data-ws-action="approve-submission"
+                data-id="${this.escape(s.id)}">Approve</button>
+              <button class="btn btn-outline btn-sm"
+                data-ws-action="request-revision"
+                data-id="${this.escape(s.id)}">Request revision</button>
+              <button class="btn btn-danger btn-sm"
+                data-ws-action="reject-submission"
+                data-id="${this.escape(s.id)}">Reject</button>
+            </div>
+          ` : ''}
+          ${s.status === 'revision_requested' && !isClient ? `
+            <form data-ws-form="revision" data-id="${this.escape(s.id)}">
+              <textarea class="input" name="message" minlength="3"
+                maxlength="5000" required placeholder="Describe your revision response..."></textarea>
+              <button class="btn btn-primary btn-sm">Submit revision response</button>
+            </form>
+          ` : ''}
+        </article>
+      `;
+    }).join('');
 
     const timeEntries = (data.time_entries || []).map(t => `
       <article class="work-card">
@@ -1097,15 +1110,38 @@ window.WorkPage = {
       </article>
     `).join('');
 
-    const pendingParticipants = (data.participants || []).some(p => p.status !== 'accepted');
+    const disputeMessages = (data.dispute_messages || []).map(m => `
+      <article class="work-dispute-message">
+        <div class="work-card-top">
+          <strong>${this.escape(
+            m.display_name || m.username ||
+            (m.author_type === 'platform_admin' ? 'AURUM Support' : 'Participant')
+          )}</strong>
+          <small>${this.escape(m.created_at || '')}</small>
+        </div>
+        <p>${this.escape(m.message)}</p>
+        ${m.author_type === 'platform_admin'
+          ? '<span class="work-tag">AURUM SUPPORT</span>' : ''}
+      </article>
+    `).join('');
+
+    const reviews = data.reviews || [];
+    const myReview = reviews.some(r =>
+      r.reviewer_user_id === currentUserId
+    );
+
+    const pendingParticipants = (data.participants || [])
+      .some(p => p.status !== 'accepted');
 
     target.innerHTML = `
-      <button class="work-back-link" id="work-back-button">← Back to My Work</button>
+      <button class="work-back-link" id="work-back-button">
+        ← Back to My Work
+      </button>
 
       <div class="work-panel-heading">
         <p class="section-eyebrow">AURUM / WORKSPACE</p>
         <h2>${this.escape(e.opportunity_title || 'Engagement')}</h2>
-        <p>Manage your engagement, delivery and communication.</p>
+        <p>Manage delivery, participants, communication and feedback.</p>
       </div>
 
       <article class="work-card">
@@ -1117,8 +1153,10 @@ window.WorkPage = {
           fixed ? e.agreed_fixed_amount_minor : e.agreed_hourly_rate_minor,
           e.currency
         )}${fixed ? '' : ' / hour'}</h3>
-        ${e.pricing_model === 'hourly' ? `
-          <p>Spending limit: ${this.money(e.agreed_spending_limit_minor, e.currency)}</p>
+        ${!fixed ? `
+          <p>Spending limit:
+            ${this.money(e.agreed_spending_limit_minor, e.currency)}
+          </p>
         ` : ''}
         ${e.status === 'pending_acceptance' && isClient && !pendingParticipants ? `
           <button class="btn btn-primary" data-ws-action="activate">
@@ -1129,7 +1167,9 @@ window.WorkPage = {
 
       <section class="work-dashboard-section">
         <div class="work-panel-heading"><h3>Selected participants</h3></div>
-        <div class="work-application-list">${participants || '<p>No additional participants.</p>'}</div>
+        <div class="work-application-list">
+          ${participants || '<p>No additional participants.</p>'}
+        </div>
       </section>
 
       ${e.status === 'pending_acceptance' && !isClient ? `
@@ -1146,12 +1186,13 @@ window.WorkPage = {
           </div>
           ${isClient && ['active', 'revision_requested'].includes(e.status) ? `
             <form data-ws-form="milestone">
-              <input class="input" name="title" minlength="3" maxlength="160"
-                required placeholder="Milestone title" />
+              <input class="input" name="title" minlength="3"
+                maxlength="160" required placeholder="Milestone title" />
               <textarea class="input" name="description"
                 placeholder="Description (optional)"></textarea>
-              <input class="input" name="amount" type="number" min="0.000001"
-                step="any" required placeholder="Amount in ${this.escape(e.currency)}" />
+              <input class="input" name="amount" type="number"
+                min="0.000001" step="any" required
+                placeholder="Amount in ${this.escape(e.currency)}" />
               <button class="btn btn-primary">Add milestone</button>
             </form>
           ` : ''}
@@ -1161,14 +1202,21 @@ window.WorkPage = {
                 <option value="">General submission</option>
                 ${(data.milestones || []).filter(m =>
                   ['pending', 'in_progress', 'revision_requested'].includes(m.status)
-                ).map(m => `<option value="${this.escape(m.id)}">${this.escape(m.title)}</option>`).join('')}
+                ).map(m => `
+                  <option value="${this.escape(m.id)}">
+                    ${this.escape(m.title)}
+                  </option>
+                `).join('')}
               </select>
               <textarea class="input" name="message" minlength="5"
-                maxlength="12000" required placeholder="Describe your completed work"></textarea>
+                maxlength="12000" required
+                placeholder="Describe your completed work"></textarea>
               <button class="btn btn-primary">Submit deliverable</button>
             </form>
           ` : ''}
-          <div class="work-application-list">${submissions || '<p>No submissions yet.</p>'}</div>
+          <div class="work-application-list">
+            ${submissions || '<p>No submissions yet.</p>'}
+          </div>
         </section>
       ` : `
         <section class="work-dashboard-section">
@@ -1181,10 +1229,12 @@ window.WorkPage = {
               <input class="input" name="description" minlength="5"
                 maxlength="2000" required placeholder="Work performed" />
               <label>Start time
-                <input class="input" type="datetime-local" name="started_at" required />
+                <input class="input" type="datetime-local"
+                  name="started_at" required />
               </label>
               <label>End time
-                <input class="input" type="datetime-local" name="ended_at" required />
+                <input class="input" type="datetime-local"
+                  name="ended_at" required />
               </label>
               <button class="btn btn-primary">Submit time entry</button>
             </form>
@@ -1192,18 +1242,93 @@ window.WorkPage = {
         </section>
       `}
 
-      ${['active', 'submitted', 'revision_requested'].includes(e.status) ? `
-        <section class="work-dashboard-section">
-          <div class="work-panel-heading"><h3>Dispute support</h3></div>
-          <form data-ws-form="dispute">
-            <input class="input" name="category" minlength="2"
-              maxlength="80" required placeholder="Dispute category" />
-            <textarea class="input" name="description" minlength="10"
-              maxlength="12000" required placeholder="Explain the issue"></textarea>
-            <button class="btn btn-outline">Open a dispute</button>
+      <section class="work-dashboard-section">
+        <div class="work-panel-heading">
+          <h3>Dispute support</h3>
+          <p>Keep all engagement-related concerns and support replies in one record.</p>
+        </div>
+
+        ${data.dispute ? `
+          <article class="work-card">
+            <div class="work-card-top">
+              <strong>${this.escape(data.dispute.category)}</strong>
+              <span class="work-tag">${this.escape(data.dispute.status)}</span>
+            </div>
+            <p>${this.escape(data.dispute.description)}</p>
+            ${data.dispute.resolution_summary ? `
+              <div class="work-notice">
+                <strong>Resolution</strong>
+                <p>${this.escape(data.dispute.resolution_summary)}</p>
+              </div>
+            ` : ''}
+          </article>
+
+          <div class="work-dispute-thread">
+            ${disputeMessages || '<p>No messages yet.</p>'}
+          </div>
+
+          ${['open', 'under_review'].includes(data.dispute.status) ? `
+            <form data-ws-form="dispute-message">
+              <textarea class="input" name="message" minlength="2"
+                maxlength="12000" required
+                placeholder="Write a message to the other party or AURUM Support..."></textarea>
+              <button class="btn btn-primary">Send message</button>
+            </form>
+          ` : '<p class="work-empty">This dispute is closed to further messages.</p>'}
+        ` : `
+          ${!['cancelled', 'completed'].includes(e.status) ? `
+            <form data-ws-form="dispute">
+              <input class="input" name="category" minlength="2"
+                maxlength="80" required placeholder="Dispute category" />
+              <textarea class="input" name="description" minlength="10"
+                maxlength="12000" required
+                placeholder="Explain the issue clearly"></textarea>
+              <button class="btn btn-outline">Open a dispute</button>
+            </form>
+          ` : '<p class="work-empty">No dispute has been opened for this engagement.</p>'}
+        `}
+      </section>
+
+      <section class="work-dashboard-section">
+        <div class="work-panel-heading">
+          <h3>Engagement reviews</h3>
+          <p>Reviews become available after the engagement is completed.</p>
+        </div>
+
+        <div class="work-application-list">
+          ${reviews.map(r => `
+            <article class="work-card">
+              <div class="work-card-top">
+                <strong>${this.escape(r.direction.replaceAll('_', ' '))}</strong>
+                <span class="work-tag">${Number(r.rating)}/5</span>
+              </div>
+              <p>${this.escape(r.review_text || 'No written feedback.')}</p>
+            </article>
+          `).join('') || '<p>No reviews have been submitted yet.</p>'}
+        </div>
+
+        ${e.status === 'completed' && !myReview ? `
+          <form data-ws-form="review">
+            <label>
+              Your rating
+              <select class="input" name="rating" required>
+                <option value="">Choose a rating</option>
+                <option value="5">5 — Excellent</option>
+                <option value="4">4 — Very good</option>
+                <option value="3">3 — Good</option>
+                <option value="2">2 — Fair</option>
+                <option value="1">1 — Poor</option>
+              </select>
+            </label>
+            <textarea class="input" name="review_text"
+              maxlength="3000" placeholder="Share your experience (optional)"></textarea>
+            <button class="btn btn-primary">Submit review</button>
           </form>
-        </section>
-      ` : ''}
+        ` : ''}
+        ${e.status === 'completed' && myReview
+          ? '<p class="work-empty">You have submitted your review for this engagement.</p>'
+          : ''}
+      </section>
 
       <p class="work-notice">
         Workspace approvals record delivery and time. They do not transfer,
@@ -1282,10 +1407,26 @@ window.WorkPage = {
           form.dataset.id,
           data.get('message').trim(),
         );
-      } else if (kind === 'dispute') {
+             } else if (kind === 'dispute') {
         await AURUM.WorkAPI.openDispute(this.activeEngagement, {
           category: data.get('category').trim(),
           description: data.get('description').trim(),
+        });
+      } else if (kind === 'dispute-message') {
+        const workspace = await AURUM.WorkAPI.getWorkspace(this.activeEngagement);
+
+        if (!workspace.dispute?.id) {
+          throw new Error('No active dispute was found.');
+        }
+
+        await AURUM.WorkAPI.sendDisputeMessage(
+          workspace.dispute.id,
+          data.get('message').trim(),
+        );
+      } else if (kind === 'review') {
+        await AURUM.WorkAPI.createReview(this.activeEngagement, {
+          rating: Number(data.get('rating')),
+          review_text: data.get('review_text').trim() || null,
         });
       }
 
