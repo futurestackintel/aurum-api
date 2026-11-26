@@ -42,6 +42,87 @@ CREATE TABLE work_payments (
 CREATE INDEX idx_work_payments_engagement
 ON work_payments(engagement_id, created_at);
 
+-- Only one fixed-price payment may exist per engagement.
+CREATE UNIQUE INDEX idx_work_payments_one_fixed_per_engagement
+ON work_payments(engagement_id)
+WHERE payment_type = 'fixed';
+
+-- Validate every payment against the engagement and its current
+-- approved work records before accepting the payment record.
+CREATE TRIGGER validate_work_payment_engagement
+BEFORE INSERT ON work_payments
+BEGIN
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM work_engagements e
+      WHERE e.id = NEW.engagement_id
+        AND e.client_user_id = NEW.client_user_id
+        AND e.provider_type = 'individual'
+        AND e.provider_user_id = NEW.provider_user_id
+        AND e.currency = NEW.currency
+        AND e.status NOT IN ('cancelled', 'disputed')
+    )
+    THEN RAISE(ABORT, 'Work payment does not match its engagement')
+  END;
+
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1
+      FROM work_disputes d
+      WHERE d.engagement_id = NEW.engagement_id
+        AND d.status IN ('open', 'under_review')
+    )
+    THEN RAISE(ABORT, 'Cannot pay an engagement with an active dispute')
+  END;
+
+  SELECT CASE
+    WHEN NEW.payment_type = 'fixed'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM work_engagements e
+        WHERE e.id = NEW.engagement_id
+          AND e.pricing_model = 'fixed'
+          AND e.status = 'completed'
+          AND NEW.amount_minor = e.agreed_fixed_amount_minor
+          AND NEW.approved_minutes IS NULL
+      )
+    THEN RAISE(ABORT, 'Invalid fixed-price Work payment')
+  END;
+
+  SELECT CASE
+    WHEN NEW.payment_type = 'hourly'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM work_engagements e
+        WHERE e.id = NEW.engagement_id
+          AND e.pricing_model = 'hourly'
+          AND NEW.approved_minutes = (
+            SELECT COALESCE(SUM(duration_minutes), 0)
+            FROM work_time_entries
+            WHERE engagement_id = NEW.engagement_id
+              AND status = 'approved'
+          )
+          AND NEW.amount_minor = (
+            (
+              NEW.approved_minutes * e.agreed_hourly_rate_minor + 59
+            ) / 60
+          ) - COALESCE((
+            SELECT SUM(amount_minor)
+            FROM work_payments
+            WHERE engagement_id = NEW.engagement_id
+              AND payment_type = 'hourly'
+          ), 0)
+          AND (
+            (
+              NEW.approved_minutes * e.agreed_hourly_rate_minor + 59
+            ) / 60
+          ) <= e.agreed_spending_limit_minor
+      )
+    THEN RAISE(ABORT, 'Invalid or excessive hourly Work payment')
+  END;
+END;
+
 CREATE TRIGGER validate_work_payment_ledger
 BEFORE INSERT ON work_payments
 BEGIN
