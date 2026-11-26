@@ -2883,25 +2883,62 @@ export async function setWorkDisputeUnderReview(
 ) {
   const now = nowISO();
 
-  const result = await db.prepare(`
-    UPDATE work_disputes
-    SET status = 'under_review',
-        updated_at = ?
-    WHERE id = ?
-      AND status = 'open'
-  `).bind(now, disputeId).run();
+  try {
+    const results = await db.batch([
+      db.prepare(`
+        UPDATE work_disputes
+        SET status = 'under_review',
+            updated_at = ?
+        WHERE id = ?
+          AND status = 'open'
+      `).bind(now, disputeId),
 
-  if (!result.meta.changes) {
-    return { error: 'Dispute not found or is not open' };
+      db.prepare(`
+        INSERT INTO security_audit_log (
+          actor_id,
+          actor_type,
+          action,
+          resource_type,
+          resource_id,
+          outcome,
+          metadata_json,
+          created_at
+        )
+        SELECT
+          ?,
+          'platform_admin',
+          'work_dispute_under_review',
+          'work_dispute',
+          id,
+          'success',
+          ?,
+          ?
+        FROM work_disputes
+        WHERE id = ?
+          AND status = 'under_review'
+          AND updated_at = ?
+      `).bind(
+        adminUserId,
+        JSON.stringify({ status: 'under_review' }),
+        now,
+        disputeId,
+        now,
+      ),
+    ]);
+
+    if (!results[0]?.meta?.changes) {
+      return { error: 'Dispute not found or is not open' };
+    }
+
+    return {
+      success: true,
+      dispute_id: disputeId,
+      status: 'under_review',
+    };
+  } catch (error) {
+    return { error: error.message || 'Unable to update dispute status' };
   }
-
-  return {
-    success: true,
-    dispute_id: disputeId,
-    status: 'under_review',
-  };
 }
-
 
 export async function resolveWorkDispute(
   disputeId,
