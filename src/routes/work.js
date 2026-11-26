@@ -31,6 +31,7 @@ import {
 } from '../services/work.js';
 
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { getMyWork } from '../services/work-dashboard.js';
 
 export async function handleWorkRoutes(path, method, request, env) {
   const db = env.DB;
@@ -96,6 +97,17 @@ export async function handleWorkRoutes(path, method, request, env) {
       console.error('[Work API]', error);
       return json({ error: 'Work request failed. Please try again.' }, 500);
     }
+  }
+
+  // --------------------------------------------------
+  // PERSONAL WORK DASHBOARD
+  // --------------------------------------------------
+
+  if (path === '/api/work/my-work' && method === 'GET') {
+    const auth = await authenticatedUser();
+    if (auth.response) return auth.response;
+
+    return execute(() => getMyWork(auth.userId, db));
   }
 
   // --------------------------------------------------
