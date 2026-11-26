@@ -43,65 +43,186 @@ window.WorkPage = {
     await this.loadOpportunities();
   },
 
+  
   render() {
     this.container.innerHTML = `
       <div class="work-wrap">
-        <header class="work-header">
-          <div>
-            <p class="section-eyebrow">AURUM PROFESSIONAL NETWORK</p>
-            <h2>Work</h2>
-            <p>Discover opportunities. Build your reputation. Deliver meaningful work.</p>
-          </div>
-          <button class="btn btn-primary" id="work-create-open">+ Post Work</button>
-        </header>
 
-        <div class="work-tabs">
-          <button class="work-tab active" data-work-tab="discover">Discover</button>
-          <button class="work-tab" data-work-tab="manage">My Opportunities</button>
-        </div>
+        <section class="work-hero">
+          <div class="work-hero-copy">
+            <div class="work-kicker">
+              <span class="work-kicker-line"></span>
+              AURUM / PROFESSIONAL NETWORK
+            </div>
 
-        <section id="work-discover-panel">
-          <div class="work-filters">
-            <input class="input" id="work-search" maxlength="100"
-              placeholder="Search opportunities..." />
-            <select class="input" id="work-pricing-filter">
-              <option value="">All pricing</option>
-              <option value="fixed">Fixed price</option>
-              <option value="hourly">Hourly</option>
-            </select>
-            <select class="input" id="work-eligibility-filter">
-              <option value="">All applicants</option>
-              <option value="individuals">Individuals</option>
-              <option value="crews">Crews</option>
-            </select>
-            <button class="btn btn-outline" id="work-search-button">Search</button>
+            <h1>Make your next move <em>count.</em></h1>
+
+            <p class="work-hero-description">
+              Find meaningful opportunities, work with exceptional people,
+              and turn what you do best into something greater.
+            </p>
+
+            <div class="work-hero-actions">
+              <button class="work-primary-action" id="work-explore-button" type="button">
+                Explore opportunities
+                <span aria-hidden="true">↗</span>
+              </button>
+              <button class="work-secondary-action" id="work-create-open" type="button">
+                Post an opportunity
+                <span aria-hidden="true">＋</span>
+              </button>
+            </div>
+
+            <div class="work-hero-footnote">
+              <span class="work-live-dot"></span>
+              A marketplace for individuals and Crews
+            </div>
           </div>
+
+          <div class="work-hero-art" aria-hidden="true">
+            <div class="work-orbit work-orbit-one"></div>
+            <div class="work-orbit work-orbit-two"></div>
+            <div class="work-art-core">
+              <span class="work-art-monogram">W</span>
+              <span class="work-art-caption">WORK / CREATE / GROW</span>
+            </div>
+            <span class="work-art-star work-star-one">✦</span>
+            <span class="work-art-star work-star-two">✧</span>
+            <span class="work-art-coordinate">AURUM<br>01 — 04</span>
+          </div>
+        </section>
+
+        <section class="work-principles" aria-label="Marketplace features">
+          <div class="work-principle">
+            <span class="work-principle-number">01</span>
+            <div>
+              <strong>Discover</strong>
+              <span>Find work that fits your strengths</span>
+            </div>
+          </div>
+          <div class="work-principle">
+            <span class="work-principle-number">02</span>
+            <div>
+              <strong>Collaborate</strong>
+              <span>Apply as an individual or a Crew</span>
+            </div>
+          </div>
+          <div class="work-principle">
+            <span class="work-principle-number">03</span>
+            <div>
+              <strong>Deliver</strong>
+              <span>Build a record of meaningful work</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="work-marketplace" id="work-discover-panel">
+          <div class="work-section-heading">
+            <div>
+              <div class="work-kicker">
+                <span class="work-kicker-line"></span>
+                THE MARKETPLACE
+              </div>
+              <h2>Find your <em>opportunity.</em></h2>
+              <p>Explore projects from across the AURUM community.</p>
+            </div>
+            <button class="work-manage-link" data-work-tab="manage" type="button">
+              My opportunities <span>↗</span>
+            </button>
+          </div>
+
+          <div class="work-search-panel">
+            <div class="work-search-field">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m20 20-4-4"></path>
+              </svg>
+              <input
+                id="work-search"
+                type="search"
+                maxlength="100"
+                placeholder="What kind of work are you looking for?"
+                aria-label="Search opportunities"
+              />
+            </div>
+
+            <div class="work-filter-field">
+              <label for="work-pricing-filter">Pricing</label>
+              <select id="work-pricing-filter">
+                <option value="">All types</option>
+                <option value="fixed">Fixed price</option>
+                <option value="hourly">Hourly</option>
+              </select>
+            </div>
+
+            <div class="work-filter-field">
+              <label for="work-eligibility-filter">Open to</label>
+              <select id="work-eligibility-filter">
+                <option value="">Everyone</option>
+                <option value="individuals">Individuals</option>
+                <option value="crews">Crews</option>
+              </select>
+            </div>
+
+            <button class="work-search-button" id="work-search-button" type="button">
+              Search
+            </button>
+          </div>
+
+          <div class="work-results-heading">
+            <div>
+              <span class="work-results-label">LATEST OPPORTUNITIES</span>
+              <span class="work-results-count" id="work-result-count">Loading listings</span>
+            </div>
+            <span class="work-results-note">Recently published</span>
+          </div>
+
           <div id="work-opportunity-list" class="work-grid">
-            <p class="work-empty">Loading opportunities...</p>
+            <div class="work-loading-card">
+              <span class="work-loading-mark"></span>
+              <p>Finding opportunities for you...</p>
+            </div>
           </div>
         </section>
 
-        <section id="work-manage-panel" hidden>
-          <div class="work-panel-heading">
-            <h3>Your published opportunities</h3>
-            <p>Review applications and manage your hiring process.</p>
+        <section id="work-manage-panel" class="work-manage-panel" hidden>
+          <div class="work-section-heading">
+            <div>
+              <div class="work-kicker">
+                <span class="work-kicker-line"></span>
+                CLIENT WORKSPACE
+              </div>
+              <h2>Your <em>opportunities.</em></h2>
+              <p>Keep track of your published listings and applicants.</p>
+            </div>
+            <button class="work-primary-action" id="work-create-open-manage" type="button">
+              Post an opportunity <span>＋</span>
+            </button>
           </div>
+
           <div id="work-owned-list" class="work-grid">
-            <p class="work-empty">Your opportunities will appear here.</p>
+            <div class="work-loading-card">
+              <span class="work-loading-mark"></span>
+              <p>Loading your opportunities...</p>
+            </div>
           </div>
         </section>
 
-        <section id="work-detail-panel" hidden>
-          <button class="btn btn-ghost btn-sm" id="work-back-button">← Back to opportunities</button>
+        <section id="work-detail-panel" class="work-detail-panel" hidden>
+          <button class="work-back-link" id="work-back-button" type="button">
+            <span>←</span> Back to opportunities
+          </button>
           <div id="work-detail-content"></div>
         </section>
 
+        <!-- Create opportunity modal -->
         <div class="work-modal" id="work-create-modal" hidden>
           <div class="work-modal-card">
             <div class="work-modal-heading">
               <div>
-                <p class="section-eyebrow">CLIENT WORKSPACE</p>
-                <h3>Publish an opportunity</h3>
+                <p class="work-modal-eyebrow">CLIENT WORKSPACE</p>
+                <h3>Create an opportunity</h3>
+                <p>Tell the community what you need help with.</p>
               </div>
               <button class="work-close" data-work-close="work-create-modal" aria-label="Close">×</button>
             </div>
@@ -192,15 +313,18 @@ window.WorkPage = {
           </div>
         </div>
 
+        <!-- Application modal -->
         <div class="work-modal" id="work-apply-modal" hidden>
           <div class="work-modal-card">
             <div class="work-modal-heading">
               <div>
-                <p class="section-eyebrow">APPLICATION</p>
-                <h3>Apply for this opportunity</h3>
+                <p class="work-modal-eyebrow">YOUR APPLICATION</p>
+                <h3>Make your case.</h3>
+                <p>Show the client why you're right for this opportunity.</p>
               </div>
               <button class="work-close" data-work-close="work-apply-modal" aria-label="Close">×</button>
             </div>
+
             <form id="work-apply-form">
               <label class="input-group">
                 <span class="input-label">Why are you suitable for this work?</span>
@@ -219,6 +343,7 @@ window.WorkPage = {
             </form>
           </div>
         </div>
+
       </div>
     `;
 
@@ -228,6 +353,19 @@ window.WorkPage = {
   bindEvents() {
     this.container.addEventListener('click', event => {
       const tab = event.target.closest('[data-work-tab]');
+	 if (event.target.closest('#work-explore-button')) {
+        this.container.querySelector('#work-search')?.focus();
+        this.container.querySelector('#work-discover-panel')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+        return;
+      }
+
+      if (event.target.closest('#work-create-open-manage')) {
+        this.modal('work-create-modal', true);
+        return;
+      }
       if (tab) return this.switchTab(tab.dataset.workTab);
 
       const close = event.target.closest('[data-work-close]');
@@ -292,10 +430,11 @@ window.WorkPage = {
     if (element) element.hidden = !open;
   },
 
-  switchTab(tab) {
+    switchTab(tab) {
     this.container.querySelectorAll('[data-work-tab]').forEach(button => {
       button.classList.toggle('active', button.dataset.workTab === tab);
     });
+
     this.showPanel(tab);
 
     if (tab === 'manage') this.loadOwnedOpportunities();
@@ -336,34 +475,109 @@ window.WorkPage = {
     }
   },
 
+  
   renderOpportunityList(container, opportunities) {
+    const count = this.container.querySelector('#work-result-count');
+
+    if (count) {
+      count.textContent = `${opportunities.length} ${
+        opportunities.length === 1 ? 'opportunity' : 'opportunities'
+      }`;
+    }
+
     if (!opportunities.length) {
-      container.innerHTML = '<p class="work-empty">No opportunities found. Check back soon or broaden your search.</p>';
+      container.innerHTML = `
+        <div class="work-empty-state">
+          <span class="work-empty-icon">✧</span>
+          <h3>Nothing here. Yet.</h3>
+          <p>There are no matching opportunities right now. Try another search or check back soon.</p>
+        </div>
+      `;
       return;
     }
 
-    container.innerHTML = opportunities.map(item => `
-      <article class="work-card">
-        <div class="work-card-top">
-          <span class="work-tag">${this.escape(item.pricing_model)}</span>
-          <span class="work-tag">${this.escape(item.applicant_eligibility)}</span>
-        </div>
-        <h3>${this.escape(item.title)}</h3>
-        <p class="work-card-description">${this.escape(item.description.slice(0, 220))}${item.description.length > 220 ? '…' : ''}</p>
-        <div class="work-card-meta">
-          <strong>${this.money(
-            item.pricing_model === 'fixed' ? item.fixed_budget_minor : item.hourly_rate_minor,
-            item.currency
-          )}${item.pricing_model === 'hourly' ? ' / hour' : ''}</strong>
-          <span>${this.escape(item.client_display_name || item.client_username || 'AURUM member')}</span>
-        </div>
-        <div class="work-card-footer">
-          <span>${item.multi_hire_enabled ? `Up to ${Number(item.hire_capacity)} hires` : 'Single hire'}</span>
-          <button class="btn btn-outline btn-sm" data-work-detail="${this.escape(item.id)}">View opportunity</button>
-        </div>
-      </article>
-    `).join('');
+    container.innerHTML = opportunities.map((item, index) => {
+      const description = String(item.description || '');
+      const pricing = item.pricing_model === 'fixed'
+        ? this.money(item.fixed_budget_minor, item.currency)
+        : `${this.money(item.hourly_rate_minor, item.currency)} <small>/ hour</small>`;
+
+      const applicantType = item.applicant_eligibility === 'both'
+        ? 'Individuals + Crews'
+        : item.applicant_eligibility === 'crews'
+          ? 'Crews'
+          : 'Individuals';
+
+      return `
+        <article class="work-opportunity-card" style="--work-card-index:${index};">
+          <div class="work-card-topline">
+            <span class="work-card-category">
+              ${this.escape(item.category || 'Opportunity')}
+            </span>
+            <span class="work-card-pricing">
+              ${item.pricing_model === 'hourly' ? 'HOURLY' : 'FIXED PRICE'}
+            </span>
+          </div>
+
+          <h3>${this.escape(item.title)}</h3>
+
+          <p class="work-card-description">
+            ${this.escape(description.length > 190
+              ? `${description.slice(0, 190).trim()}…`
+              : description)}
+          </p>
+
+          <div class="work-card-divider"></div>
+
+          <div class="work-card-budget">
+            <span>OFFERED BUDGET</span>
+            <strong>${pricing}</strong>
+          </div>
+
+          <div class="work-card-details">
+            <span>
+              <i class="work-detail-dot"></i>
+              ${this.escape(applicantType)}
+            </span>
+            <span>
+              ${item.multi_hire_enabled
+                ? `Up to ${Number(item.hire_capacity)} hires`
+                : 'Single hire'}
+            </span>
+          </div>
+
+          <div class="work-card-footer">
+            <div class="work-client-identity">
+              <span class="work-client-avatar">
+                ${item.client_avatar_url
+                  ? `<img src="${this.escape(item.client_avatar_url)}" alt="" />`
+                  : this.escape(
+                      (item.client_display_name || item.client_username || 'A')
+                        .trim().charAt(0).toUpperCase()
+                    )}
+              </span>
+              <span>
+                <small>POSTED BY</small>
+                <strong>${this.escape(
+                  item.client_display_name || item.client_username || 'AURUM member'
+                )}</strong>
+              </span>
+            </div>
+
+            <button
+              class="work-card-open"
+              type="button"
+              data-work-detail="${this.escape(item.id)}"
+              aria-label="View ${this.escape(item.title)}"
+            >
+              View <span>↗</span>
+            </button>
+          </div>
+        </article>
+      `;
+    }).join('');
   },
+
 
   async openOpportunity(id) {
     this.activeOpportunity = id;
