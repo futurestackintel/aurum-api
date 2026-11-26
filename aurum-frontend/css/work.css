@@ -1277,3 +1277,50 @@
     transition: none;
   }
 }
+
+.work-dashboard-section {
+  margin: 28px 0;
+}
+
+.work-dashboard-section > .work-panel-heading {
+  margin-bottom: 16px;
+}
+
+.work-dashboard-section form[data-ws-form] {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(--border-color, rgba(180, 150, 90, .2));
+  border-radius: 14px;
+}
+
+.work-dashboard-section form .input {
+  width: 100%;
+  min-width: 0;
+}
+
+.work-dashboard-section .work-card {
+  margin-bottom: 12px;
+}
+
+.work-dashboard-section .work-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+#work-workspace-message {
+  margin: 16px 0;
+}
+
+@media (max-width: 640px) {
+  .work-dashboard-section form[data-ws-form] {
+    padding: 14px;
+  }
+
+  .work-dashboard-section .work-action-row > button {
+    flex: 1 1 100%;
+  }
+}
