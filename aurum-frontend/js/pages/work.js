@@ -1021,7 +1021,7 @@ window.WorkPage = {
 
   renderEngagementWorkspace(target, data) {
     const e = data.engagement;
-    const isClient = e.client_user_id === window.App?.user?.id;
+    const isClient = e.client_user_id === App.user?.id;
     const fixed = e.pricing_model === 'fixed';
 
     const participants = (data.participants || []).map(p => `
