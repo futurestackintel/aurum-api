@@ -26,16 +26,22 @@ async function createTestUser() {
 describe('notification event pipeline', () => {
   it('publishes repeated notification requests as one event and one notification', async () => {
     const userId = await createTestUser();
-	  const testUser = await env.DB.prepare(
+	  const notificationUserCheck = await env.DB.prepare(
   'SELECT id FROM users WHERE id = ?'
 ).bind(userId).first();
 
-const foreignKeys = await env.DB.prepare(
+const notificationForeignKeys = await env.DB.prepare(
   'PRAGMA foreign_key_list(notifications)'
 ).all();
 
-console.log('NOTIFICATION USER CHECK:', { userId, testUser });
-console.log('NOTIFICATION FOREIGN KEYS:', foreignKeys.results);
+console.log('NOTIFICATION USER CHECK:', {
+  userId,
+  notificationUserCheck,
+});
+console.log(
+  'NOTIFICATION FOREIGN KEYS:',
+  notificationForeignKeys.results
+);
 		const testUser = await env.DB.prepare(
   'SELECT id FROM users WHERE id = ?'
 ).bind(userId).first();
