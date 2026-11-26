@@ -430,6 +430,13 @@ window.WorkPage = {
 
       const action = event.target.closest('[data-work-action]');
       if (action) return this.handleApplicationAction(action);
+		
+      const crewVote = event.target.closest('[data-work-crew-vote]');
+      if (crewVote) return this.handleCrewGovernanceAction(crewVote);
+
+      const crewRole = event.target.closest('[data-work-crew-role]');
+      if (crewRole) return this.handleCrewGovernanceAction(crewRole);
+
 
       const withdraw = event.target.closest('[data-work-withdraw]');
       if (withdraw) return this.withdrawApplication(withdraw);
@@ -841,6 +848,46 @@ window.WorkPage = {
             item.client_display_name || item.client_username || 'AURUM member'
           )}</p>
           <p>${this.escape(item.cover_message)}</p>
+		  
+${item.applicant_type === 'crew' ? `
+  <div class="work-governance">
+    <strong>${this.escape(item.applicant_crew_name || 'Crew proposal')}</strong>
+    <p>
+      Approvals: ${Number(item.approval_count || 0)}
+      / ${Number(item.eligible_member_count || 0)}
+    </p>
+    <p>Captain approval: ${
+      Number(item.captain_approved || 0) === 1 ? 'Received' : 'Pending'
+    }</p>
+    <p>Your proposed role: ${this.escape(item.my_proposed_role || 'Not selected')}</p>
+    <p>Your role acceptance: ${
+      item.my_role_accepted ? 'Accepted' :
+      item.my_proposed_role ? 'Pending' : 'Not required'
+    }</p>
+    ${item.can_vote && !item.my_crew_vote &&
+      ['submitted', 'under_review', 'shortlisted'].includes(item.status) ? `
+      <div class="work-action-row">
+        <button class="btn btn-primary btn-sm"
+          data-work-crew-vote="approve"
+          data-application="${this.escape(item.id)}">Approve proposal</button>
+        <button class="btn btn-danger btn-sm"
+          data-work-crew-vote="reject"
+          data-application="${this.escape(item.id)}">Reject proposal</button>
+      </div>
+    ` : ''}
+    ${item.my_proposed_role && !item.my_role_accepted &&
+      ['submitted', 'under_review', 'shortlisted'].includes(item.status) ? `
+      <div class="work-action-row">
+        <button class="btn btn-outline btn-sm"
+          data-work-crew-role="${this.escape(item.id)}">
+          Accept my proposed role
+        </button>
+      </div>
+    ` : ''}
+    ${item.my_crew_vote ? `<p>Your vote: ${this.escape(item.my_crew_vote)}</p>` : ''}
+  </div>
+` : ''}
+
           ${item.status === 'submitted' ||
             item.status === 'under_review' ||
             item.status === 'shortlisted'
@@ -948,6 +995,43 @@ window.WorkPage = {
       `;
     } catch (error) {
       target.innerHTML = `<p class="work-empty">${this.escape(error.message)}</p>`;
+    }
+  },
+
+	
+  async handleCrewGovernanceAction(button) {
+    const applicationId = button.dataset.application;
+    button.disabled = true;
+
+    try {
+      if (button.dataset.workCrewVote) {
+        const vote = button.dataset.workCrewVote;
+
+        if (!confirm(
+          vote === 'approve'
+            ? 'Approve this Crew Work proposal?'
+            : 'Reject this Crew Work proposal?'
+        )) {
+          button.disabled = false;
+          return;
+        }
+
+        await AURUM.WorkAPI.voteCrewApplication(applicationId, vote);
+        AURUM.showToast('Your Crew vote has been recorded.', 'success');
+      } else {
+        if (!confirm('Accept your proposed role in this Crew engagement?')) {
+          button.disabled = false;
+          return;
+        }
+
+        await AURUM.WorkAPI.acceptCrewApplicationRole(applicationId);
+        AURUM.showToast('Your role acceptance has been recorded.', 'success');
+      }
+
+      await this.loadOwnedOpportunities();
+    } catch (error) {
+      AURUM.showToast(error.message || 'Unable to complete this action.', 'error');
+      button.disabled = false;
     }
   },
 
