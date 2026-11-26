@@ -436,6 +436,9 @@ window.WorkPage = {
 
       const engagement = event.target.closest('[data-work-engagement]');
       if (engagement) return this.openEngagement(engagement.dataset.workEngagement);
+
+	  const workspaceAction = event.target.closest('[data-ws-action]');
+      if (workspaceAction) return this.handleWorkspaceAction(workspaceAction);
 		
       if (event.target.id === 'work-create-open') {
         this.modal('work-create-modal', true);
@@ -504,9 +507,7 @@ window.WorkPage = {
     this.container.querySelector('#work-manage-panel').hidden = panel !== 'manage';
     this.container.querySelector('#work-detail-panel').hidden = panel !== 'detail';
   },
-
-      const workspaceAction = event.target.closest('[data-ws-action]');
-      if (workspaceAction) return this.handleWorkspaceAction(workspaceAction);	
+	
 	
   updatePricingFields() {
     const hourly = this.container.querySelector('#work-pricing-model').value === 'hourly';
@@ -998,8 +999,7 @@ window.WorkPage = {
       alert(error.message);
       button.disabled = false;
     }
-  },
-};
+    },
 
   async openEngagement(id) {
     this.activeEngagement = id;
@@ -1294,3 +1294,4 @@ window.WorkPage = {
       if (message) message.textContent = error.message;
     }
   },
+};
