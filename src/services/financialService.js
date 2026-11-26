@@ -523,7 +523,129 @@ export class FinancialService {
           amountMinor,
           description: 'Wallet transfer received',
         },
+   /**
+   * Atomic individual Work payment.
+   * The payment record and balanced ledger transaction are committed
+   * in the same D1 batch.
+   */
+  async transferWorkPayment({
+    senderUserId,
+    recipientUserId,
+    actorUserId,
+    currencyCode,
+    amountMinor,
+    idempotencyKey,
+    transactionId,
+    paymentId,
+    paymentKey,
+    engagementId,
+    paymentType,
+    approvedMinutes = null,
+  }) {
+    senderUserId = requireText(senderUserId, 'Sender user ID');
+    recipientUserId = requireText(recipientUserId, 'Recipient user ID');
+    actorUserId = requireText(actorUserId, 'Actor user ID');
+    idempotencyKey = requireText(idempotencyKey, 'Idempotency key');
+    transactionId = requireText(transactionId, 'Transaction ID');
+    paymentId = requireText(paymentId, 'Payment ID');
+    paymentKey = requireText(paymentKey, 'Payment key');
+    engagementId = requireText(engagementId, 'Engagement ID');
+
+    currencyCode = validateCurrencyCode(currencyCode);
+    assertSafeMinorUnits(amountMinor);
+
+    if (amountMinor <= 0) {
+      throw new Error('Work payment must be greater than zero');
+    }
+
+    if (senderUserId === recipientUserId) {
+      throw new Error('Client and provider cannot be the same user');
+    }
+
+    if (actorUserId !== senderUserId) {
+      throw new Error('Only the client can initiate this payment');
+    }
+
+    if (!['fixed', 'hourly'].includes(paymentType)) {
+      throw new Error('Invalid Work payment type');
+    }
+
+    const sender = await this.getOwnerAvailableAccount({
+      ownerType: 'user',
+      ownerId: senderUserId,
+      currencyCode,
+    });
+
+    const recipient = await this.getOwnerAvailableAccount({
+      ownerType: 'user',
+      ownerId: recipientUserId,
+      currencyCode,
+    });
+
+    return this.ledger.postTransaction({
+      transactionId,
+      idempotencyScope: 'financial-work-payment',
+      idempotencyKey,
+      sourceModule: 'work',
+      transactionType: 'work_payment',
+      actorType: 'member',
+      actorId: actorUserId,
+      description: 'AURUM Work provider payment',
+      reference: engagementId,
+      metadata: {
+        engagement_id: engagementId,
+        payment_type: paymentType,
+        payment_key: paymentKey,
+        amount_minor: amountMinor,
+        currency_code: currencyCode,
+      },
+      entries: [
+        {
+          accountId: sender.id,
+          currencyCode,
+          side: 'debit',
+          amountMinor,
+          description: 'Work payment sent',
+        },
+        {
+          accountId: recipient.id,
+          currencyCode,
+          side: 'credit',
+          amountMinor,
+          description: 'Work payment received',
+        },
+      ],
+      atomicStatements: [
+        this.db.prepare(`
+          INSERT INTO work_payments (
+            id,
+            engagement_id,
+            client_user_id,
+            provider_user_id,
+            payment_type,
+            payment_key,
+            idempotency_key,
+            amount_minor,
+            currency,
+            approved_minutes,
+            ledger_transaction_id,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          paymentId,
+          engagementId,
+          senderUserId,
+          recipientUserId,
+          paymentType,
+          paymentKey,
+          idempotencyKey,
+          amountMinor,
+          currencyCode,
+          approvedMinutes,
+          transactionId,
+          new Date().toISOString(),
+        ),
       ],
     });
   }
-}
