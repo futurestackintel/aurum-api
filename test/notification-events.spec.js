@@ -26,6 +26,11 @@ async function createTestUser() {
 describe('notification event pipeline', () => {
   it('publishes repeated notification requests as one event and one notification', async () => {
     const userId = await createTestUser();
+		const testUser = await env.DB.prepare(
+  'SELECT id FROM users WHERE id = ?'
+).bind(userId).first();
+
+console.log('NOTIFICATION TEST USER:', userId, testUser);
 
     const notification = {
       recipientUserId: userId,
