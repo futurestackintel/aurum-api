@@ -967,7 +967,8 @@ ${item.applicant_type === 'crew' ? `
           
 ${applications.length ? applications.map(application => `
   <article class="work-card"
-    data-work-application-card="${this.escape(application.id)}">
+    data-work-application-card="${this.escape(application.id)}"
+    data-applicant-type="${this.escape(application.applicant_type)}">
     <div class="work-card-top">
       <span class="work-tag">${this.escape(application.applicant_type)}</span>
       <span class="work-tag">${this.escape(application.status)}</span>
@@ -1118,13 +1119,13 @@ ${applications.length ? applications.map(application => `
         const item = opportunity.opportunity;
         const payload = {};
 		  
-        if (item.applicant_type === 'crew') {
-          const card = this.container.querySelector(
-            `[data-work-application-card="${CSS.escape(id)}"]`
-          );
+        const card = this.container.querySelector(
+          `[data-work-application-card="${CSS.escape(id)}"]`
+        );
 
+        if (card?.dataset.applicantType === 'crew') {
           const selectedMembers = Array.from(
-            card?.querySelectorAll('[data-work-crew-select]:checked') || []
+            card.querySelectorAll('[data-work-crew-select]:checked')
           ).map(input => input.value);
 
           if (!selectedMembers.length) {
