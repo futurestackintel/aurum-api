@@ -25,6 +25,7 @@ window.AdminPage = {
     { key: 'badges',     label: 'Badges'   },
     { key: 'entries',    label: 'Entries'  },
     { key: 'challenges', label: 'Resolve'  },
+	 { key: 'work-disputes', label: 'Work Disputes' },
   ],
 
   open() {
@@ -100,6 +101,7 @@ window.AdminPage = {
         case 'badges':     return this.loadBadges(list);
         case 'entries':    return this.loadEntries(list);
         case 'challenges': return this.loadResolvable(list);
+		  case 'work-disputes': return this.loadWorkDisputes(list);
       }
     } catch (err) {
       list.innerHTML = `<div class="admin-empty">Could not load this queue.</div>`;
@@ -521,6 +523,200 @@ window.AdminPage = {
     });
   },
 
+
+  /* --------------------------------------------------
+     WORK DISPUTES
+  -------------------------------------------------- */
+
+  async loadWorkDisputes(list) {
+    const data = await AURUM.WorkAPI.getAdminDisputes();
+    const disputes = data.disputes || [];
+
+    if (!disputes.length) {
+      list.innerHTML = '<div class="admin-empty">No Work disputes found.</div>';
+      return;
+    }
+
+    list.innerHTML = disputes.map(d => `
+      <article class="admin-card">
+        <div class="admin-card-top">
+          <strong class="admin-card-user">${this.escapeHTML(d.category || 'Work dispute')}</strong>
+          <span class="admin-card-flag-count">${this.escapeHTML(d.status)}</span>
+        </div>
+
+        <p class="admin-card-content">${this.escapeHTML(d.description)}</p>
+
+        <div class="admin-card-meta">
+          <span>Engagement: ${this.escapeHTML(d.engagement_id)}</span>
+          <span>${this.escapeHTML(d.created_at)}</span>
+        </div>
+
+        <button class="btn btn-primary btn-sm"
+          data-work-dispute-open="${this.escapeHTML(d.id)}">
+          Review dispute
+        </button>
+      </article>
+    `).join('');
+
+    list.querySelectorAll('[data-work-dispute-open]').forEach(button => {
+      button.addEventListener('click', () =>
+        this.openWorkDispute(button.dataset.workDisputeOpen, list)
+      );
+    });
+  },
+
+  async openWorkDispute(disputeId, list) {
+    list.innerHTML = this.skeletons(2);
+
+    try {
+      const data = await AURUM.WorkAPI.getAdminDispute(disputeId);
+      const dispute = data.dispute;
+      const messages = data.messages || [];
+
+      list.innerHTML = `
+        <article class="admin-card">
+          <div class="admin-card-top">
+            <strong class="admin-card-user">Work dispute details</strong>
+            <span class="admin-card-flag-count">${this.escapeHTML(dispute.status)}</span>
+          </div>
+
+          <p><strong>Category:</strong> ${this.escapeHTML(dispute.category)}</p>
+          <p class="admin-card-content">${this.escapeHTML(dispute.description)}</p>
+
+          <div class="admin-card-meta">
+            <span>Engagement: ${this.escapeHTML(dispute.engagement_id)}</span>
+            <span>Currency: ${this.escapeHTML(dispute.currency || '')}</span>
+          </div>
+
+          ${dispute.resolution_summary ? `
+            <div class="admin-card-content">
+              <strong>Resolution</strong>
+              <p>${this.escapeHTML(dispute.resolution_summary)}</p>
+            </div>
+          ` : ''}
+
+          <h3>Dispute conversation</h3>
+
+          <div class="admin-work-messages">
+            ${messages.length ? messages.map(message => `
+              <div class="admin-work-message">
+                <strong>${this.escapeHTML(
+                  message.author_type === 'platform_admin'
+                    ? 'Platform Admin'
+                    : message.display_name || message.username || 'Member'
+                )}</strong>
+                <p>${this.escapeHTML(message.message)}</p>
+                <small>${this.escapeHTML(message.created_at)}</small>
+              </div>
+            `).join('') : '<p class="admin-empty">No messages yet.</p>'}
+          </div>
+
+          ${['open', 'under_review'].includes(dispute.status) ? `
+            <form id="admin-work-dispute-message">
+              <textarea class="input" name="message" minlength="2"
+                maxlength="5000" required
+                placeholder="Send an official admin message..."></textarea>
+              <button class="btn btn-outline btn-sm" type="submit">
+                Send admin message
+              </button>
+            </form>
+
+            ${dispute.status === 'open' ? `
+              <button class="btn btn-outline btn-sm"
+                id="admin-work-dispute-review">
+                Mark under review
+              </button>
+            ` : ''}
+
+            <form id="admin-work-dispute-resolve">
+              <textarea class="input" name="resolution_summary"
+                minlength="10" maxlength="12000" required
+                placeholder="Record the final resolution and reasoning..."></textarea>
+              <button class="btn btn-primary btn-sm" type="submit">
+                Resolve dispute
+              </button>
+            </form>
+          ` : ''}
+
+          <button class="btn btn-outline btn-sm"
+            id="admin-work-disputes-back">
+            Back to Work disputes
+          </button>
+        </article>
+      `;
+
+      document.getElementById('admin-work-disputes-back')
+        ?.addEventListener('click', () => this.loadWorkDisputes(list));
+
+      document.getElementById('admin-work-dispute-review')
+        ?.addEventListener('click', async buttonEvent => {
+          const button = buttonEvent.currentTarget;
+          button.disabled = true;
+
+          try {
+            await AURUM.WorkAPI.markDisputeUnderReview(disputeId);
+            AURUM.showToast('Dispute moved under review.', 'gold');
+            await this.openWorkDispute(disputeId, list);
+          } catch (error) {
+            AURUM.showToast(error.message || 'Could not update dispute.', 'error');
+            button.disabled = false;
+          }
+        });
+
+      document.getElementById('admin-work-dispute-message')
+        ?.addEventListener('submit', async event => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          const button = form.querySelector('button[type="submit"]');
+          const message = form.elements.message.value.trim();
+
+          if (!message) return;
+
+          button.disabled = true;
+
+          try {
+            await AURUM.WorkAPI.sendAdminDisputeMessage(disputeId, message);
+            AURUM.showToast('Admin message sent.', 'gold');
+            await this.openWorkDispute(disputeId, list);
+          } catch (error) {
+            AURUM.showToast(error.message || 'Could not send message.', 'error');
+            button.disabled = false;
+          }
+        });
+
+      document.getElementById('admin-work-dispute-resolve')
+        ?.addEventListener('submit', async event => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          const button = form.querySelector('button[type="submit"]');
+          const summary = form.elements.resolution_summary.value.trim();
+
+          if (!confirm(
+            'Resolve this Work dispute? This records an administrative decision and does not transfer or release funds.'
+          )) return;
+
+          button.disabled = true;
+
+          try {
+            await AURUM.WorkAPI.resolveDispute(disputeId, summary);
+            AURUM.showToast('Work dispute resolved.', 'gold');
+            await this.openWorkDispute(disputeId, list);
+          } catch (error) {
+            AURUM.showToast(error.message || 'Could not resolve dispute.', 'error');
+            button.disabled = false;
+          }
+        });
+
+    } catch (error) {
+      list.innerHTML = `
+        <div class="admin-empty">
+          ${this.escapeHTML(error.message || 'Could not load dispute.')}
+        </div>
+      `;
+    }
+  },
+
+	
   /* --------------------------------------------------
      SHARED HELPERS
   -------------------------------------------------- */
@@ -705,6 +901,48 @@ window.AdminPage = {
         text-align: center;
         font-size: var(--text-sm);
         color: var(--color-text-muted);
+      }
+		
+      .admin-work-messages {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 360px;
+        overflow-y: auto;
+        padding: 12px 0;
+      }
+
+      .admin-work-message {
+        padding: 12px;
+        background: var(--color-bg);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+      }
+
+      .admin-work-message strong {
+        color: var(--color-gold);
+        font-size: 11px;
+      }
+
+      .admin-work-message p {
+        color: var(--color-text);
+        font-size: var(--text-sm);
+        line-height: 1.5;
+        margin: 6px 0;
+        white-space: pre-wrap;
+      }
+
+      .admin-work-message small {
+        color: var(--color-text-dim);
+        font-size: 10px;
+      }
+
+      #admin-work-dispute-message,
+      #admin-work-dispute-resolve {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 14px;
       }
     `;
     document.head.appendChild(style);
