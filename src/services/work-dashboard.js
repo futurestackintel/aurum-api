@@ -24,6 +24,7 @@ export async function getMyWork(userId, db) {
     LIMIT 100
   `).bind(userId).all();
 
+  
   const applications = await db.prepare(`
     SELECT
       a.*,
@@ -33,10 +34,56 @@ export async function getMyWork(userId, db) {
       o.status AS opportunity_status,
       o.client_user_id,
       client.username AS client_username,
-      client.display_name AS client_display_name
+      client.display_name AS client_display_name,
+      crew.name AS applicant_crew_name,
+      (
+        SELECT COUNT(*)
+        FROM work_crew_application_voter_snapshot s
+        WHERE s.application_id = a.id
+      ) AS eligible_member_count,
+      (
+        SELECT COUNT(*)
+        FROM work_crew_application_approvals v
+        WHERE v.application_id = a.id
+          AND v.vote = 'approve'
+      ) AS approval_count,
+      (
+        SELECT MAX(v.is_captain_approval)
+        FROM work_crew_application_approvals v
+        WHERE v.application_id = a.id
+          AND v.vote = 'approve'
+      ) AS captain_approved,
+      (
+        SELECT v.vote
+        FROM work_crew_application_approvals v
+        WHERE v.application_id = a.id
+          AND v.user_id = ?
+        LIMIT 1
+      ) AS my_crew_vote,
+      EXISTS (
+        SELECT 1
+        FROM work_crew_application_voter_snapshot s
+        WHERE s.application_id = a.id
+          AND s.user_id = ?
+      ) AS can_vote,
+      (
+        SELECT m.proposed_role
+        FROM work_application_crew_members m
+        WHERE m.application_id = a.id
+          AND m.user_id = ?
+        LIMIT 1
+      ) AS my_proposed_role,
+      (
+        SELECT m.role_accepted
+        FROM work_application_crew_members m
+        WHERE m.application_id = a.id
+          AND m.user_id = ?
+        LIMIT 1
+      ) AS my_role_accepted
     FROM work_applications a
     JOIN work_opportunities o ON o.id = a.opportunity_id
     JOIN users client ON client.id = o.client_user_id
+    LEFT JOIN crews crew ON crew.id = a.applicant_crew_id
     WHERE (
       a.applicant_user_id = ?
       OR a.submitted_by_user_id = ?
@@ -53,8 +100,16 @@ export async function getMyWork(userId, db) {
     )
     ORDER BY a.created_at DESC
     LIMIT 100
-  `).bind(userId, userId, userId).all();
-
+  `).bind(
+    userId,
+    userId,
+    userId,
+    userId,
+    userId,
+    userId,
+    userId,
+  ).all();
+	
   const engagements = await db.prepare(`
     SELECT
       e.*,
