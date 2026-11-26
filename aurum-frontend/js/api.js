@@ -625,8 +625,8 @@ const WorkAPI = {
   getAdminDisputes: (status = '') =>
     apiRequest('GET', `/api/admin/work/disputes${status ? `?status=${encodeURIComponent(status)}` : ''}`),
 	
-  getAdminDispute: (id) =>
-    apiRequest('GET', `/api/work/disputes/${encodeURIComponent(id)}`),
+    getAdminDispute: (id) =>
+    apiRequest('GET', `/api/admin/work/disputes/${encodeURIComponent(id)}`),
 
   markDisputeUnderReview: (id) =>
     apiRequest('POST', `/api/admin/work/disputes/${encodeURIComponent(id)}/under-review`),
