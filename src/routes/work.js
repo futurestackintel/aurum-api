@@ -30,6 +30,7 @@ import {
  updateWorkApplicationStatus,
  withdrawWorkApplication,
  addWorkDisputeAdminMessage,
+ payWorkEngagement,
 } from '../services/work.js';
 
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -381,6 +382,19 @@ export async function handleWorkRoutes(path, method, request, env) {
     /^\/api\/work\/engagements\/([^/]+)\/workspace$/
   );
 
+  match = path.match(
+    /^\/api\/work\/engagements\/([^/]+)\/pay$/
+  );
+
+  if (match && method === 'POST') {
+    const auth = await authenticatedUser();
+    if (auth.response) return auth.response;
+
+    return execute(
+      () => payWorkEngagement(match[1], auth.userId, db),
+    );
+  }
+	
   if (match && method === 'GET') {
     const auth = await authenticatedUser();
     if (auth.response) return auth.response;
