@@ -518,6 +518,118 @@ const DmAPI = {
   getReactions: (messageIds) =>
     apiRequest('POST', '/api/dm-messages/reactions/batch', { message_ids: messageIds }),
 };
+
+
+/* --- Work Marketplace --- */
+const WorkAPI = {
+  listOpportunities: (filters = {}) => {
+    const params = new URLSearchParams({ limit: '20', offset: '0' });
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.set(key, String(value));
+      }
+    });
+    return apiRequest('GET', `/api/work/opportunities?${params}`, null, 'optional');
+  },
+
+  getOpportunity: (id) =>
+    apiRequest('GET', `/api/work/opportunities/${encodeURIComponent(id)}`, null, 'optional'),
+
+  createOpportunity: (data) =>
+    apiRequest('POST', '/api/work/opportunities', data),
+
+  publishOpportunity: (id) =>
+    apiRequest('POST', `/api/work/opportunities/${encodeURIComponent(id)}/publish`),
+
+  listApplications: (opportunityId, filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.set(key, String(value));
+      }
+    });
+    return apiRequest(
+      'GET',
+      `/api/work/opportunities/${encodeURIComponent(opportunityId)}/applications?${params}`
+    );
+  },
+
+  apply: (opportunityId, data) =>
+    apiRequest('POST', `/api/work/opportunities/${encodeURIComponent(opportunityId)}/applications`, data),
+
+  applyAsCrew: (opportunityId, data) =>
+    apiRequest('POST', `/api/work/opportunities/${encodeURIComponent(opportunityId)}/crew-applications`, data),
+
+  updateApplication: (id, status) =>
+    apiRequest('PATCH', `/api/work/applications/${encodeURIComponent(id)}/status`, { status }),
+
+  withdrawApplication: (id) =>
+    apiRequest('POST', `/api/work/applications/${encodeURIComponent(id)}/withdraw`),
+
+  voteCrewApplication: (id, vote) =>
+    apiRequest('POST', `/api/work/applications/${encodeURIComponent(id)}/vote`, { vote }),
+
+  acceptCrewApplicationRole: (id) =>
+    apiRequest('POST', `/api/work/applications/${encodeURIComponent(id)}/accept-role`),
+
+  hire: (applicationId, data = {}) =>
+    apiRequest('POST', `/api/work/applications/${encodeURIComponent(applicationId)}/hire`, data),
+
+  acceptEngagementRole: (id) =>
+    apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/accept-role`),
+
+  activateEngagement: (id) =>
+    apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/activate`),
+
+  getWorkspace: (id) =>
+    apiRequest('GET', `/api/work/engagements/${encodeURIComponent(id)}/workspace`),
+
+  createMilestone: (id, data) =>
+    apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/milestones`, data),
+
+  submitDeliverable: (id, data) =>
+    apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/deliverables`, data),
+
+  reviewSubmission: (id, data) =>
+    apiRequest('POST', `/api/work/submissions/${encodeURIComponent(id)}/review`, data),
+
+  respondToRevision: (id, message) =>
+    apiRequest('POST', `/api/work/submissions/${encodeURIComponent(id)}/revision-response`, { message }),
+
+  submitTimeEntry: (id, data) =>
+    apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/time-entries`, data),
+
+  reviewTimeEntry: (id, decision) =>
+    apiRequest('POST', `/api/work/time-entries/${encodeURIComponent(id)}/review`, { decision }),
+
+  createReview: (id, data) =>
+    apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/reviews`, data),
+
+  getReviews: (filters = {}) => {
+    const params = new URLSearchParams(filters);
+    return apiRequest('GET', `/api/work/reviews?${params}`, null, 'optional');
+  },
+
+  openDispute: (id, data) =>
+    apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/disputes`, data),
+
+  getDispute: (id) =>
+    apiRequest('GET', `/api/work/disputes/${encodeURIComponent(id)}`),
+
+  sendDisputeMessage: (id, message) =>
+    apiRequest('POST', `/api/work/disputes/${encodeURIComponent(id)}/messages`, { message }),
+
+  getAdminDisputes: (status = '') =>
+    apiRequest('GET', `/api/admin/work/disputes${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+
+  markDisputeUnderReview: (id) =>
+    apiRequest('POST', `/api/admin/work/disputes/${encodeURIComponent(id)}/under-review`),
+
+  resolveDispute: (id, resolution_summary) =>
+    apiRequest('POST', `/api/admin/work/disputes/${encodeURIComponent(id)}/resolve`, { resolution_summary }),
+};
+
+
 const SearchAPI = {
   search: (q) =>
     apiRequest('GET', `/api/search?q=${encodeURIComponent(q)}`),
@@ -797,6 +909,7 @@ window.AURUM = {
   BadgeAPI,
   SettingsAPI,
   WalletAPI,
+  WorkAPI,
   FoundingAPI,
   CrewAPI,
   DmAPI,
