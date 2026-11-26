@@ -1,4 +1,3 @@
-
 /* ============================================================
    AURUM WORK — Marketplace
    Discovery, publishing, applications and hiring.
@@ -1570,26 +1569,37 @@ ${applications.length ? applications.map(application => `
         await AURUM.WorkAPI.reviewTimeEntry(id, 'approve');
       } else if (action === 'reject-time') {
         await AURUM.WorkAPI.reviewTimeEntry(id, 'reject');
-      } else if (action === 'dispute-time') {
+            } else if (action === 'dispute-time') {
         await AURUM.WorkAPI.reviewTimeEntry(id, 'dispute');
-      }
-	    else if (action === 'pay-approved') {
+      } else if (action === 'pay-approved') {
         const amount = Number(button.dataset.amount);
-        const paymentType = button.dataset.paymentType;
+        const workspace = await AURUM.WorkAPI.getWorkspace(
+          this.activeEngagement,
+        );
 
         if (!confirm(
-          `Transfer ${this.money(amount, (await AURUM.WorkAPI.getWorkspace(this.activeEngagement)).engagement.currency)} from your available wallet balance to this individual provider? This is an immediate wallet transfer, not escrow.`
+          `Transfer ${this.money(amount, workspace.engagement.currency)} ` +
+          `from your available wallet balance to this individual provider? ` +
+          `This is an immediate wallet transfer, not escrow.`
         )) {
           button.disabled = false;
           return;
         }
 
-        const result = await AURUM.WorkAPI.payEngagement(this.activeEngagement);
-
-        AURUM.showToast(
-          `Work payment completed: ${this.money(result.amount_minor, result.currency)}`,
-          'gold',
+        const result = await AURUM.WorkAPI.payEngagement(
+          this.activeEngagement,
         );
+
+        if (!result?.success) {
+          throw new Error(result?.error || 'Work payment could not be completed');
+        }
+
+        if (typeof AURUM.showToast === 'function') {
+          AURUM.showToast(
+            `Work payment completed: ${this.money(result.amount_minor, result.currency)}`,
+            'gold',
+          );
+        }
       }
 
       await this.openEngagement(this.activeEngagement);
