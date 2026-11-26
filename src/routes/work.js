@@ -28,6 +28,7 @@ import {
   listWorkApplications,
  updateWorkApplicationStatus,
  withdrawWorkApplication,
+ addWorkDisputeAdminMessage,
 } from '../services/work.js';
 
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -627,6 +628,28 @@ export async function handleWorkRoutes(path, method, request, env) {
     );
   }
 
+  match = path.match(
+    /^\/api\/admin\/work\/disputes\/([^/]+)\/messages$/
+  );
+
+  if (match && method === 'POST') {
+    const admin = await adminUser();
+    if (admin.response) return admin.response;
+
+    const data = await body();
+    if (!data) return json({ error: 'Invalid JSON body' }, 400);
+
+    return execute(
+      () => addWorkDisputeAdminMessage(
+        match[1],
+        admin.userId,
+        data.message,
+        db,
+      ),
+      201,
+    );
+  }
+	
   match = path.match(
     /^\/api\/admin\/work\/disputes\/([^/]+)\/resolve$/
   );
