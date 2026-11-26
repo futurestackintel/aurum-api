@@ -95,47 +95,45 @@ describe('notification event pipeline', () => {
     expect(notificationCount.count).toBe(1);
   });
 
-  it('accepts completed deposit and withdrawal notification types', async () => {
+    it('accepts completed deposit and withdrawal notification types', async () => {
     const userId = await createTestUser();
-	      const notificationUserCheck = await env.DB.prepare(
-      'SELECT id FROM users WHERE id = ?'
-    ).bind(userId).first();
-
-    const notificationForeignKeys = await env.DB.prepare(
-      'PRAGMA foreign_key_list(notifications)'
-    ).all();
-
-    console.log('NOTIFICATION USER CHECK:', {
-      userId,
-      notificationUserCheck,
-    });
-    console.log(
-      'NOTIFICATION FOREIGN KEYS:',
-      notificationForeignKeys.results
-    );
 
     for (const type of ['deposit_completed', 'withdrawal_completed']) {
-      const event = {
-        eventId: crypto.randomUUID(),
-        eventType: 'notification.requested',
-        occurredAt: new Date().toISOString(),
-        actor: { type: 'system', id: null },
-        resource: {
-          type: 'payment_operation',
-          id: `${type}-${userId}`,
-        },
+      const event = await publishNotification(env.DB, {
+        recipientUserId: userId,
+        type,
+        title: 'Wallet operation completed',
+        body: 'Your wallet operation has completed.',
+        actionUrl: '/wallet/transactions',
+        actorType: 'system',
+        resourceType: 'payment_operation',
+        resourceId: `${type}-${userId}`,
         requestId: `${type}-${userId}`,
-        payload: {
-          recipientUserId: userId,
-          type,
-          title: 'Wallet operation completed',
-          body: 'Your wallet operation has completed.',
-          actionUrl: '/wallet/transactions',
-          preference: null,
-        },
-      };
+      });
 
-      const result = await handleNotificationEvent(event, { db: env.DB });
+      const eventRow = await env.DB.prepare(`
+        SELECT *
+        FROM domain_events
+        WHERE event_id = ?
+      `).bind(event.eventId).first();
+
+      expect(eventRow).toBeTruthy();
+
+      const result = await handleNotificationEvent({
+        eventId: eventRow.event_id,
+        eventType: eventRow.event_type,
+        occurredAt: eventRow.occurred_at,
+        actor: {
+          type: eventRow.actor_type,
+          id: eventRow.actor_id,
+        },
+        resource: {
+          type: eventRow.resource_type,
+          id: eventRow.resource_id,
+        },
+        requestId: eventRow.request_id,
+        payload: JSON.parse(eventRow.payload_json),
+      }, { db: env.DB });
 
       expect(result.created).toBe(true);
     }
@@ -152,7 +150,7 @@ describe('notification event pipeline', () => {
       'withdrawal_completed',
     ]);
   });
-
+	
   it('rejects external notification action URLs', async () => {
     const event = {
       eventId: crypto.randomUUID(),
