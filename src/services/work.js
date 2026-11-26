@@ -2619,31 +2619,7 @@ export async function getWorkEngagementWorkspace(
     disputeMessages = messages.results || [];
   }
 
-  return {
-    success: true,
-    engagement,
-    participants: participants.results || [],
-    milestones: milestones.results || [],
-    submissions: submissionRows.map(submission => ({
-      ...submission,
-      revisions: (revisions.results || []).filter(
-        revision => revision.submission_id === submission.id,
-      ),
-    })),
-    time_entries: timeEntries.results || [],
-    dispute: dispute || null,
-    dispute_messages: disputeMessages,
-    reviews: reviews.results || [],
-  };
-    payments: paymentRows,
-    payment_summary: {
-      can_pay: payableAmountMinor > 0,
-      amount_minor: payableAmountMinor,
-      payment_type: payableType,
-    },
-}
-
-  const paymentRows = payments.results || [];
+    const paymentRows = payments.results || [];
   let payableAmountMinor = 0;
   let payableType = null;
 
@@ -2668,7 +2644,10 @@ export async function getWorkEngagementWorkspace(
     if (engagement.pricing_model === 'hourly') {
       const approvedMinutes = (timeEntries.results || [])
         .filter(entry => entry.status === 'approved')
-        .reduce((total, entry) => total + Number(entry.duration_minutes), 0);
+        .reduce(
+          (total, entry) => total + Number(entry.duration_minutes),
+          0,
+        );
 
       const totalDue = Math.ceil(
         approvedMinutes * Number(engagement.agreed_hourly_rate_minor) / 60,
@@ -2676,7 +2655,10 @@ export async function getWorkEngagementWorkspace(
 
       const alreadyPaid = paymentRows
         .filter(payment => payment.payment_type === 'hourly')
-        .reduce((total, payment) => total + Number(payment.amount_minor), 0);
+        .reduce(
+          (total, payment) => total + Number(payment.amount_minor),
+          0,
+        );
 
       payableAmountMinor = Math.max(0, totalDue - alreadyPaid);
 
@@ -2684,6 +2666,29 @@ export async function getWorkEngagementWorkspace(
     }
   }
 
+  return {
+    success: true,
+    engagement,
+    participants: participants.results || [],
+    milestones: milestones.results || [],
+    submissions: submissionRows.map(submission => ({
+      ...submission,
+      revisions: (revisions.results || []).filter(
+        revision => revision.submission_id === submission.id,
+      ),
+    })),
+    time_entries: timeEntries.results || [],
+    dispute: dispute || null,
+    dispute_messages: disputeMessages,
+    reviews: reviews.results || [],
+    payments: paymentRows,
+    payment_summary: {
+      can_pay: payableAmountMinor > 0,
+      amount_minor: payableAmountMinor,
+      payment_type: payableType,
+    },
+  };
+}
 // ── PROVIDER REVISION RESPONSE ────────────────────────────────
 
 export async function respondToWorkRevision(
