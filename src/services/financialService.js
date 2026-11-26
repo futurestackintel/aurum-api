@@ -523,7 +523,11 @@ export class FinancialService {
           amountMinor,
           description: 'Wallet transfer received',
         },
-   /**
+      ],
+    });
+  }
+
+  /**
    * Atomic individual Work payment.
    * The payment record and balanced ledger transaction are committed
    * in the same D1 batch.
