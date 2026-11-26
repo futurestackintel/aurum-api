@@ -440,6 +440,7 @@ export async function listWorkApplications(
     return { error: 'Invalid application status filter' };
   }
 
+  
   let query = `
     SELECT
       a.id,
@@ -458,10 +459,35 @@ export async function listWorkApplications(
       u.display_name AS applicant_display_name,
       u.avatar_url AS applicant_avatar_url,
       submitter.username AS submitted_by_username,
-      submitter.display_name AS submitted_by_display_name
+      submitter.display_name AS submitted_by_display_name,
+      crew.name AS applicant_crew_name,
+      (
+        SELECT COUNT(*)
+        FROM work_crew_application_voter_snapshot s
+        WHERE s.application_id = a.id
+      ) AS eligible_member_count,
+      (
+        SELECT COUNT(*)
+        FROM work_crew_application_approvals v
+        WHERE v.application_id = a.id
+          AND v.vote = 'approve'
+      ) AS approval_count,
+      (
+        SELECT COUNT(*)
+        FROM work_crew_application_approvals v
+        WHERE v.application_id = a.id
+          AND v.vote = 'reject'
+      ) AS rejection_count,
+      (
+        SELECT MAX(v.is_captain_approval)
+        FROM work_crew_application_approvals v
+        WHERE v.application_id = a.id
+          AND v.vote = 'approve'
+      ) AS captain_approved
     FROM work_applications a
     LEFT JOIN users u ON u.id = a.applicant_user_id
     JOIN users submitter ON submitter.id = a.submitted_by_user_id
+    LEFT JOIN crews crew ON crew.id = a.applicant_crew_id
     WHERE a.opportunity_id = ?
   `;
 
@@ -480,10 +506,39 @@ export async function listWorkApplications(
   bindings.push(limit, offset);
 
   const result = await db.prepare(query).bind(...bindings).all();
+  const applications = result.results || [];
 
-  return {
-    applications: result.results || [],
-  };
+  // Load proposed Crew participants for the client-side hiring decision.
+  for (const application of applications) {
+    if (application.applicant_type !== 'crew') {
+      application.crew_members = [];
+      continue;
+    }
+
+    const members = await db.prepare(`
+      SELECT
+        m.user_id,
+        m.proposed_role,
+        m.role_accepted,
+        u.username,
+        u.display_name
+      FROM work_application_crew_members m
+      JOIN users u ON u.id = m.user_id
+      WHERE m.application_id = ?
+        AND m.crew_id = ?
+      ORDER BY m.created_at ASC
+    `).bind(application.id, application.applicant_crew_id).all();
+
+    application.crew_members = members.results || [];
+    application.governance_approved =
+      Number(application.eligible_member_count || 0) > 0 &&
+      Number(application.approval_count || 0) >
+        Number(application.eligible_member_count || 0) / 2 &&
+      Number(application.captain_approved || 0) === 1;
+  }
+
+  return { applications };
+
 }
 
 export async function updateWorkApplicationStatus(
