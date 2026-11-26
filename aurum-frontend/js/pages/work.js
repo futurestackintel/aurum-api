@@ -53,6 +53,28 @@ window.WorkPage = {
     }).format(amount);
   },
 
+  toMinorUnits(value, currency) {
+    const amount = Number(value);
+    const decimals = this.currencyDecimals(String(currency || 'USD').toUpperCase());
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Enter a valid positive amount.');
+    }
+
+    const minor = Math.round(amount * (10 ** decimals));
+
+    if (!Number.isSafeInteger(minor) || minor <= 0) {
+      throw new Error('Amount is outside the supported range.');
+    }
+
+    return minor;
+  },
+
+  fromMinorUnits(value, currency) {
+    const decimals = this.currencyDecimals(String(currency || 'USD').toUpperCase());
+    return Number(value) / (10 ** decimals);
+  },
+	
   async init(containerId) {
     this.container = document.getElementById(containerId);
     if (!this.container) return;
@@ -409,6 +431,12 @@ window.WorkPage = {
       const action = event.target.closest('[data-work-action]');
       if (action) return this.handleApplicationAction(action);
 
+      const withdraw = event.target.closest('[data-work-withdraw]');
+      if (withdraw) return this.withdrawApplication(withdraw);
+
+      const engagement = event.target.closest('[data-work-engagement]');
+      if (engagement) return this.openEngagement(engagement.dataset.workEngagement);
+		
       if (event.target.id === 'work-create-open') {
         this.modal('work-create-modal', true);
       }
@@ -438,6 +466,13 @@ window.WorkPage = {
     this.container.querySelector('#work-apply-form').addEventListener('submit', event => {
       event.preventDefault();
       this.submitApplication(event.currentTarget);
+    });
+
+  this.container.addEventListener('submit', event => {
+      const form = event.target.closest('[data-ws-form]');
+      if (!form) return;
+      event.preventDefault();
+      this.handleWorkspaceForm(form);
     });
 
     this.container.querySelector('#work-search').addEventListener('keydown', event => {
@@ -470,6 +505,9 @@ window.WorkPage = {
     this.container.querySelector('#work-detail-panel').hidden = panel !== 'detail';
   },
 
+      const workspaceAction = event.target.closest('[data-ws-action]');
+      if (workspaceAction) return this.handleWorkspaceAction(workspaceAction);	
+	
   updatePricingFields() {
     const hourly = this.container.querySelector('#work-pricing-model').value === 'hourly';
     this.container.querySelector('#work-fixed-fields').hidden = hourly;
@@ -679,9 +717,9 @@ window.WorkPage = {
 
     if (price > 0) {
       if (item.pricing_model === 'fixed') {
-        payload.proposed_fixed_amount_minor = Math.round(price * 100);
+        payload.proposed_fixed_amount_minor = this.toMinorUnits(price, item.currency);
       } else {
-        payload.proposed_hourly_rate_minor = Math.round(price * 100);
+        payload.proposed_hourly_rate_minor = this.toMinorUnits(price, item.currency);
       }
     }
 
@@ -703,7 +741,8 @@ window.WorkPage = {
     const hourly = data.get('pricing_model') === 'hourly';
     const multiHire = data.get('multi_hire_enabled') === 'on';
 
-    const toMinor = value => Math.round(Number(value) * 100);
+    const currency = String(data.get('currency') || '').trim().toUpperCase();
+	const toMinor = value => this.toMinorUnits(value, currency);
 
     const payload = {
       title: data.get('title').trim(),
@@ -911,6 +950,21 @@ window.WorkPage = {
     }
   },
 
+ async withdrawApplication(button) {
+    if (!confirm('Withdraw this application?')) return;
+
+    button.disabled = true;
+
+    try {
+      await AURUM.WorkAPI.withdrawApplication(button.dataset.workWithdraw);
+      AURUM.showToast('Application withdrawn.', 'success');
+      await this.loadOwnedOpportunities();
+    } catch (error) {
+      AURUM.showToast(error.message, 'error');
+      button.disabled = false;
+    }
+  },
+
   async handleApplicationAction(button) {
     const action = button.dataset.workAction;
     const id = button.dataset.application;
@@ -925,10 +979,7 @@ window.WorkPage = {
         const payload = {};
 
         if (amount !== null && amount.trim() !== '') {
-          const minor = Math.round(Number(amount) * 100);
-          if (!Number.isSafeInteger(minor) || minor <= 0) {
-            throw new Error('Enter a valid positive amount.');
-          }
+          const minor = this.toMinorUnits(amount, item.currency);
 
           if (item.pricing_model === 'fixed') payload.agreed_fixed_amount_minor = minor;
           else payload.agreed_hourly_rate_minor = minor;
@@ -949,3 +1000,297 @@ window.WorkPage = {
     }
   },
 };
+
+  async openEngagement(id) {
+    this.activeEngagement = id;
+    this.showPanel('detail');
+
+    const target = this.container.querySelector('#work-detail-content');
+    target.innerHTML = '<p class="work-empty">Opening engagement workspace...</p>';
+
+    try {
+      const data = await AURUM.WorkAPI.getWorkspace(id);
+
+      if (!data.engagement) throw new Error('Engagement not found.');
+
+      this.renderEngagementWorkspace(target, data);
+    } catch (error) {
+      target.innerHTML = `<p class="work-empty">${this.escape(error.message)}</p>`;
+    }
+  },
+
+  renderEngagementWorkspace(target, data) {
+    const e = data.engagement;
+    const isClient = e.client_user_id === window.App?.user?.id;
+    const fixed = e.pricing_model === 'fixed';
+
+    const participants = (data.participants || []).map(p => `
+      <div class="work-card">
+        <strong>${this.escape(p.username || 'Crew member')}</strong>
+        <span class="work-tag">${this.escape(p.assigned_role)}</span>
+        <span class="work-tag">${this.escape(p.status)}</span>
+      </div>
+    `).join('');
+
+    const milestones = (data.milestones || []).map(m => `
+      <article class="work-card">
+        <div class="work-card-top">
+          <strong>${this.escape(m.title)}</strong>
+          <span class="work-tag">${this.escape(m.status)}</span>
+        </div>
+        <p>${this.escape(m.description || '')}</p>
+        <strong>${this.money(m.amount_minor, e.currency)}</strong>
+      </article>
+    `).join('');
+
+    const submissions = (data.submissions || []).map(s => `
+      <article class="work-card">
+        <div class="work-card-top">
+          <strong>Submission</strong>
+          <span class="work-tag">${this.escape(s.status)}</span>
+        </div>
+        <p>${this.escape(s.message)}</p>
+        <small>Submitted by ${this.escape(s.submitted_by_username || 'Provider')}</small>
+        ${s.status === 'submitted' && isClient ? `
+          <div class="work-action-row">
+            <button class="btn btn-primary btn-sm"
+              data-ws-action="approve-submission"
+              data-id="${this.escape(s.id)}">Approve</button>
+            <button class="btn btn-outline btn-sm"
+              data-ws-action="request-revision"
+              data-id="${this.escape(s.id)}">Request revision</button>
+            <button class="btn btn-danger btn-sm"
+              data-ws-action="reject-submission"
+              data-id="${this.escape(s.id)}">Reject</button>
+          </div>
+        ` : ''}
+        ${s.status === 'revision_requested' ? `
+          <form data-ws-form="revision" data-id="${this.escape(s.id)}">
+            <textarea class="input" name="message" minlength="3"
+              maxlength="5000" required placeholder="Describe the revision..."></textarea>
+            <button class="btn btn-primary btn-sm">Submit revision response</button>
+          </form>
+        ` : ''}
+      </article>
+    `).join('');
+
+    const timeEntries = (data.time_entries || []).map(t => `
+      <article class="work-card">
+        <div class="work-card-top">
+          <strong>${this.escape(t.description)}</strong>
+          <span class="work-tag">${this.escape(t.status)}</span>
+        </div>
+        <p>${Number(t.duration_minutes)} minutes</p>
+        ${t.status === 'submitted' && isClient ? `
+          <div class="work-action-row">
+            <button class="btn btn-primary btn-sm"
+              data-ws-action="approve-time"
+              data-id="${this.escape(t.id)}">Approve</button>
+            <button class="btn btn-outline btn-sm"
+              data-ws-action="reject-time"
+              data-id="${this.escape(t.id)}">Reject</button>
+            <button class="btn btn-danger btn-sm"
+              data-ws-action="dispute-time"
+              data-id="${this.escape(t.id)}">Dispute</button>
+          </div>
+        ` : ''}
+      </article>
+    `).join('');
+
+    const pendingParticipants = (data.participants || []).some(p => p.status !== 'accepted');
+
+    target.innerHTML = `
+      <button class="work-back-link" id="work-back-button">← Back to My Work</button>
+
+      <div class="work-panel-heading">
+        <p class="section-eyebrow">AURUM / WORKSPACE</p>
+        <h2>${this.escape(e.opportunity_title || 'Engagement')}</h2>
+        <p>Manage your engagement, delivery and communication.</p>
+      </div>
+
+      <article class="work-card">
+        <div class="work-card-top">
+          <span class="work-tag">${this.escape(e.status)}</span>
+          <span class="work-tag">${this.escape(e.pricing_model)}</span>
+        </div>
+        <h3>${this.money(
+          fixed ? e.agreed_fixed_amount_minor : e.agreed_hourly_rate_minor,
+          e.currency
+        )}${fixed ? '' : ' / hour'}</h3>
+        ${e.pricing_model === 'hourly' ? `
+          <p>Spending limit: ${this.money(e.agreed_spending_limit_minor, e.currency)}</p>
+        ` : ''}
+        ${e.status === 'pending_acceptance' && isClient && !pendingParticipants ? `
+          <button class="btn btn-primary" data-ws-action="activate">
+            Activate engagement
+          </button>
+        ` : ''}
+      </article>
+
+      <section class="work-dashboard-section">
+        <div class="work-panel-heading"><h3>Selected participants</h3></div>
+        <div class="work-application-list">${participants || '<p>No additional participants.</p>'}</div>
+      </section>
+
+      ${e.status === 'pending_acceptance' && !isClient ? `
+        <button class="btn btn-primary" data-ws-action="accept-role">
+          Accept my assigned role
+        </button>
+      ` : ''}
+
+      ${fixed ? `
+        <section class="work-dashboard-section">
+          <div class="work-panel-heading"><h3>Milestones</h3></div>
+          <div class="work-application-list">
+            ${milestones || '<p class="work-empty">No milestones created yet.</p>'}
+          </div>
+          ${isClient && ['active', 'revision_requested'].includes(e.status) ? `
+            <form data-ws-form="milestone">
+              <input class="input" name="title" minlength="3" maxlength="160"
+                required placeholder="Milestone title" />
+              <textarea class="input" name="description"
+                placeholder="Description (optional)"></textarea>
+              <input class="input" name="amount" type="number" min="0.000001"
+                step="any" required placeholder="Amount in ${this.escape(e.currency)}" />
+              <button class="btn btn-primary">Add milestone</button>
+            </form>
+          ` : ''}
+          ${!isClient && ['active', 'revision_requested'].includes(e.status) ? `
+            <form data-ws-form="deliverable">
+              <select class="input" name="milestone_id">
+                <option value="">General submission</option>
+                ${(data.milestones || []).filter(m =>
+                  ['pending', 'in_progress', 'revision_requested'].includes(m.status)
+                ).map(m => `<option value="${this.escape(m.id)}">${this.escape(m.title)}</option>`).join('')}
+              </select>
+              <textarea class="input" name="message" minlength="5"
+                maxlength="12000" required placeholder="Describe your completed work"></textarea>
+              <button class="btn btn-primary">Submit deliverable</button>
+            </form>
+          ` : ''}
+          <div class="work-application-list">${submissions || '<p>No submissions yet.</p>'}</div>
+        </section>
+      ` : `
+        <section class="work-dashboard-section">
+          <div class="work-panel-heading"><h3>Timesheets</h3></div>
+          <div class="work-application-list">
+            ${timeEntries || '<p>No time entries yet.</p>'}
+          </div>
+          ${!isClient && e.status === 'active' ? `
+            <form data-ws-form="time-entry">
+              <input class="input" name="description" minlength="5"
+                maxlength="2000" required placeholder="Work performed" />
+              <label>Start time
+                <input class="input" type="datetime-local" name="started_at" required />
+              </label>
+              <label>End time
+                <input class="input" type="datetime-local" name="ended_at" required />
+              </label>
+              <button class="btn btn-primary">Submit time entry</button>
+            </form>
+          ` : ''}
+        </section>
+      `}
+
+      ${['active', 'submitted', 'revision_requested'].includes(e.status) ? `
+        <section class="work-dashboard-section">
+          <div class="work-panel-heading"><h3>Dispute support</h3></div>
+          <form data-ws-form="dispute">
+            <input class="input" name="category" minlength="2"
+              maxlength="80" required placeholder="Dispute category" />
+            <textarea class="input" name="description" minlength="10"
+              maxlength="12000" required placeholder="Explain the issue"></textarea>
+            <button class="btn btn-outline">Open a dispute</button>
+          </form>
+        </section>
+      ` : ''}
+
+      <p class="work-notice">
+        Workspace approvals record delivery and time. They do not transfer,
+        reserve or release funds.
+      </p>
+      <p class="work-message" id="work-workspace-message" role="status"></p>
+    `;
+  },
+
+  async handleWorkspaceAction(button) {
+    const action = button.dataset.wsAction;
+    const id = button.dataset.id;
+    const message = this.container.querySelector('#work-workspace-message');
+
+    button.disabled = true;
+
+    try {
+      if (action === 'accept-role') {
+        await AURUM.WorkAPI.acceptEngagementRole(this.activeEngagement);
+      } else if (action === 'activate') {
+        if (!confirm('Activate this engagement? This does not transfer or hold funds.')) return;
+        await AURUM.WorkAPI.activateEngagement(this.activeEngagement);
+      } else if (action === 'approve-submission') {
+        await AURUM.WorkAPI.reviewSubmission(id, { decision: 'approve' });
+      } else if (action === 'request-revision') {
+        const note = prompt('Explain what needs to be revised:');
+        if (!note) return;
+        await AURUM.WorkAPI.reviewSubmission(id, {
+          decision: 'request_revision',
+          message: note,
+        });
+      } else if (action === 'reject-submission') {
+        if (!confirm('Reject this submission? This opens a formal dispute.')) return;
+        await AURUM.WorkAPI.reviewSubmission(id, { decision: 'reject' });
+      } else if (action === 'approve-time') {
+        await AURUM.WorkAPI.reviewTimeEntry(id, 'approve');
+      } else if (action === 'reject-time') {
+        await AURUM.WorkAPI.reviewTimeEntry(id, 'reject');
+      } else if (action === 'dispute-time') {
+        await AURUM.WorkAPI.reviewTimeEntry(id, 'dispute');
+      }
+
+      await this.openEngagement(this.activeEngagement);
+    } catch (error) {
+      if (message) message.textContent = error.message;
+      button.disabled = false;
+    }
+  },
+
+  async handleWorkspaceForm(form) {
+    const data = new FormData(form);
+    const kind = form.dataset.wsForm;
+    const message = this.container.querySelector('#work-workspace-message');
+    const e = (await AURUM.WorkAPI.getWorkspace(this.activeEngagement)).engagement;
+
+    try {
+      if (kind === 'milestone') {
+        await AURUM.WorkAPI.createMilestone(this.activeEngagement, {
+          title: data.get('title').trim(),
+          description: data.get('description').trim() || null,
+          amount_minor: this.toMinorUnits(data.get('amount'), e.currency),
+        });
+      } else if (kind === 'deliverable') {
+        await AURUM.WorkAPI.submitDeliverable(this.activeEngagement, {
+          milestone_id: data.get('milestone_id') || null,
+          message: data.get('message').trim(),
+        });
+      } else if (kind === 'time-entry') {
+        await AURUM.WorkAPI.submitTimeEntry(this.activeEngagement, {
+          description: data.get('description').trim(),
+          started_at: new Date(data.get('started_at')).toISOString(),
+          ended_at: new Date(data.get('ended_at')).toISOString(),
+        });
+      } else if (kind === 'revision') {
+        await AURUM.WorkAPI.respondToRevision(
+          form.dataset.id,
+          data.get('message').trim(),
+        );
+      } else if (kind === 'dispute') {
+        await AURUM.WorkAPI.openDispute(this.activeEngagement, {
+          category: data.get('category').trim(),
+          description: data.get('description').trim(),
+        });
+      }
+
+      await this.openEngagement(this.activeEngagement);
+    } catch (error) {
+      if (message) message.textContent = error.message;
+    }
+  },
