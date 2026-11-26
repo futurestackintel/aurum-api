@@ -1258,7 +1258,21 @@ export async function hireWorkApplication(
           WHERE opportunity_id = ?
             AND status <> 'cancelled'
         ) < ?
-      `).bind(
+            `).bind(
+        engagementId,
+        application.opportunity_id,
+        applicationId,
+        clientUserId,
+        application.applicant_type,
+        application.applicant_user_id,
+        application.applicant_crew_id,
+        application.pricing_model,
+        application.currency,
+        fixedAmount,
+        hourlyRate,
+        spendingLimit,
+        now,
+        now,
         applicationId,
         application.opportunity_id,
         application.opportunity_id,
