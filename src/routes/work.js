@@ -22,6 +22,7 @@ import {
   openWorkDispute,
   addWorkDisputeMessage,
   getWorkDispute,
+  getWorkDisputeAdmin,
   listWorkDisputesAdmin,
   setWorkDisputeUnderReview,
   resolveWorkDispute,
