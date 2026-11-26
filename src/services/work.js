@@ -2223,14 +2223,13 @@ export async function getWorkEngagementWorkspace(
   db,
 ) {
   const engagement = await db.prepare(`
-    SELECT *
-    FROM work_engagements
-    WHERE id = ?
+    SELECT e.*, o.title AS opportunity_title
+    FROM work_engagements e
+    JOIN work_opportunities o ON o.id = e.opportunity_id
+    WHERE e.id = ?
   `).bind(engagementId).first();
 
-  if (!engagement) {
-    return { error: 'Engagement not found' };
-  }
+  if (!engagement) return { error: 'Engagement not found' };
 
   let authorized = engagement.client_user_id === userId;
 
@@ -2253,11 +2252,7 @@ export async function getWorkEngagementWorkspace(
 
     if (
       participant &&
-      await getActiveMembership(
-        engagement.provider_crew_id,
-        userId,
-        db,
-      )
+      await getActiveMembership(engagement.provider_crew_id, userId, db)
     ) {
       authorized = true;
     }
@@ -2272,15 +2267,13 @@ export async function getWorkEngagementWorkspace(
     milestones,
     submissions,
     timeEntries,
+    dispute,
+    reviews,
   ] = await Promise.all([
     db.prepare(`
       SELECT
-        p.id,
-        p.user_id,
-        p.assigned_role,
-        p.status,
-        p.accepted_at,
-        u.username
+        p.id, p.user_id, p.assigned_role, p.status, p.accepted_at,
+        u.username, u.display_name
       FROM work_engagement_participants p
       JOIN users u ON u.id = p.user_id
       WHERE p.engagement_id = ?
@@ -2295,9 +2288,7 @@ export async function getWorkEngagementWorkspace(
     `).bind(engagementId).all(),
 
     db.prepare(`
-      SELECT
-        s.*,
-       u.username AS submitted_by_username
+      SELECT s.*, u.username AS submitted_by_username
       FROM work_submissions s
       JOIN users u ON u.id = s.submitted_by_user_id
       WHERE s.engagement_id = ?
@@ -2309,6 +2300,23 @@ export async function getWorkEngagementWorkspace(
       FROM work_time_entries
       WHERE engagement_id = ?
       ORDER BY submitted_at DESC
+    `).bind(engagementId).all(),
+
+    db.prepare(`
+      SELECT
+        id, category, description, status, resolution_summary,
+        opened_by_user_id, created_at, updated_at, resolved_at
+      FROM work_disputes
+      WHERE engagement_id = ?
+    `).bind(engagementId).first(),
+
+    db.prepare(`
+      SELECT
+        id, reviewer_user_id, direction, reviewee_type,
+        rating, review_text, created_at
+      FROM work_reviews
+      WHERE engagement_id = ?
+      ORDER BY created_at ASC
     `).bind(engagementId).all(),
   ]);
 
@@ -2325,6 +2333,22 @@ export async function getWorkEngagementWorkspace(
       `).bind(...submissionRows.map(row => row.id)).all()
     : { results: [] };
 
+  let disputeMessages = [];
+
+  if (dispute) {
+    const messages = await db.prepare(`
+      SELECT
+        m.id, m.author_user_id, m.message, m.author_type, m.created_at,
+        u.username, u.display_name
+      FROM work_dispute_messages m
+      JOIN users u ON u.id = m.author_user_id
+      WHERE m.dispute_id = ?
+      ORDER BY m.created_at ASC
+    `).bind(dispute.id).all();
+
+    disputeMessages = messages.results || [];
+  }
+
   return {
     success: true,
     engagement,
@@ -2337,9 +2361,11 @@ export async function getWorkEngagementWorkspace(
       ),
     })),
     time_entries: timeEntries.results || [],
+    dispute: dispute || null,
+    dispute_messages: disputeMessages,
+    reviews: reviews.results || [],
   };
 }
-
 
 // ── PROVIDER REVISION RESPONSE ────────────────────────────────
 
@@ -2773,6 +2799,70 @@ export async function addWorkDisputeMessage(
   };
 }
 
+// Platform-admin messages share the append-only dispute conversation.
+// Each message also creates an audit event.
+export async function addWorkDisputeAdminMessage(
+  disputeId,
+  adminUserId,
+  message,
+  db,
+) {
+  if (!validText(message, 2, 12000)) {
+    return { error: 'Message must be between 2 and 12,000 characters' };
+  }
+
+  const dispute = await db.prepare(`
+    SELECT id, status, engagement_id
+    FROM work_disputes
+    WHERE id = ?
+  `).bind(disputeId).first();
+
+  if (!dispute) return { error: 'Dispute not found' };
+
+  if (!['open', 'under_review'].includes(dispute.status)) {
+    return { error: 'This dispute is no longer accepting messages' };
+  }
+
+  const messageId = newId();
+  const now = nowISO();
+
+  try {
+    await db.batch([
+      db.prepare(`
+        INSERT INTO work_dispute_messages (
+          id, dispute_id, author_user_id, message, author_type, created_at
+        )
+        VALUES (?, ?, ?, ?, 'platform_admin', ?)
+      `).bind(
+        messageId,
+        disputeId,
+        adminUserId,
+        message.trim(),
+        now,
+      ),
+
+      db.prepare(`
+        INSERT INTO security_audit_log (
+          actor_id, actor_type, action, resource_type, resource_id,
+          outcome, metadata_json, created_at
+        )
+        VALUES (?, 'platform_admin', 'work_dispute_message_sent',
+          'work_dispute', ?, 'success', ?, ?)
+      `).bind(
+        adminUserId,
+        disputeId,
+        JSON.stringify({ engagement_id: dispute.engagement_id }),
+        now,
+      ),
+    ]);
+
+    return { success: true, message_id: messageId };
+  } catch (error) {
+    return {
+      error: error.message || 'Unable to send admin dispute message',
+    };
+  }
+}
 
 export async function getWorkDispute(
   disputeId,
