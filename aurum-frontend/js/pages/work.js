@@ -22,12 +22,35 @@ window.WorkPage = {
     })[char]);
   },
 
+    currencyDecimals(currency) {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency,
+      }).resolvedOptions().maximumFractionDigits;
+    } catch {
+      return 2;
+    }
+  },
+
   money(minor, currency) {
     if (minor == null) return 'Negotiable';
-    return `${this.escape(currency)} ${(Number(minor) / 100).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+
+    const code = String(currency || '').toUpperCase();
+    const decimals = this.currencyDecimals(code || 'USD');
+    const amount = Number(minor) / (10 ** decimals);
+
+    if (!code) {
+      return amount.toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      });
+    }
+
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: code,
+    }).format(amount);
   },
 
   async init(containerId) {
@@ -720,37 +743,124 @@ window.WorkPage = {
     }
   },
 
-  async loadOwnedOpportunities() {
+    async loadOwnedOpportunities() {
     const list = this.container.querySelector('#work-owned-list');
-    list.innerHTML = '<p class="work-empty">Loading your opportunities...</p>';
+    list.innerHTML = '<p class="work-empty">Loading your Work dashboard...</p>';
 
     try {
-      const result = await AURUM.WorkAPI.listOpportunities({ limit: 50 });
-      const owned = (result.opportunities || []).filter(
-        item => item.client_user_id === window.App?.user?.id
-      );
+      const result = await AURUM.WorkAPI.getMyWork();
 
-      if (!owned.length) {
-        list.innerHTML = '<p class="work-empty">You have no open opportunities yet. Create one to get started.</p>';
-        return;
-      }
+      const opportunities = result.opportunities || [];
+      const applications = result.applications || [];
+      const engagements = result.engagements || [];
 
-      list.innerHTML = owned.map(item => `
+      const section = (title, description, content) => `
+        <section class="work-dashboard-section">
+          <div class="work-panel-heading">
+            <p class="section-eyebrow">YOUR WORKSPACE</p>
+            <h3>${title}</h3>
+            <p>${description}</p>
+          </div>
+          <div class="work-application-list">
+            ${content || '<p class="work-empty">Nothing here yet.</p>'}
+          </div>
+        </section>
+      `;
+
+      const opportunityCards = opportunities.map(item => `
         <article class="work-card">
-          <span class="work-tag">${this.escape(item.status)}</span>
+          <div class="work-card-top">
+            <span class="work-tag">${this.escape(item.status)}</span>
+            <span class="work-tag">${Number(item.application_count || 0)} applicants</span>
+          </div>
           <h3>${this.escape(item.title)}</h3>
-          <p>${this.escape(item.description.slice(0, 160))}</p>
+          <p>${this.escape(item.description.slice(0, 180))}</p>
           <div class="work-card-footer">
-            <span>${Number(item.multi_hire_enabled ? item.hire_capacity : 1)} hire capacity</span>
-            <button class="btn btn-outline btn-sm" data-work-applications="${this.escape(item.id)}">Applications</button>
+            <span>${this.money(
+              item.pricing_model === 'fixed'
+                ? item.fixed_budget_minor
+                : item.hourly_rate_minor,
+              item.currency
+            )}</span>
+            <button class="btn btn-outline btn-sm"
+              data-work-applications="${this.escape(item.id)}">
+              Review applications
+            </button>
           </div>
         </article>
       `).join('');
+
+      const applicationCards = applications.map(item => `
+        <article class="work-card">
+          <div class="work-card-top">
+            <span class="work-tag">${this.escape(item.applicant_type)}</span>
+            <span class="work-tag">${this.escape(item.status)}</span>
+          </div>
+          <h3>${this.escape(item.opportunity_title)}</h3>
+          <p>Client: ${this.escape(
+            item.client_display_name || item.client_username || 'AURUM member'
+          )}</p>
+          <p>${this.escape(item.cover_message)}</p>
+          ${item.status === 'submitted' ||
+            item.status === 'under_review' ||
+            item.status === 'shortlisted'
+            ? `<div class="work-action-row">
+                <button class="btn btn-ghost btn-sm"
+                  data-work-withdraw="${this.escape(item.id)}">
+                  Withdraw application
+                </button>
+              </div>`
+            : ''}
+        </article>
+      `).join('');
+
+      const engagementCards = engagements.map(item => `
+        <article class="work-card">
+          <div class="work-card-top">
+            <span class="work-tag">${this.escape(item.status)}</span>
+            <span class="work-tag">${this.escape(item.pricing_model)}</span>
+          </div>
+          <h3>${this.escape(item.opportunity_title)}</h3>
+          <p>${this.money(
+            item.pricing_model === 'fixed'
+              ? item.agreed_fixed_amount_minor
+              : item.agreed_hourly_rate_minor,
+            item.currency
+          )}${item.pricing_model === 'hourly' ? ' / hour' : ''}</p>
+          <p class="work-client">
+            ${item.provider_type === 'crew' ? 'Crew engagement' : 'Individual engagement'}
+          </p>
+          <div class="work-action-row">
+            <button class="btn btn-primary btn-sm"
+              data-work-engagement="${this.escape(item.id)}">
+              Open workspace
+            </button>
+          </div>
+        </article>
+      `).join('');
+
+      list.innerHTML = `
+        ${section(
+          'Opportunities you posted',
+          'Manage drafts, published listings and applicants.',
+          opportunityCards
+        )}
+        ${section(
+          'Your applications',
+          'Follow the opportunities you have applied to.',
+          applicationCards
+        )}
+        ${section(
+          'Your engagements',
+          'Manage accepted work and delivery.',
+          engagementCards
+        )}
+      `;
     } catch (error) {
       list.innerHTML = `<p class="work-empty">${this.escape(error.message)}</p>`;
     }
   },
-
+	
   async showApplications(opportunityId) {
     this.showPanel('detail');
     const target = this.container.querySelector('#work-detail-content');
