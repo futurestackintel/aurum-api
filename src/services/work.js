@@ -1,4 +1,5 @@
 import { hasCrewPermission } from './crew.js';
+import { FinancialService } from './financialService.js';
 
 const MAX_TITLE_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 12000;
@@ -2270,6 +2271,210 @@ export async function reviewWorkTimeEntry(
     status,
   };
 }
+
+// ── INDIVIDUAL WORK PAYMENT ───────────────────────────────────
+
+export async function payWorkEngagement(
+  engagementId,
+  clientUserId,
+  db,
+) {
+  const engagement = await db.prepare(`
+    SELECT *
+    FROM work_engagements
+    WHERE id = ?
+  `).bind(engagementId).first();
+
+  if (!engagement) return { error: 'Engagement not found' };
+
+  if (engagement.client_user_id !== clientUserId) {
+    return { error: 'Only the client can pay this engagement' };
+  }
+
+  if (engagement.provider_type !== 'individual' ||
+      !engagement.provider_user_id) {
+    return { error: 'Crew payments are handled by the Crew payment workflow' };
+  }
+
+  if (['cancelled', 'disputed'].includes(engagement.status)) {
+    return { error: 'This engagement cannot currently be paid' };
+  }
+
+  const dispute = await db.prepare(`
+    SELECT id
+    FROM work_disputes
+    WHERE engagement_id = ?
+      AND status IN ('open', 'under_review')
+  `).bind(engagementId).first();
+
+  if (dispute) {
+    return { error: 'Payment is unavailable while this engagement has an active dispute' };
+  }
+
+  let paymentType;
+  let paymentKey;
+  let idempotencyKey;
+  let amountMinor;
+  let approvedMinutes = null;
+
+  if (engagement.pricing_model === 'fixed') {
+    if (engagement.status !== 'completed') {
+      return { error: 'Fixed-price work must be completed and approved before payment' };
+    }
+
+    paymentType = 'fixed';
+    paymentKey = `fixed:${engagementId}`;
+    idempotencyKey = paymentKey;
+    amountMinor = Number(engagement.agreed_fixed_amount_minor);
+
+  } else {
+    if (!['active', 'completed'].includes(engagement.status)) {
+      return { error: 'Hourly work is not currently payable' };
+    }
+
+    const timeEntries = await db.prepare(`
+      SELECT
+        COALESCE(SUM(
+          CASE WHEN status = 'approved'
+            THEN duration_minutes ELSE 0 END
+        ), 0) AS approved_minutes,
+        COALESCE(SUM(
+          CASE WHEN status = 'disputed'
+            THEN 1 ELSE 0 END
+        ), 0) AS disputed_entries
+      FROM work_time_entries
+      WHERE engagement_id = ?
+    `).bind(engagementId).first();
+
+    if (Number(timeEntries?.disputed_entries || 0) > 0) {
+      return { error: 'Resolve disputed time entries before paying' };
+    }
+
+    approvedMinutes = Number(timeEntries?.approved_minutes || 0);
+
+    if (!Number.isSafeInteger(approvedMinutes) || approvedMinutes <= 0) {
+      return { error: 'There are no approved hours to pay' };
+    }
+
+    const totalDue = Math.ceil(
+      approvedMinutes * Number(engagement.agreed_hourly_rate_minor) / 60,
+    );
+
+    if (
+      !Number.isSafeInteger(totalDue) ||
+      totalDue <= 0 ||
+      totalDue > Number(engagement.agreed_spending_limit_minor)
+    ) {
+      return { error: 'The approved hourly amount is outside the agreed spending limit' };
+    }
+
+    const paid = await db.prepare(`
+      SELECT COALESCE(SUM(amount_minor), 0) AS total
+      FROM work_payments
+      WHERE engagement_id = ?
+        AND payment_type = 'hourly'
+    `).bind(engagementId).first();
+
+    amountMinor = totalDue - Number(paid?.total || 0);
+
+    if (amountMinor <= 0) {
+      return { error: 'All currently approved hourly work has already been paid' };
+    }
+
+    paymentType = 'hourly';
+    paymentKey = `hourly:${engagementId}:${totalDue}`;
+    idempotencyKey = paymentKey;
+  }
+
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+    return { error: 'Invalid Work payment amount' };
+  }
+
+  const existing = await db.prepare(`
+    SELECT id, amount_minor, currency, ledger_transaction_id
+    FROM work_payments
+    WHERE payment_key = ?
+  `).bind(paymentKey).first();
+
+  if (existing) {
+    return {
+      success: true,
+      already_paid: true,
+      payment_id: existing.id,
+      amount_minor: existing.amount_minor,
+      currency: existing.currency,
+      ledger_transaction_id: existing.ledger_transaction_id,
+    };
+  }
+
+  const financial = new FinancialService(db);
+  const transactionId = newId();
+  const paymentId = newId();
+
+  try {
+    const result = await financial.transferWorkPayment({
+      senderUserId: clientUserId,
+      recipientUserId: engagement.provider_user_id,
+      actorUserId: clientUserId,
+      currencyCode: engagement.currency,
+      amountMinor,
+      idempotencyKey,
+      transactionId,
+      paymentId,
+      paymentKey,
+      engagementId,
+      paymentType,
+      approvedMinutes,
+    });
+
+    const payment = await db.prepare(`
+      SELECT id, amount_minor, currency, ledger_transaction_id
+      FROM work_payments
+      WHERE payment_key = ?
+    `).bind(paymentKey).first();
+
+    if (!payment) {
+      throw new Error('Payment record could not be verified');
+    }
+
+    return {
+      success: true,
+      payment_id: payment.id,
+      amount_minor: payment.amount_minor,
+      currency: payment.currency,
+      ledger_transaction_id: payment.ledger_transaction_id,
+      already_paid: !result.created,
+    };
+  } catch (error) {
+    if (String(error.message || '').includes('Insufficient available wallet balance')) {
+      return {
+        error: 'Insufficient available wallet balance. Add funds before paying this provider.',
+      };
+    }
+
+    if (String(error.message || '').includes('UNIQUE')) {
+      const payment = await db.prepare(`
+        SELECT id, amount_minor, currency, ledger_transaction_id
+        FROM work_payments
+        WHERE payment_key = ?
+      `).bind(paymentKey).first();
+
+      if (payment) {
+        return {
+          success: true,
+          already_paid: true,
+          payment_id: payment.id,
+          amount_minor: payment.amount_minor,
+          currency: payment.currency,
+          ledger_transaction_id: payment.ledger_transaction_id,
+        };
+      }
+    }
+
+    return { error: 'Unable to complete this Work payment. Please try again.' };
+  }
+}
+
 // ── WORK ENGAGEMENT WORKSPACE ─────────────────────────────────
 
 export async function getWorkEngagementWorkspace(
@@ -2324,6 +2529,7 @@ export async function getWorkEngagementWorkspace(
     timeEntries,
     dispute,
     reviews,
+    payments,
   ] = await Promise.all([
     db.prepare(`
       SELECT
@@ -2373,7 +2579,16 @@ export async function getWorkEngagementWorkspace(
       WHERE engagement_id = ?
       ORDER BY created_at ASC
     `).bind(engagementId).all(),
-  ]);
+	  
+	db.prepare(`
+      SELECT
+        id, payment_type, amount_minor, currency,
+        ledger_transaction_id, created_at
+      FROM work_payments
+      WHERE engagement_id = ?
+      ORDER BY created_at DESC
+    `).bind(engagementId).all(),
+	]);
 
   const submissionRows = submissions.results || [];
 
@@ -2420,7 +2635,54 @@ export async function getWorkEngagementWorkspace(
     dispute_messages: disputeMessages,
     reviews: reviews.results || [],
   };
+    payments: paymentRows,
+    payment_summary: {
+      can_pay: payableAmountMinor > 0,
+      amount_minor: payableAmountMinor,
+      payment_type: payableType,
+    },
 }
+
+  const paymentRows = payments.results || [];
+  let payableAmountMinor = 0;
+  let payableType = null;
+
+  const hasActiveDispute = dispute &&
+    ['open', 'under_review'].includes(dispute.status);
+
+  if (
+    engagement.provider_type === 'individual' &&
+    engagement.client_user_id === userId &&
+    !hasActiveDispute &&
+    !['cancelled', 'disputed'].includes(engagement.status)
+  ) {
+    if (
+      engagement.pricing_model === 'fixed' &&
+      engagement.status === 'completed' &&
+      !paymentRows.some(payment => payment.payment_type === 'fixed')
+    ) {
+      payableAmountMinor = Number(engagement.agreed_fixed_amount_minor);
+      payableType = 'fixed';
+    }
+
+    if (engagement.pricing_model === 'hourly') {
+      const approvedMinutes = (timeEntries.results || [])
+        .filter(entry => entry.status === 'approved')
+        .reduce((total, entry) => total + Number(entry.duration_minutes), 0);
+
+      const totalDue = Math.ceil(
+        approvedMinutes * Number(engagement.agreed_hourly_rate_minor) / 60,
+      );
+
+      const alreadyPaid = paymentRows
+        .filter(payment => payment.payment_type === 'hourly')
+        .reduce((total, payment) => total + Number(payment.amount_minor), 0);
+
+      payableAmountMinor = Math.max(0, totalDue - alreadyPaid);
+
+      if (payableAmountMinor > 0) payableType = 'hourly';
+    }
+  }
 
 // ── PROVIDER REVISION RESPONSE ────────────────────────────────
 
