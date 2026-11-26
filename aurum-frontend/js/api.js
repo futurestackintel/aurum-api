@@ -624,9 +624,19 @@ const WorkAPI = {
 
   getAdminDisputes: (status = '') =>
     apiRequest('GET', `/api/admin/work/disputes${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+	
+  getAdminDispute: (id) =>
+    apiRequest('GET', `/api/work/disputes/${encodeURIComponent(id)}`),
 
   markDisputeUnderReview: (id) =>
     apiRequest('POST', `/api/admin/work/disputes/${encodeURIComponent(id)}/under-review`),
+  
+ sendAdminDisputeMessage: (id, message) =>
+    apiRequest(
+      'POST',
+      `/api/admin/work/disputes/${encodeURIComponent(id)}/messages`,
+      { message },
+    ),
 
   resolveDispute: (id, resolution_summary) =>
     apiRequest('POST', `/api/admin/work/disputes/${encodeURIComponent(id)}/resolve`, { resolution_summary }),
