@@ -1408,3 +1408,29 @@
     width: 100%;
   }
 }
+
+
+/* ---- Crew Work proposal governance ---- */
+
+.work-governance {
+  margin-top: 17px;
+  padding: 16px 18px;
+  border: 1px solid rgba(212,175,55,.2);
+  background: rgba(212,175,55,.045);
+}
+
+.work-governance > strong {
+  color: #dfc779;
+  font-size: 12px;
+}
+
+.work-governance p {
+  margin: 8px 0;
+  color: #aaa08e;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.work-governance .work-action-row {
+  margin-top: 13px;
+}
