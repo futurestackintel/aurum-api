@@ -586,6 +586,9 @@ const WorkAPI = {
 
   getWorkspace: (id) =>
     apiRequest('GET', `/api/work/engagements/${encodeURIComponent(id)}/workspace`),
+  
+  payEngagement: (id) =>
+    apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/pay`),
 
   createMilestone: (id, data) =>
     apiRequest('POST', `/api/work/engagements/${encodeURIComponent(id)}/milestones`, data),
