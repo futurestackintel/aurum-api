@@ -2917,6 +2917,45 @@ export async function getWorkDispute(
   };
 }
 
+export async function getWorkDisputeAdmin(disputeId, db) {
+  const dispute = await db.prepare(`
+    SELECT
+      d.*,
+      e.client_user_id,
+      e.provider_type,
+      e.provider_user_id,
+      e.provider_crew_id,
+      e.currency,
+      e.pricing_model,
+      e.status AS engagement_status
+    FROM work_disputes d
+    JOIN work_engagements e ON e.id = d.engagement_id
+    WHERE d.id = ?
+  `).bind(disputeId).first();
+
+  if (!dispute) return { error: 'Dispute not found' };
+
+  const messages = await db.prepare(`
+    SELECT
+      m.id,
+      m.author_user_id,
+      m.message,
+      m.author_type,
+      m.created_at,
+      u.username,
+      u.display_name
+    FROM work_dispute_messages m
+    JOIN users u ON u.id = m.author_user_id
+    WHERE m.dispute_id = ?
+    ORDER BY m.created_at ASC
+  `).bind(disputeId).all();
+
+  return {
+    success: true,
+    dispute,
+    messages: messages.results || [],
+  };
+}
 
 // ── PLATFORM ADMIN DISPUTE OPERATIONS ─────────────────────────
 
