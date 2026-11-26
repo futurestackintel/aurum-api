@@ -25,7 +25,9 @@ import {
   listWorkDisputesAdmin,
   setWorkDisputeUnderReview,
   resolveWorkDispute,
-	listWorkApplications,
+  listWorkApplications,
+ updateWorkApplicationStatus,
+ withdrawWorkApplication,
 } from '../services/work.js';
 
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -295,6 +297,42 @@ export async function handleWorkRoutes(path, method, request, env) {
     );
   }
 
+	  // Update application status — opportunity owner only.
+  let applicationStatusMatch = path.match(
+    /^\/api\/work\/applications\/([^/]+)\/status$/
+  );
+
+  if (applicationStatusMatch && method === 'PATCH') {
+    const auth = await authenticatedUser();
+    if (auth.response) return auth.response;
+
+    const data = await body();
+    if (!data) return json({ error: 'Invalid JSON body' }, 400);
+
+    return execute(() => updateWorkApplicationStatus(
+      applicationStatusMatch[1],
+      auth.userId,
+      data.status,
+      db,
+    ));
+  }
+
+  // Withdraw an application — applicant or original Crew submitter.
+  let applicationWithdrawMatch = path.match(
+    /^\/api\/work\/applications\/([^/]+)\/withdraw$/
+  );
+
+  if (applicationWithdrawMatch && method === 'POST') {
+    const auth = await authenticatedUser();
+    if (auth.response) return auth.response;
+
+    return execute(() => withdrawWorkApplication(
+      applicationWithdrawMatch[1],
+      auth.userId,
+      db,
+    ));
+  }
+	
   // --------------------------------------------------
   // ENGAGEMENTS
   // --------------------------------------------------
