@@ -554,6 +554,9 @@ const WorkAPI = {
     );
   },
 
+  getMyWork: () =>
+    apiRequest('GET', '/api/work/my-work'),
+
   apply: (opportunityId, data) =>
     apiRequest('POST', `/api/work/opportunities/${encodeURIComponent(opportunityId)}/applications`, data),
 
