@@ -964,33 +964,88 @@ ${item.applicant_type === 'crew' ? `
           <p>Review applicants and make hiring decisions.</p>
         </div>
         <div class="work-application-list">
-          ${applications.length ? applications.map(application => `
-            <article class="work-card">
-              <div class="work-card-top">
-                <span class="work-tag">${this.escape(application.applicant_type)}</span>
-                <span class="work-tag">${this.escape(application.status)}</span>
-              </div>
-              <h3>${this.escape(application.applicant_display_name || application.applicant_username || application.submitted_by_display_name || 'Crew applicant')}</h3>
-              <p>${this.escape(application.cover_message)}</p>
-              <p class="work-client">Submitted by ${this.escape(application.submitted_by_display_name || application.submitted_by_username || 'AURUM member')}</p>
-              ${application.proposed_fixed_amount_minor
-                ? `<strong>Proposed: ${this.money(application.proposed_fixed_amount_minor, '')}</strong>`
-                : ''}
-              ${application.proposed_hourly_rate_minor
-                ? `<strong>Proposed hourly rate: ${this.money(application.proposed_hourly_rate_minor, '')}</strong>`
-                : ''}
-              <div class="work-action-row">
-                ${application.status === 'submitted'
-                  ? `<button class="btn btn-ghost btn-sm" data-work-action="under_review" data-application="${this.escape(application.id)}">Review</button>
-                     <button class="btn btn-outline btn-sm" data-work-action="shortlisted" data-application="${this.escape(application.id)}">Shortlist</button>`
-                  : ''}
-                ${['submitted', 'under_review', 'shortlisted'].includes(application.status)
-                  ? `<button class="btn btn-primary btn-sm" data-work-action="hire" data-application="${this.escape(application.id)}">Hire</button>
-                     <button class="btn btn-danger btn-sm" data-work-action="rejected" data-application="${this.escape(application.id)}">Reject</button>`
-                  : ''}
-              </div>
-            </article>
-          `).join('') : '<p class="work-empty">No applications received yet.</p>'}
+          
+${applications.length ? applications.map(application => `
+  <article class="work-card"
+    data-work-application-card="${this.escape(application.id)}">
+    <div class="work-card-top">
+      <span class="work-tag">${this.escape(application.applicant_type)}</span>
+      <span class="work-tag">${this.escape(application.status)}</span>
+    </div>
+
+    <h3>${this.escape(
+      application.applicant_type === 'crew'
+        ? application.applicant_crew_name || 'Crew applicant'
+        : application.applicant_display_name || application.applicant_username || 'Applicant'
+    )}</h3>
+
+    <p>${this.escape(application.cover_message)}</p>
+
+    <p class="work-client">
+      Submitted by ${this.escape(application.submitted_by_display_name || application.submitted_by_username || 'AURUM member')}
+    </p>
+
+    ${application.proposed_fixed_amount_minor
+      ? `<strong>Proposed: ${this.money(application.proposed_fixed_amount_minor, '')}</strong>`
+      : ''}
+
+    ${application.proposed_hourly_rate_minor
+      ? `<strong>Proposed hourly rate: ${this.money(application.proposed_hourly_rate_minor, '')}</strong>`
+      : ''}
+
+    ${application.applicant_type === 'crew' ? `
+      <div class="work-governance">
+        <strong>Crew proposal governance</strong>
+        <p>Approvals: ${Number(application.approval_count || 0)} / ${Number(application.eligible_member_count || 0)}</p>
+        <p>Captain approval: ${Number(application.captain_approved || 0) === 1 ? 'Received' : 'Pending'}</p>
+        <p>Governance: ${application.governance_approved ? 'Approved' : 'Awaiting approval'}</p>
+
+        <strong>Proposed participants</strong>
+
+        ${(application.crew_members || []).length
+          ? application.crew_members.map(member => `
+            <label class="work-crew-select-row">
+              <input
+                type="checkbox"
+                data-work-crew-select
+                value="${this.escape(member.user_id)}"
+                ${member.role_accepted ? '' : 'disabled'}
+              />
+              <span>
+                <strong>${this.escape(member.display_name || member.username || 'Crew member')}</strong>
+                <small>${this.escape(member.proposed_role || 'Participant')}</small>
+                <small>${member.role_accepted ? 'Role accepted' : 'Awaiting role acceptance'}</small>
+              </span>
+            </label>
+          `).join('')
+          : '<p>No proposed participants were found.</p>'}
+
+        <p>Select only participants whose roles have been accepted. Their active Crew membership will be checked again when hiring.</p>
+      </div>
+    ` : ''}
+
+    <div class="work-action-row">
+      ${application.status === 'submitted'
+        ? `<button class="btn btn-ghost btn-sm" data-work-action="under_review" data-application="${this.escape(application.id)}">Review</button>
+           <button class="btn btn-outline btn-sm" data-work-action="shortlisted" data-application="${this.escape(application.id)}">Shortlist</button>`
+        : ''}
+
+      ${['submitted', 'under_review', 'shortlisted'].includes(application.status)
+        ? `<button
+            class="btn btn-primary btn-sm"
+            data-work-action="hire"
+            data-application="${this.escape(application.id)}"
+            ${application.applicant_type === 'crew' &&
+              (!application.governance_approved ||
+               !(application.crew_members || []).some(member => member.role_accepted))
+              ? 'disabled' : ''}
+          >Hire</button>
+          <button class="btn btn-danger btn-sm" data-work-action="rejected" data-application="${this.escape(application.id)}">Reject</button>`
+        : ''}
+    </div>
+  </article>
+`).join('') : '<p class="work-empty">No applications received yet.</p>'}
+
         </div>
       `;
     } catch (error) {
@@ -1062,6 +1117,23 @@ ${item.applicant_type === 'crew' ? `
         const opportunity = await AURUM.WorkAPI.getOpportunity(this.activeOpportunity);
         const item = opportunity.opportunity;
         const payload = {};
+		  
+        if (item.applicant_type === 'crew') {
+          const card = this.container.querySelector(
+            `[data-work-application-card="${CSS.escape(id)}"]`
+          );
+
+          const selectedMembers = Array.from(
+            card?.querySelectorAll('[data-work-crew-select]:checked') || []
+          ).map(input => input.value);
+
+          if (!selectedMembers.length) {
+            throw new Error('Select at least one Crew participant who has accepted their role.');
+          }
+
+          payload.selected_member_user_ids = selectedMembers;
+        }
+
 
         if (amount !== null && amount.trim() !== '') {
           const minor = this.toMinorUnits(amount, item.currency);
