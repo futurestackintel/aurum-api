@@ -1238,36 +1238,46 @@ export async function hireWorkApplication(
         )
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           'pending_acceptance', ?, ?
-        WHERE (
+                WHERE EXISTS (
+          SELECT 1
+          FROM work_applications
+          WHERE id = ?
+            AND opportunity_id = ?
+            AND status IN ('submitted', 'under_review', 'shortlisted')
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM work_opportunities
+          WHERE id = ?
+            AND client_user_id = ?
+            AND status = 'open'
+        )
+        AND (
           SELECT COUNT(*)
           FROM work_engagements
           WHERE opportunity_id = ?
             AND status <> 'cancelled'
         ) < ?
       `).bind(
-        engagementId,
-        application.opportunity_id,
         applicationId,
+        application.opportunity_id,
+        application.opportunity_id,
         clientUserId,
-        application.applicant_type,
-        application.applicant_user_id,
-        application.applicant_crew_id,
-        application.pricing_model,
-        application.currency,
-        fixedAmount,
-        hourlyRate,
-        spendingLimit,
-        now,
-        now,
         application.opportunity_id,
         application.hire_capacity,
       ),
-      db.prepare(`
+    db.prepare(`
         UPDATE work_applications
-         SET status = 'accepted', updated_at = ?
+        SET status = 'accepted', updated_at = ?
         WHERE id = ?
           AND status IN ('submitted', 'under_review', 'shortlisted')
-      `).bind(now, applicationId),
+          AND EXISTS (
+            SELECT 1
+            FROM work_engagements
+            WHERE id = ?
+              AND application_id = ?
+          )
+      `).bind(now, applicationId, engagementId, applicationId),
     ];
 
     let selectedMembers = [];
