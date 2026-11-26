@@ -1324,3 +1324,87 @@
     flex: 1 1 100%;
   }
 }
+
+
+/* ---- Work engagement history and communication ---- */
+
+.work-revision-entry {
+  margin-top: 14px;
+  padding: 13px 15px;
+  border-left: 2px solid rgba(212,175,55,.5);
+  background: rgba(212,175,55,.045);
+}
+
+.work-revision-entry strong {
+  color: #d5bd78;
+  font-size: 10px;
+}
+
+.work-revision-entry p {
+  margin: 7px 0;
+  color: #b5ac9c;
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.work-revision-entry small,
+.work-dispute-message small {
+  color: #827968;
+  font-size: 9px;
+}
+
+.work-dispute-thread {
+  display: grid;
+  gap: 10px;
+  margin: 17px 0;
+}
+
+.work-dispute-message {
+  padding: 16px 18px;
+  border: 1px solid rgba(212,175,55,.14);
+  background: rgba(20,18,16,.72);
+}
+
+.work-dispute-message p {
+  margin: 10px 0;
+  color: #c2b9a9;
+  font-size: 12px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.work-dispute-message .work-card-top {
+  align-items: center;
+}
+
+.work-dashboard-section > form[data-ws-form] {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.work-dashboard-section > form[data-ws-form] textarea {
+  min-height: 105px;
+  resize: vertical;
+}
+
+.work-dashboard-section > form[data-ws-form] select,
+.work-dashboard-section > form[data-ws-form] input {
+  width: 100%;
+}
+
+.work-dashboard-section > form[data-ws-form] button {
+  justify-self: start;
+}
+
+@media (max-width: 640px) {
+  .work-dispute-message {
+    padding: 13px;
+  }
+
+  .work-dashboard-section > form[data-ws-form] button {
+    width: 100%;
+  }
+}
