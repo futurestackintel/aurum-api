@@ -1182,6 +1182,22 @@ ${applications.length ? applications.map(application => `
     const isClient = e.client_user_id === App.user?.id;
     const fixed = e.pricing_model === 'fixed';
     const currentUserId = App.user?.id;
+	      const paymentSummary = data.payment_summary || {};
+    const paymentHistory = data.payments || [];
+
+    const paymentHistoryHTML = paymentHistory.length
+      ? paymentHistory.map(payment => `
+          <article class="work-card">
+            <div class="work-card-top">
+              <strong>${payment.payment_type === 'fixed' ? 'Fixed-price payment' : 'Hourly payment'}</strong>
+              <span class="work-tag">Posted</span>
+            </div>
+            <strong>${this.money(payment.amount_minor, payment.currency)}</strong>
+            <small>Ledger reference: ${this.escape(payment.ledger_transaction_id)}</small>
+            <small>${this.escape(payment.created_at)}</small>
+          </article>
+        `).join('')
+      : '<p class="work-empty">No payments recorded yet.</p>';
 
     const participants = (data.participants || []).map(p => `
       <article class="work-card">
@@ -1321,6 +1337,36 @@ ${applications.length ? applications.map(application => `
           </button>
         ` : ''}
       </article>
+
+	        <section class="work-dashboard-section">
+        <div class="work-panel-heading">
+          <h3>Payments</h3>
+          <p>Approved Work payments transfer directly between available wallet balances. No escrow or automatic payout is used.</p>
+        </div>
+
+        ${isClient && paymentSummary.can_pay ? `
+          <article class="work-card">
+            <div class="work-card-top">
+              <strong>${paymentSummary.payment_type === 'fixed'
+                ? 'Completed work payment'
+                : 'Approved hourly work'}</strong>
+              <span class="work-tag">Ready to pay</span>
+            </div>
+
+            <h3>${this.money(paymentSummary.amount_minor, e.currency)}</h3>
+
+            <button
+              class="btn btn-primary"
+              data-ws-action="pay-approved"
+              data-amount="${Number(paymentSummary.amount_minor)}"
+              data-payment-type="${this.escape(paymentSummary.payment_type)}">
+              Pay provider
+            </button>
+          </article>
+        ` : ''}
+
+        ${paymentHistoryHTML}
+      </section>
 
       <section class="work-dashboard-section">
         <div class="work-panel-heading"><h3>Selected participants</h3></div>
@@ -1526,6 +1572,24 @@ ${applications.length ? applications.map(application => `
         await AURUM.WorkAPI.reviewTimeEntry(id, 'reject');
       } else if (action === 'dispute-time') {
         await AURUM.WorkAPI.reviewTimeEntry(id, 'dispute');
+      }
+	    else if (action === 'pay-approved') {
+        const amount = Number(button.dataset.amount);
+        const paymentType = button.dataset.paymentType;
+
+        if (!confirm(
+          `Transfer ${this.money(amount, (await AURUM.WorkAPI.getWorkspace(this.activeEngagement)).engagement.currency)} from your available wallet balance to this individual provider? This is an immediate wallet transfer, not escrow.`
+        )) {
+          button.disabled = false;
+          return;
+        }
+
+        const result = await AURUM.WorkAPI.payEngagement(this.activeEngagement);
+
+        AURUM.showToast(
+          `Work payment completed: ${this.money(result.amount_minor, result.currency)}`,
+          'gold',
+        );
       }
 
       await this.openEngagement(this.activeEngagement);
