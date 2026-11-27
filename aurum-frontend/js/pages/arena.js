@@ -184,6 +184,7 @@ window.ArenaPage = {
             <div class="input-group">
               <label class="input-label">Entry Fee</label>
               <select class="input" id="ch-fee">
+			    <option value="0">Free — No entry fee</option>
                 <option value="5">$5</option>
                 <option value="10">$10</option>
                 <option value="25">$25</option>
@@ -3177,13 +3178,16 @@ promoteBtn.style.display =
         title,
         type,
         description: description || null,
-        entry_fee:   parseFloat(fee),
+        entry_fee:   fee,
         ends_at:     endsAt,
       });
       document.getElementById('create-modal').style.display = 'none';
       document.getElementById('ch-title').value = '';
       document.getElementById('ch-description').value = '';
-      AURUM.showToast('Challenge live in the Arena.', 'gold');
+      AURUM.showToast(
+  'Challenge submitted for review. You’ll be notified when approved.',
+  'default'
+);
       this.loadChallenges('active');
     } catch (err) {
       AURUM.showToast(err.message || 'Failed to create challenge.', 'error');
