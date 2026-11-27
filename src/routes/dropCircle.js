@@ -29,7 +29,6 @@ import {
   getChallengeById,
   giveGoldButton,
   boostChallenge,
-  freeMonthlyEntry,
   reviewChallenge,
 } from '../services/dropCircle.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -50,22 +49,6 @@ export async function handleChallengeRoutes(path, method, request, env) {
     } catch (err) {
       console.error('Get challenges error:', err);
       return jsonResponse({ error: 'Unable to load challenges. Please try again.' }, 500);
-    }
-  }
-
-  // ── POST /api/challenges/free-entry ─────────────────────
-  // Must be checked before /:id routes to avoid mis-routing
-  if (path === '/api/challenges/free-entry' && method === 'POST') {
-    const user = await requireAuth(request, env);
-    if (user.error) return jsonResponse({ error: user.error }, 401);
-
-    try {
-      const result = await freeMonthlyEntry(user.id, db);
-      if (result.error) return jsonResponse({ error: result.error }, 400);
-      return jsonResponse(result, 201);
-    } catch (err) {
-      console.error('Free entry error:', err);
-      return jsonResponse({ error: 'Unable to enter free challenge. Please try again.' }, 500);
     }
   }
 
