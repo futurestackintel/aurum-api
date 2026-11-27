@@ -230,9 +230,9 @@ export async function createChallenge(clerkId, body, db) {
       created_at,
       updated_at
     )
-    VALUES (
+        VALUES (
       ?, ?, ?, ?, ?, ?, ?, 0, ?, 0,
-      'open', ?, ?, 'approved',
+      'draft', ?, ?, 'pending',
       ?, ?, 0, 'pending', ?, ?
     )
   `).bind(
@@ -284,7 +284,9 @@ export async function createChallenge(clerkId, body, db) {
       id: challengeId,
       title: title.trim(),
       type,
-      status: 'open',
+      status: 'draft',
+      moderation_status: 'pending',
+      publication_status: 'awaiting_review',
       financial_status: 'pending',
       currency_code: currencyCode,
       entry_fee_minor: entryFeeMinor,
@@ -296,6 +298,82 @@ export async function createChallenge(clerkId, body, db) {
       starts_at: startsAtDate.toISOString(),
       ends_at: endsAtDate.toISOString(),
     },
+  };
+}
+
+// ── ARENA: ADMIN CHALLENGE MODERATION ────────────────────────
+
+export async function reviewChallenge(
+  challengeId,
+  moderatorClerkId,
+  decision,
+  db
+) {
+  if (!['approve', 'reject'].includes(decision)) {
+    return { error: 'Decision must be approve or reject' };
+  }
+
+  const moderatorId = await resolveUserId(moderatorClerkId, db);
+
+  if (!moderatorId) {
+    return { error: 'Moderator account not found' };
+  }
+
+  const challenge = await db.prepare(`
+    SELECT id, status, moderation_status, starts_at, ends_at
+    FROM challenges
+    WHERE id = ?
+      AND deleted_at IS NULL
+  `).bind(challengeId).first();
+
+  if (!challenge) {
+    return { error: 'Challenge not found' };
+  }
+
+  if (challenge.moderation_status !== 'pending') {
+    return { error: 'This challenge has already been reviewed' };
+  }
+
+  if (decision === 'approve') {
+    const now = new Date();
+
+    if (new Date(challenge.ends_at) <= now) {
+      return { error: 'Cannot approve a challenge that has already ended' };
+    }
+
+    await db.prepare(`
+      UPDATE challenges
+      SET status = 'open',
+          moderation_status = 'approved',
+          updated_at = ?
+      WHERE id = ?
+        AND moderation_status = 'pending'
+        AND deleted_at IS NULL
+    `).bind(nowISO(), challengeId).run();
+
+    return {
+      reviewed: true,
+      decision: 'approved',
+      challenge_id: challengeId,
+      status: 'open',
+    };
+  }
+
+  await db.prepare(`
+    UPDATE challenges
+    SET status = 'draft',
+        moderation_status = 'rejected',
+        updated_at = ?
+    WHERE id = ?
+      AND moderation_status = 'pending'
+      AND deleted_at IS NULL
+  `).bind(nowISO(), challengeId).run();
+
+  return {
+    reviewed: true,
+    decision: 'rejected',
+    challenge_id: challengeId,
+    status: 'draft',
   };
 }
 
