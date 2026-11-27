@@ -404,7 +404,69 @@ export async function joinChallenge(
     return { error: 'Challenge not found' };
   }
 
-  
+
+// All entry types must pass the same eligibility checks.
+  if (
+    challenge.moderation_status !== 'approved' ||
+    challenge.deleted_at !== null
+  ) {
+    return { error: 'Challenge is not available for entry' };
+  }
+
+  if (challenge.status !== 'open') {
+    return { error: 'Challenge is not open for entries' };
+  }
+
+  const currentTime = new Date();
+  const startsAt = challenge.starts_at
+    ? new Date(challenge.starts_at)
+    : null;
+
+  if (startsAt && startsAt > currentTime) {
+    return { error: 'Challenge has not started yet' };
+  }
+
+  if (
+    !challenge.ends_at ||
+    new Date(challenge.ends_at) <= currentTime
+  ) {
+    return { error: 'Challenge has expired' };
+  }
+
+  if (
+    challenge.max_participants !== null &&
+    challenge.participant_count >= challenge.max_participants
+  ) {
+    return { error: 'Challenge is full' };
+  }
+
+  if (challenge.financial_status === 'legacy') {
+    return {
+      error: 'This legacy Challenge is unavailable for new financial entries',
+    };
+  }
+
+  if (
+    !['pending', 'funding', 'funded'].includes(
+      challenge.financial_status
+    )
+  ) {
+    return { error: 'Challenge is not accepting entries' };
+  }
+
+  const existingEntry = await db.prepare(`
+    SELECT id
+    FROM challenge_entries
+    WHERE challenge_id = ?
+      AND user_id = ?
+  `).bind(challengeId, userId).first();
+
+  if (existingEntry) {
+    return {
+      error: 'You have already joined this Challenge',
+      entry_id: existingEntry.id,
+    };
+  }
   
 
   if (userId === challenge.creator_id) {
@@ -563,10 +625,10 @@ const existing = await db.prepare(`
               AND ce.user_id = ?
           )
       `).bind(
-        now,
+        entryId,
+        userId,
         challengeId,
         now,
-        entryId,
         userId
       ),
 
@@ -1150,7 +1212,9 @@ export async function getChallenges(limit, offset, db, status) {
       FROM challenges c
       LEFT JOIN challenge_gold_buttons cgb ON cgb.challenge_id = c.id
       LEFT JOIN challenge_boosts cb        ON cb.challenge_id  = c.id
-      WHERE ${statusClause}
+      WHERE c.moderation_status = 'approved'
+        AND c.deleted_at IS NULL
+        AND ${statusClause}
       GROUP BY c.id
       ORDER BY is_boosted DESC, gold_buttons DESC, c.created_at DESC
       LIMIT ? OFFSET ?
