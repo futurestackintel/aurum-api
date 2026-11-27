@@ -144,9 +144,6 @@ const ArenaAPI = {
 
   boostChallenge:  (id, data) =>
     apiRequest('POST', `/api/challenges/${id}/boost`, data),
-
-  freeEntry:       () =>
-    apiRequest('POST', '/api/challenges/free-entry'),
 };
 
 /* --- Duels --- */
