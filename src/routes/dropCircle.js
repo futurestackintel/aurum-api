@@ -30,6 +30,7 @@ import {
   giveGoldButton,
   boostChallenge,
   freeMonthlyEntry,
+  reviewChallenge,
 } from '../services/dropCircle.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { streakMiddleware }          from '../services/streak.js';
@@ -227,6 +228,43 @@ if (rawBody.trim()) {
     }
   }
 
+	  // ── POST /api/challenges/:id/review — admin moderation ──
+  const reviewMatch = path.match(
+    /^\/api\/challenges\/([^/]+)\/review$/
+  );
+
+  if (reviewMatch && method === 'POST') {
+    const admin = await requireAdmin(request, env);
+
+    if (admin.error) {
+      return jsonResponse({ error: admin.error }, 403);
+    }
+
+    try {
+      const body = await request.json();
+
+      const result = await reviewChallenge(
+        reviewMatch[1],
+        admin.id,
+        body.decision,
+        db
+      );
+
+      if (result.error) {
+        return jsonResponse({ error: result.error }, 400);
+      }
+
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Challenge moderation error:', err);
+
+      return jsonResponse(
+        { error: 'Unable to review challenge. Please try again.' },
+        500
+      );
+    }
+	}
+	
   return null;
 }
 
