@@ -42,9 +42,12 @@ async function resolveUserId(clerkId, db) {
 // ── STAGE 1: CREATE CHALLENGE (already correct — challenges
 //    table schema matches what's coded here) ──────────────────
 export async function createChallenge(clerkId, body, db) {
-  const {
+    const {
     title,
     type,
+    primary_skill,
+    skill_tags = [],
+    competition_format = 'practical_task',
     entry_fee,
     currency_code = 'USD',
     ends_at,
@@ -74,6 +77,40 @@ export async function createChallenge(clerkId, body, db) {
 
   if (!type) {
     return { error: 'Challenge type is required' };
+  }
+	  const normalizedSkill = typeof primary_skill === 'string'
+    ? primary_skill.trim()
+    : '';
+
+  if (normalizedSkill.length > 80) {
+    return { error: 'Primary skill cannot exceed 80 characters' };
+  }
+
+  if (
+    !Array.isArray(skill_tags) ||
+    skill_tags.length > 8 ||
+    skill_tags.some(tag =>
+      typeof tag !== 'string' ||
+      !tag.trim() ||
+      tag.trim().length > 40
+    )
+  ) {
+    return {
+      error: 'Provide up to 8 valid skill tags, each no longer than 40 characters',
+    };
+  }
+
+  const normalizedSkillTags = [
+    ...new Set(
+      skill_tags.map(tag => tag.trim().toLowerCase())
+    ),
+  ];
+
+  if (
+    typeof competition_format !== 'string' ||
+    !/^[a-z][a-z0-9_]{1,39}$/.test(competition_format)
+  ) {
+    return { error: 'Invalid competition format' };
   }
   if (typeof rules !== 'string' || !rules.trim()) {
     return { error: 'Competition rules are required' };
@@ -223,6 +260,9 @@ export async function createChallenge(clerkId, body, db) {
       description,
       rules,
       challenge_type,
+	  primary_skill,
+      skill_tags,
+      competition_format,
       verification_method,
       entry_fee_cents,
       pool_total_cents,
@@ -251,6 +291,9 @@ export async function createChallenge(clerkId, body, db) {
     description ?? '',
     rules.trim(),
     type,
+	normalizedSkill || null,
+    JSON.stringify(normalizedSkillTags),
+    competition_format,
     verificationMethod,
     legacyEntryFeeCents,
     max_entries ?? null,
@@ -379,6 +422,24 @@ export async function updateChallenge(challengeId, clerkId, body, db) {
     ? challenge.challenge_type
     : body.type;
 
+	  const primarySkill = body.primary_skill === undefined
+    ? challenge.primary_skill
+    : body.primary_skill;
+
+  const skillTags = body.skill_tags === undefined
+    ? (() => {
+        try {
+          return JSON.parse(challenge.skill_tags || '[]');
+        } catch {
+          return [];
+        }
+      })()
+    : body.skill_tags;
+
+  const competitionFormat = body.competition_format === undefined
+    ? challenge.competition_format || 'practical_task'
+    : body.competition_format;
+	
   const verificationMethod = body.verification_method === undefined
     ? challenge.verification_method
     : body.verification_method;
@@ -425,6 +486,35 @@ export async function updateChallenge(challengeId, clerkId, body, db) {
   ) {
     return { error: 'Please provide valid future challenge dates' };
   }
+	  if (
+    primarySkill !== null &&
+    primarySkill !== undefined &&
+    (
+      typeof primarySkill !== 'string' ||
+      primarySkill.trim().length > 80
+    )
+  ) {
+    return { error: 'Primary skill cannot exceed 80 characters' };
+  }
+
+  if (
+    !Array.isArray(skillTags) ||
+    skillTags.length > 8 ||
+    skillTags.some(tag =>
+      typeof tag !== 'string' ||
+      !tag.trim() ||
+      tag.trim().length > 40
+    )
+  ) {
+    return { error: 'Invalid challenge skill tags' };
+  }
+
+  if (
+    typeof competitionFormat !== 'string' ||
+    !/^[a-z][a-z0-9_]{1,39}$/.test(competitionFormat)
+  ) {
+    return { error: 'Invalid competition format' };
+  }
 
   const result = await db.prepare(`
     UPDATE challenges
@@ -432,6 +522,9 @@ export async function updateChallenge(challengeId, clerkId, body, db) {
         description = ?,
         rules = ?,
         challenge_type = ?,
+		primary_skill = ?,
+        skill_tags = ?,
+        competition_format = ?,
         verification_method = ?,
         starts_at = ?,
         ends_at = ?,
@@ -459,6 +552,11 @@ export async function updateChallenge(challengeId, clerkId, body, db) {
     description ?? '',
     rules ?? null,
     type,
+    primarySkill?.trim() || null,
+    JSON.stringify([
+      ...new Set(skillTags.map(tag => tag.trim().toLowerCase()))
+    ]),
+    competitionFormat,
     verificationMethod,
     startDate.toISOString(),
     endDate.toISOString(),
