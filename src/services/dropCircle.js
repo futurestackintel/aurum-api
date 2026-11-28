@@ -335,7 +335,11 @@ export async function updateChallenge(challengeId, clerkId, body, db) {
     return { error: 'This challenge can no longer be edited' };
   }
 
-  if (challenge.starts_at && new Date(challenge.starts_at) <= new Date()) {
+    if (
+    challenge.status === 'open' &&
+    challenge.starts_at &&
+    new Date(challenge.starts_at) <= new Date()
+  ) {
     return { error: 'Only challenges that have not started can be edited' };
   }
 
@@ -430,10 +434,14 @@ export async function updateChallenge(challengeId, clerkId, body, db) {
       AND status IN ('draft', 'open')
       AND moderation_status IN ('pending', 'approved', 'rejected')
       AND deleted_at IS NULL
-      AND starts_at > ?
+      AND (status = 'draft' OR starts_at > ?)
       AND pool_funded_minor = 0
       AND NOT EXISTS (
         SELECT 1 FROM challenge_entries
+        WHERE challenge_id = challenges.id
+      )
+	AND NOT EXISTS (
+        SELECT 1 FROM challenge_financial_operations
         WHERE challenge_id = challenges.id
       )
   `).bind(
@@ -476,7 +484,7 @@ export async function cancelChallenge(challengeId, clerkId, db) {
       AND creator_id = ?
       AND status IN ('draft', 'open')
       AND deleted_at IS NULL
-      AND starts_at > ?
+      AND (status = 'draft' OR starts_at > ?)
       AND pool_funded_minor = 0
       AND financial_status IN ('pending', 'legacy')
       AND NOT EXISTS (
@@ -1431,8 +1439,9 @@ export async function getChallengeById(
       .bind(challengeId)
       .all();
 
-    return {
+     return {
       ...challenge,
+      is_creator: isCreator,
       entry_list: entryList,
       gold_buttons: goldButtons[0]?.count ?? 0,
     };
