@@ -78,12 +78,28 @@ window.ArenaPage = {
 
         <!-- Challenges panel -->
         <div id="panel-challenges">
-          <div class="arena-tabs" style="margin-bottom:var(--space-3);">
-            <button class="arena-tab active" data-status="active">Active</button>
-            <button class="arena-tab" data-status="upcoming">Upcoming</button>
-            <button class="arena-tab" data-status="completed">Completed</button>
-          </div>
-          <div class="challenge-list" id="challenge-list"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:var(--space-3);margin-bottom:var(--space-3);">
+
+  <div class="arena-tabs">
+    <button class="arena-tab active" data-status="active">Active</button>
+    <button class="arena-tab" data-status="upcoming">Upcoming</button>
+    <button class="arena-tab" data-status="completed">Completed</button>
+  </div>
+
+  <select id="arena-challenge-type" class="form-input"
+    style="width:auto;min-width:170px;">
+    <option value="">All competition types</option>
+    <option value="revenue">Revenue</option>
+    <option value="deals_closed">Deals Closed</option>
+    <option value="growth">Growth</option>
+    <option value="savings">Savings</option>
+    <option value="custom">Custom</option>
+    <option value="charity_brawl">Charity Brawl</option>
+  </select>
+</div>
+
+<div class="challenge-list" id="challenge-list"></div>
         </div>
 
                 <!-- Duels panel -->
@@ -465,6 +481,15 @@ window.ArenaPage = {
       });
     });
 
+    /* Challenge type filter */
+    document.getElementById('arena-challenge-type')
+      ?.addEventListener('change', () => {
+        const activeTab =
+          document.querySelector('.arena-tab.active')?.dataset.status || 'active';
+
+        this.loadChallenges(activeTab);
+      });
+	  
     /* Create challenge modal */
     document.getElementById('btn-create-challenge')
       ?.addEventListener('click', () => {
@@ -716,17 +741,32 @@ window.ArenaPage = {
      CHALLENGES
   -------------------------------------------------- */
 
-  async loadChallenges(tab = 'active') {
+    async loadChallenges(tab = 'active') {
     const list = document.getElementById('challenge-list');
     if (!list) return;
+
     list.innerHTML = this.skeletons(3);
 
-    const statusMap = { active: 'open', upcoming: 'upcoming', completed: 'completed' };
+    const statusMap = {
+      active: 'open',
+      upcoming: 'upcoming',
+      completed: 'completed',
+    };
+
     const backendStatus = statusMap[tab] || 'open';
+    const challengeType =
+      document.getElementById('arena-challenge-type')?.value || undefined;
 
     try {
-      const data = await AURUM.ArenaAPI.getChallenges(20, 0, backendStatus);
+      const data = await AURUM.ArenaAPI.getChallenges(
+        20,
+        0,
+        backendStatus,
+        challengeType
+      );
+
       const challenges = data.challenges || [];
+
       this.renderChallenges(challenges);
       this.updateStats(challenges);
     } catch (err) {
@@ -735,205 +775,7 @@ window.ArenaPage = {
       AURUM.showToast('Could not load challenges.', 'error');
     }
   },
-
-  renderChallenges(challenges) {
-    const list = document.getElementById('challenge-list');
-    if (!list) return;
-    if (!challenges.length) {
-      list.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-state-icon">⚔️</div>
-          <h4>No challenges here</h4>
-          <p>Be the first to create one.</p>
-        </div>`;
-      return;
-    }
-    list.innerHTML = challenges
-      .map((ch, i) => this.challengeHTML(ch, i))
-      .join('');
-    this.bindChallengeEvents();
-  },
-
-  getDisplayStatus(ch) {
-    if (ch.status === 'open' && ch.starts_at && new Date(ch.starts_at) > new Date()) {
-      return 'upcoming';
-    }
-    return ch.status || 'open';
-  },
-
-  challengeHTML(ch, index) {
-    const typeIcons = {
-      revenue: '💰', deals: '🤝', growth: '📈',
-      savings: '🏦', charity: '🏆',
-    };
-    const statusColors = {
-      open:      'var(--color-success)',
-      upcoming:  'var(--color-gold)',
-      completed: 'var(--color-text-muted)',
-    };
-    const icon          = typeIcons[ch.type] || '⚔️';
-    const displayStatus = this.getDisplayStatus(ch);
-    const statusColor   = statusColors[displayStatus] || 'var(--color-text-muted)';
-    const timeLeft       = this.getTimeLeft(ch.ends_at);
-    const poolAmount     = AURUM.formatAmount(ch.pool_amount || 0);
-    const entryFee       = AURUM.formatAmount(ch.entry_fee || 0);
-    const goldCount      = ch.gold_count || 0;
-    const userGolded     = ch.user_golded || false;
-    const isBoosted      = ch.is_boosted || false;
-    const canEnter       = displayStatus === 'open';
-
-    return `
-      <div class="challenge-card card fade-in" style="animation-delay:${index * 80}ms;">
-
-        ${isBoosted ? `
-          <div style="display:flex;align-items:center;gap:var(--space-2);
-            margin-bottom:var(--space-2);">
-            <span style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;
-              color:var(--color-gold);background:var(--color-gold-glow);
-              border:1px solid var(--color-border-gold);border-radius:var(--radius-full);
-              padding:2px 8px;">⚡ Boosted</span>
-          </div>
-        ` : ''}
-
-        <div class="challenge-top">
-          <div class="challenge-icon">${icon}</div>
-          <div class="challenge-info">
-            <p class="challenge-title">${ch.title}</p>
-            <div class="challenge-meta">
-              <span class="badge badge-muted" style="font-size:9px;">${ch.type || 'achievement'}</span>
-              <span style="font-size:10px;color:${statusColor};letter-spacing:0.06em;
-                text-transform:uppercase;">${displayStatus}</span>
-            </div>
-          </div>
-          <div class="challenge-pool">
-            <span class="challenge-pool-amount mono">${poolAmount}</span>
-            <span class="challenge-pool-label">pool</span>
-          </div>
-        </div>
-
-        <div class="challenge-details">
-          <div class="challenge-detail">
-            <span class="challenge-detail-value mono">${entryFee}</span>
-            <span class="challenge-detail-label">Entry</span>
-          </div>
-          <div class="challenge-detail">
-            <span class="challenge-detail-value mono">${ch.entries || 0}</span>
-            <span class="challenge-detail-label">Entries</span>
-          </div>
-          <div class="challenge-detail">
-            <span class="challenge-detail-value mono"
-              style="color:${canEnter
-                ? 'var(--color-danger)' : 'var(--color-text-muted)'};">
-              ${timeLeft}
-            </span>
-            <span class="challenge-detail-label">Remaining</span>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:var(--space-2);align-items:center;">
-
-          ${canEnter ? `
-            <button class="btn btn-outline btn-full btn-sm btn-enter-challenge"
-              data-challenge-id="${ch.id}"
-              data-entry-fee="${ch.entry_fee}"
-              ${ch.user_joined ? 'disabled' : ''}>
-              ${ch.user_joined ? 'Entered ✦' : 'Enter Challenge'}
-            </button>
-          ` : `
-            <button class="btn btn-ghost btn-full btn-sm" disabled>
-              ${displayStatus === 'completed' ? 'Completed' : 'Starting Soon'}
-            </button>
-          `}
-
-          <!-- Gold Button — free for all members -->
-          <button class="btn-gold-button ${userGolded ? 'golded' : ''}"
-            data-challenge-id="${ch.id}"
-            title="Give Gold"
-            ${userGolded ? 'disabled' : ''}>
-            <svg width="16" height="16" viewBox="0 0 24 24"
-              fill="${userGolded ? '#C9A84C' : 'none'}"
-              stroke="#C9A84C" stroke-width="2">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14
-                18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27
-                8.91 8.26 12 2"/>
-            </svg>
-            <span class="gold-count">${goldCount}</span>
-          </button>
-
-          <!-- View detail -->
-          <button class="btn-detail-challenge btn btn-ghost btn-sm"
-            data-challenge-id="${ch.id}"
-            style="flex-shrink:0;padding:var(--space-2);">
-            ···
-          </button>
-
-        </div>
-      </div>
-    `;
-  },
-
-  bindChallengeEvents() {
-    /* Enter challenge — POST /api/challenges/:id/join */
-    document.querySelectorAll('.btn-enter-challenge').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.challengeId;
-        btn.textContent = 'Entering...';
-        btn.disabled    = true;
-        try {
-          await AURUM.ArenaAPI.joinChallenge(id);
-          AURUM.showToast('You\'re in the Arena.', 'gold');
-          btn.textContent = 'Entered ✦';
-          btn.classList.replace('btn-outline', 'btn-ghost');
-        } catch (err) {
-          AURUM.showToast(err.message || 'Entry failed.', 'error');
-          btn.textContent = 'Enter Challenge';
-          btn.disabled    = false;
-        }
-      });
-    });
-
-    /* Gold Button */
-    document.querySelectorAll('.btn-gold-button').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', async () => {
-        const id      = btn.dataset.challengeId;
-        const countEl = btn.querySelector('.gold-count');
-        const prev    = parseInt(countEl?.textContent || '0', 10);
-
-        /* Optimistic */
-        btn.classList.add('golded');
-        btn.disabled = true;
-        const svgEl = btn.querySelector('svg');
-        if (svgEl) svgEl.setAttribute('fill', '#C9A84C');
-        if (countEl) countEl.textContent = prev + 1;
-
-        try {
-          await AURUM.ArenaAPI.giveGoldButton(id);
-          AURUM.showToast('Gold given! ✦', 'gold');
-        } catch (err) {
-          /* Roll back */
-          btn.classList.remove('golded');
-          btn.disabled = false;
-          if (svgEl) svgEl.setAttribute('fill', 'none');
-          if (countEl) countEl.textContent = prev;
-          AURUM.showToast(err.message || 'Could not give gold.', 'error');
-        }
-      });
-    });
-
-    /* Challenge detail */
-    document.querySelectorAll('.btn-detail-challenge').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', () => {
-        this.openChallengeDetail(btn.dataset.challengeId);
-      });
-    });
-  },
-
+	
   async openChallengeDetail(id) {
     const modal   = document.getElementById('challenge-detail-modal');
     const content = document.getElementById('challenge-detail-content');
@@ -954,9 +796,13 @@ window.ArenaPage = {
   },
 
   detailHTML(ch) {
-    const typeIcons = {
-      revenue: '💰', deals: '🤝', growth: '📈',
-      savings: '🏦', charity: '🏆',
+  const typeIcons = {
+      revenue: '💰',
+      deals_closed: '🤝',
+      growth: '📈',
+      savings: '🏦',
+      custom: '⚔️',
+      charity_brawl: '🏆',
     };
     const displayStatus = this.getDisplayStatus(ch);
     const canEnter       = displayStatus === 'open';
