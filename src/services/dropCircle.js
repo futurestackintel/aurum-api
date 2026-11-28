@@ -50,6 +50,7 @@ export async function createChallenge(clerkId, body, db) {
     ends_at,
     starts_at,
     description,
+    rules,
     max_entries,
     verification_method,
   } = body;
@@ -73,6 +74,13 @@ export async function createChallenge(clerkId, body, db) {
 
   if (!type) {
     return { error: 'Challenge type is required' };
+  }
+  if (typeof rules !== 'string' || !rules.trim()) {
+    return { error: 'Competition rules are required' };
+  }
+
+  if (rules.trim().length > 10000) {
+    return { error: 'Competition rules cannot exceed 10,000 characters' };
   }
 
   const validTypes = [
@@ -213,6 +221,7 @@ export async function createChallenge(clerkId, body, db) {
       creator_id,
       title,
       description,
+      rules,
       challenge_type,
       verification_method,
       entry_fee_cents,
@@ -231,7 +240,7 @@ export async function createChallenge(clerkId, body, db) {
       updated_at
     )
         VALUES (
-      ?, ?, ?, ?, ?, ?, ?, 0, ?, 0,
+     ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0,
       'draft', ?, ?, 'pending',
       ?, ?, 0, 'pending', ?, ?
     )
@@ -240,6 +249,7 @@ export async function createChallenge(clerkId, body, db) {
     internalUserId,
     title.trim(),
     description ?? '',
+    rules.trim(),
     type,
     verificationMethod,
     legacyEntryFeeCents,
