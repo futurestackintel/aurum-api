@@ -960,6 +960,23 @@ window.ArenaPage = {
     };
     const displayStatus = this.getDisplayStatus(ch);
     const canEnter       = displayStatus === 'open';
+    const canManage =
+      ch.is_creator &&
+      ['draft', 'open'].includes(ch.status) &&
+      Number(ch.entries || ch.participant_count || 0) === 0 &&
+      Number(ch.pool_funded_minor || 0) === 0;
+
+    const localDateTime = (value) => {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+
+      return new Date(
+        date.getTime() - date.getTimezoneOffset() * 60000
+      ).toISOString().slice(0, 16);
+    };
+
+    const challengeType = ch.challenge_type || ch.type || 'custom';
 
     return `
       <div style="display:flex;align-items:center;gap:var(--space-3);
@@ -1005,6 +1022,178 @@ window.ArenaPage = {
           line-height:1.7;margin-bottom:var(--space-5);">${ch.description}</p>
       ` : ''}
 
+	        ${canManage ? `
+        <section style="
+          margin-bottom:var(--space-5);
+          padding:var(--space-4);
+          border:1px solid var(--color-border-gold);
+          border-radius:var(--radius-lg);
+          background:linear-gradient(145deg,
+            var(--color-surface-2),
+            var(--color-surface));
+        ">
+          <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:var(--space-3);
+            margin-bottom:var(--space-3);
+          ">
+            <div>
+              <p style="
+                font-size:var(--text-xs);
+                color:var(--color-gold);
+                letter-spacing:0.1em;
+                text-transform:uppercase;
+                font-weight:600;
+              ">Creator controls</p>
+              <p style="
+                font-size:var(--text-xs);
+                color:var(--color-text-muted);
+                margin-top:4px;
+              ">Manage your challenge before it begins.</p>
+            </div>
+            <span class="badge badge-muted">Creator</span>
+          </div>
+
+          <div style="display:flex;gap:var(--space-2);">
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              id="btn-edit-challenge"
+              style="flex:1;"
+            >✎ Edit challenge</button>
+
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              id="btn-cancel-owned-challenge"
+              style="color:var(--color-danger);"
+            >Cancel challenge</button>
+          </div>
+
+          <div id="challenge-edit-panel" style="display:none;margin-top:var(--space-4);">
+            <div style="
+              display:flex;
+              flex-direction:column;
+              gap:var(--space-3);
+            ">
+              <div class="input-group">
+                <label class="input-label">Challenge title</label>
+                <input
+                  class="input"
+                  id="edit-ch-title"
+                  maxlength="120"
+                  value="${this.escapeHTML(ch.title || '')}"
+                />
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Challenge type</label>
+                <select class="input" id="edit-ch-type">
+                  <option value="revenue" ${challengeType === 'revenue' ? 'selected' : ''}>Most Revenue</option>
+                  <option value="deals_closed" ${challengeType === 'deals_closed' ? 'selected' : ''}>Most Deals Closed</option>
+                  <option value="growth" ${challengeType === 'growth' ? 'selected' : ''}>Best Growth</option>
+                  <option value="savings" ${challengeType === 'savings' ? 'selected' : ''}>Most Saved</option>
+                  <option value="custom" ${challengeType === 'custom' ? 'selected' : ''}>Custom Challenge</option>
+                  <option value="charity_brawl" ${challengeType === 'charity_brawl' ? 'selected' : ''}>Charity Brawl</option>
+                </select>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Description</label>
+                <textarea
+                  class="input"
+                  id="edit-ch-description"
+                  rows="3"
+                  style="resize:vertical;font-family:var(--font-body);"
+                >${this.escapeHTML(ch.description || '')}</textarea>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Challenge rules</label>
+                <textarea
+                  class="input"
+                  id="edit-ch-rules"
+                  rows="3"
+                  placeholder="Explain the rules and what participants must do..."
+                  style="resize:vertical;font-family:var(--font-body);"
+                >${this.escapeHTML(ch.rules || '')}</textarea>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Verification method</label>
+                <select class="input" id="edit-ch-verification">
+                  <option value="proof_upload" ${(ch.verification_method || 'proof_upload') === 'proof_upload' ? 'selected' : ''}>Evidence / Proof Upload</option>
+                  <option value="honor_system" ${ch.verification_method === 'honor_system' ? 'selected' : ''}>Honor System</option>
+                  <option value="admin_verified" ${ch.verification_method === 'admin_verified' ? 'selected' : ''}>Admin Verified</option>
+                </select>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Start date and time</label>
+                <input
+                  class="input"
+                  type="datetime-local"
+                  id="edit-ch-starts"
+                  value="${localDateTime(ch.starts_at)}"
+                  required
+                />
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">End date and time</label>
+                <input
+                  class="input"
+                  type="datetime-local"
+                  id="edit-ch-ends"
+                  value="${localDateTime(ch.ends_at)}"
+                  required
+                />
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Maximum participants</label>
+                <input
+                  class="input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  id="edit-ch-max-entries"
+                  placeholder="Unlimited"
+                  value="${ch.max_participants ?? ''}"
+                />
+              </div>
+
+              <div style="
+                padding:var(--space-3);
+                border-radius:var(--radius-md);
+                background:var(--color-surface-2);
+                font-size:var(--text-xs);
+                color:var(--color-text-muted);
+                line-height:1.6;
+              ">
+                Your entry fee and currency cannot be changed here. Saving changes sends the challenge back for moderation review.
+              </div>
+
+              <div style="display:flex;gap:var(--space-2);">
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-full"
+                  id="btn-close-challenge-edit"
+                >Close</button>
+
+                <button
+                  type="button"
+                  class="btn btn-primary btn-full"
+                  id="btn-save-challenge-edit"
+                >Save changes</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      ` : ''}
+
       <!-- Boost section -->
       <div style="padding:var(--space-4);background:var(--color-surface-2);
         border-radius:var(--radius-md);border:1px solid var(--color-border);
@@ -1041,6 +1230,127 @@ window.ArenaPage = {
   },
 
   bindDetailEvents(ch) {
+    const editButton = document.getElementById('btn-edit-challenge');
+    const editPanel = document.getElementById('challenge-edit-panel');
+    const closeEditButton = document.getElementById('btn-close-challenge-edit');
+    const saveEditButton = document.getElementById('btn-save-challenge-edit');
+    const cancelButton = document.getElementById('btn-cancel-owned-challenge');
+
+    editButton?.addEventListener('click', () => {
+      if (!editPanel) return;
+
+      const opening = editPanel.style.display === 'none';
+      editPanel.style.display = opening ? 'block' : 'none';
+
+      if (opening) {
+        editPanel.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      }
+    });
+
+    closeEditButton?.addEventListener('click', () => {
+      editPanel.style.display = 'none';
+    });
+
+    saveEditButton?.addEventListener('click', async () => {
+      const title = document.getElementById('edit-ch-title')?.value.trim();
+      const startsValue = document.getElementById('edit-ch-starts')?.value;
+      const endsValue = document.getElementById('edit-ch-ends')?.value;
+      const maxEntriesValue = document.getElementById('edit-ch-max-entries')?.value.trim();
+
+      if (!title) {
+        AURUM.showToast('Challenge title is required.', 'error');
+        return;
+      }
+
+      if (!startsValue || !endsValue) {
+        AURUM.showToast('Choose the challenge start and end dates.', 'error');
+        return;
+      }
+
+      const startsAt = new Date(startsValue);
+      const endsAt = new Date(endsValue);
+
+      if (
+        Number.isNaN(startsAt.getTime()) ||
+        Number.isNaN(endsAt.getTime()) ||
+        startsAt <= new Date() ||
+        endsAt <= startsAt
+      ) {
+        AURUM.showToast('Choose valid future challenge dates.', 'error');
+        return;
+      }
+
+      const maxEntries = maxEntriesValue === ''
+        ? null
+        : Number(maxEntriesValue);
+
+      if (
+        maxEntries !== null &&
+        (!Number.isInteger(maxEntries) || maxEntries < 1)
+      ) {
+        AURUM.showToast('Maximum participants must be a positive whole number.', 'error');
+        return;
+      }
+
+      const payload = {
+        title,
+        type: document.getElementById('edit-ch-type').value,
+        description: document.getElementById('edit-ch-description').value.trim(),
+        rules: document.getElementById('edit-ch-rules').value.trim(),
+        verification_method: document.getElementById('edit-ch-verification').value,
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt.toISOString(),
+        max_entries: maxEntries,
+      };
+
+      saveEditButton.disabled = true;
+      saveEditButton.textContent = 'Saving...';
+
+      try {
+        await AURUM.ArenaAPI.updateChallenge(ch.id, payload);
+
+        AURUM.showToast(
+          'Changes submitted. Your challenge is awaiting moderation again.',
+          'default'
+        );
+
+        await this.openChallengeDetail(ch.id);
+        this.loadChallenges('active');
+      } catch (err) {
+        AURUM.showToast(err.message || 'Could not update challenge.', 'error');
+      } finally {
+        saveEditButton.disabled = false;
+        saveEditButton.textContent = 'Save changes';
+      }
+    });
+
+    cancelButton?.addEventListener('click', async () => {
+      const confirmed = window.confirm(
+        'Cancel this challenge? It will no longer be available for participation.'
+      );
+
+      if (!confirmed) return;
+
+      cancelButton.disabled = true;
+      cancelButton.textContent = 'Cancelling...';
+
+      try {
+        await AURUM.ArenaAPI.cancelChallenge(ch.id);
+
+        AURUM.showToast('Challenge cancelled.', 'default');
+
+        document.getElementById('challenge-detail-modal').style.display = 'none';
+        this.loadChallenges('active');
+      } catch (err) {
+        AURUM.showToast(err.message || 'Could not cancel challenge.', 'error');
+        cancelButton.disabled = false;
+        cancelButton.textContent = 'Cancel challenge';
+      }
+    });
+	  
     /* Boost amount selector */
     let selectedBoost = 5;
     document.querySelectorAll('.btn-boost-amount').forEach(btn => {
