@@ -301,6 +301,214 @@ export async function createChallenge(clerkId, body, db) {
   };
 }
 
+
+const EDITABLE_CHALLENGE_TYPES = [
+  'revenue',
+  'deals_closed',
+  'growth',
+  'savings',
+  'custom',
+  'charity_brawl',
+];
+
+const EDITABLE_VERIFICATION_METHODS = [
+  'proof_upload',
+  'honor_system',
+  'admin_verified',
+];
+
+export async function updateChallenge(challengeId, clerkId, body, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
+  const challenge = await db.prepare(`
+    SELECT *
+    FROM challenges
+    WHERE id = ?
+      AND creator_id = ?
+      AND deleted_at IS NULL
+  `).bind(challengeId, userId).first();
+
+  if (!challenge) return { error: 'Challenge not found' };
+
+  if (!['draft', 'open'].includes(challenge.status)) {
+    return { error: 'This challenge can no longer be edited' };
+  }
+
+  if (challenge.starts_at && new Date(challenge.starts_at) <= new Date()) {
+    return { error: 'Only challenges that have not started can be edited' };
+  }
+
+  const entries = await db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM challenge_entries
+    WHERE challenge_id = ?
+  `).bind(challengeId).first();
+
+  if (entries?.total > 0 || challenge.pool_funded_minor > 0) {
+    return { error: 'A challenge with participants or funded money cannot be edited' };
+  }
+
+  const title = body.title === undefined
+    ? challenge.title
+    : body.title;
+
+  const description = body.description === undefined
+    ? challenge.description
+    : body.description;
+
+  const rules = body.rules === undefined
+    ? challenge.rules
+    : body.rules;
+
+  const type = body.type === undefined
+    ? challenge.challenge_type
+    : body.type;
+
+  const verificationMethod = body.verification_method === undefined
+    ? challenge.verification_method
+    : body.verification_method;
+
+  const startsAt = body.starts_at === undefined
+    ? challenge.starts_at
+    : body.starts_at;
+
+  const endsAt = body.ends_at === undefined
+    ? challenge.ends_at
+    : body.ends_at;
+
+  const maxEntries = body.max_entries === undefined
+    ? challenge.max_participants
+    : body.max_entries;
+
+  if (typeof title !== 'string' || !title.trim()) {
+    return { error: 'Title is required' };
+  }
+
+  if (!EDITABLE_CHALLENGE_TYPES.includes(type)) {
+    return { error: 'Invalid challenge type' };
+  }
+
+  if (!EDITABLE_VERIFICATION_METHODS.includes(verificationMethod)) {
+    return { error: 'Invalid verification method' };
+  }
+
+  if (
+    maxEntries !== null &&
+    (!Number.isInteger(maxEntries) || maxEntries < 1)
+  ) {
+    return { error: 'Maximum entries must be a positive integer' };
+  }
+
+  const startDate = new Date(startsAt);
+  const endDate = new Date(endsAt);
+
+  if (
+    Number.isNaN(startDate.getTime()) ||
+    Number.isNaN(endDate.getTime()) ||
+    startDate <= new Date() ||
+    endDate <= startDate
+  ) {
+    return { error: 'Please provide valid future challenge dates' };
+  }
+
+  const result = await db.prepare(`
+    UPDATE challenges
+    SET title = ?,
+        description = ?,
+        rules = ?,
+        challenge_type = ?,
+        verification_method = ?,
+        starts_at = ?,
+        ends_at = ?,
+        max_participants = ?,
+        status = 'draft',
+        moderation_status = 'pending',
+        updated_at = ?
+    WHERE id = ?
+      AND creator_id = ?
+      AND status IN ('draft', 'open')
+      AND moderation_status IN ('pending', 'approved', 'rejected')
+      AND deleted_at IS NULL
+      AND starts_at > ?
+      AND pool_funded_minor = 0
+      AND NOT EXISTS (
+        SELECT 1 FROM challenge_entries
+        WHERE challenge_id = challenges.id
+      )
+  `).bind(
+    title.trim(),
+    description ?? '',
+    rules ?? null,
+    type,
+    verificationMethod,
+    startDate.toISOString(),
+    endDate.toISOString(),
+    maxEntries,
+    nowISO(),
+    challengeId,
+    userId,
+    nowISO()
+  ).run();
+
+  if (result.meta?.changes !== 1) {
+    return { error: 'Challenge changed or is no longer eligible for editing' };
+  }
+
+  return {
+    updated: true,
+    challenge_id: challengeId,
+    status: 'draft',
+    moderation_status: 'pending',
+    publication_status: 'awaiting_review',
+  };
+}
+
+export async function cancelChallenge(challengeId, clerkId, db) {
+  const userId = await resolveUserId(clerkId, db);
+  if (!userId) return { error: 'User not found' };
+
+  const result = await db.prepare(`
+    UPDATE challenges
+    SET status = 'cancelled',
+        updated_at = ?
+    WHERE id = ?
+      AND creator_id = ?
+      AND status IN ('draft', 'open')
+      AND deleted_at IS NULL
+      AND starts_at > ?
+      AND pool_funded_minor = 0
+      AND financial_status IN ('pending', 'legacy')
+      AND NOT EXISTS (
+        SELECT 1 FROM challenge_entries
+        WHERE challenge_id = challenges.id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM challenge_financial_operations
+        WHERE challenge_id = challenges.id
+          AND status IN ('pending', 'posted')
+      )
+  `).bind(
+    nowISO(),
+    challengeId,
+    userId,
+    nowISO()
+  ).run();
+
+  if (result.meta?.changes !== 1) {
+    return {
+      error: 'This challenge cannot be cancelled because it has started, has participants, or has financial activity',
+    };
+  }
+
+  return {
+    cancelled: true,
+    challenge_id: challengeId,
+    status: 'cancelled',
+  };
+}
+
+
 // ── ARENA: ADMIN CHALLENGE MODERATION ────────────────────────
 
 export async function reviewChallenge(
