@@ -121,9 +121,12 @@ const LedgerAPI = {
      getChallenges takes an optional status filter.
 */
 const ArenaAPI = {
-  getChallenges: (limit = 20, offset = 0, status) => {
+    getChallenges: (limit = 20, offset = 0, status, type) => {
     let path = `/api/challenges?limit=${limit}&offset=${offset}`;
+
     if (status) path += `&status=${encodeURIComponent(status)}`;
+    if (type) path += `&type=${encodeURIComponent(type)}`;
+
     return apiRequest('GET', path, null, false);
   },
 
