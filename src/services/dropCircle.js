@@ -605,8 +605,10 @@ const existing = await db.prepare(`
           0,
           0
         FROM challenges c
-        WHERE c.id = ?
+         WHERE c.id = ?
           AND c.status = 'open'
+          AND c.moderation_status = 'approved'
+          AND c.deleted_at IS NULL
           AND c.financial_status IN (
             'pending',
             'funding',
@@ -1327,9 +1329,11 @@ const poolMinor = challenge.pool_funded_minor ?? 0;
       UPDATE challenges
       SET status = 'completed',
           updated_at = ?
-      WHERE id = ?
-        AND status = 'open'
-        AND financial_status IN ('pending', 'funding')
+         WHERE id = ?
+          AND status = 'open'
+          AND moderation_status = 'approved'
+          AND deleted_at IS NULL
+          AND financial_status IN (
         AND pool_funded_minor = 0
     `).bind(nowISO(), challenge.id).run();
 
