@@ -3374,14 +3374,18 @@ promoteBtn.style.display =
     }
 
     const startsAtDate = startInput
-      ? new Date(startInput)
-      : new Date();
+  ? new Date(startInput)
+  : new Date();
 
-    if (Number.isNaN(startsAtDate.getTime()) ||
-        startsAtDate <= new Date()) {
-      AURUM.showToast('Choose a future start date.', 'error');
-      return;
-    }
+if (Number.isNaN(startsAtDate.getTime())) {
+  AURUM.showToast('Enter a valid start date.', 'error');
+  return;
+}
+
+if (startInput && startsAtDate <= new Date()) {
+  AURUM.showToast('Choose a future start date.', 'error');
+  return;
+}
 
     const maxEntries = maxEntriesInput
       ? Number(maxEntriesInput)
