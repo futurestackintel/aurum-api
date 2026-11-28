@@ -133,6 +133,12 @@ const ArenaAPI = {
   createChallenge: (data) =>
     apiRequest('POST', '/api/challenges', data),
 
+ updateChallenge: (id, data) =>
+    apiRequest('PATCH', `/api/challenges/${encodeURIComponent(id)}`, data),
+
+  cancelChallenge: (id) =>
+    apiRequest('POST', `/api/challenges/${encodeURIComponent(id)}/cancel`),
+
   joinChallenge:   (id) =>
     apiRequest('POST', `/api/challenges/${id}/join`),
 
