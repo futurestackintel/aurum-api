@@ -1371,33 +1371,69 @@ export async function getChallenges(limit, offset, db, status, type) {
 
   params.push(safeLimit, safeOffset);
 
-  const { results } = await db
-    .prepare(`
-      SELECT
-        c.id, c.title, c.challenge_type as type, c.status,
-        c.pool_total_cents / 100.0 AS pool_amount,
-        c.entry_fee_cents / 100.0 AS entry_fee,
-        c.starts_at, c.ends_at,
-        c.participant_count AS entries,
-        COUNT(DISTINCT cgb.id) AS gold_buttons,
-        MAX(CASE WHEN cb.expires_at > ? THEN 1 ELSE 0 END) AS is_boosted
-      FROM challenges c
-      LEFT JOIN challenge_gold_buttons cgb
-        ON cgb.challenge_id = c.id
-      LEFT JOIN challenge_boosts cb
-        ON cb.challenge_id = c.id
-      WHERE c.moderation_status = 'approved'
-        AND c.deleted_at IS NULL
-        AND ${statusClause}
-        ${typeClause}
-      GROUP BY c.id
-      ORDER BY is_boosted DESC, gold_buttons DESC, c.created_at DESC
-      LIMIT ? OFFSET ?
-    `)
-    .bind(...params)
-    .all();
+  const { results } = await db.prepare(`
+    SELECT
+      c.id,
+      c.title,
+      c.challenge_type AS type,
+      c.status,
+      c.currency_code,
+      c.financial_status,
+      c.entry_fee_minor,
+      c.pool_funded_minor,
+      c.entry_fee_cents,
+      c.pool_total_cents,
+      c.starts_at,
+      c.ends_at,
+      c.participant_count AS entries,
+      fc.minor_unit_exponent,
+      COUNT(DISTINCT cgb.id) AS gold_buttons,
+      MAX(CASE WHEN cb.expires_at > ? THEN 1 ELSE 0 END) AS is_boosted
+    FROM challenges c
+    JOIN financial_currencies fc
+      ON fc.currency_code = c.currency_code
+    LEFT JOIN challenge_gold_buttons cgb
+      ON cgb.challenge_id = c.id
+    LEFT JOIN challenge_boosts cb
+      ON cb.challenge_id = c.id
+    WHERE c.moderation_status = 'approved'
+      AND c.deleted_at IS NULL
+      AND ${statusClause}
+      ${typeClause}
+    GROUP BY c.id
+    ORDER BY is_boosted DESC, gold_buttons DESC, c.created_at DESC
+    LIMIT ? OFFSET ?
+  `).bind(...params).all();
 
-  return results;
+  return results.map(challenge => {
+    const exponent = validateMinorUnitExponent(
+      challenge.minor_unit_exponent
+    );
+
+    // Historical legacy challenges retain their original USD cents.
+    // New financial records use their actual currency minor units.
+    const isLegacy = challenge.financial_status === 'legacy';
+
+    const entryFee = isLegacy
+      ? Number(challenge.entry_fee_cents || 0) / 100
+      : fromMinorUnits(
+          Number(challenge.entry_fee_minor || 0),
+          exponent
+        );
+
+    const poolAmount = isLegacy
+      ? Number(challenge.pool_total_cents || 0) / 100
+      : fromMinorUnits(
+          Number(challenge.pool_funded_minor || 0),
+          exponent
+        );
+
+    return {
+      ...challenge,
+      entry_fee: entryFee,
+      pool_amount: poolAmount,
+    };
+  });
 }
 
 // ── GET SINGLE CHALLENGE ─────────────────────────────────────
