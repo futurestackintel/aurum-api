@@ -16,7 +16,7 @@ export async function handleSearchRoutes(path, method, request, env) {
         return jsonResponse({ error: 'Search query must be at least 2 characters' }, 400);
       }
 
-      const [usersResult, crewsResult, postsResult] = await Promise.all([
+      const [usersResult, crewsResult, postsResult, challengesResult] = await Promise.all([
         db.prepare(`
           SELECT id, username, league, aurum_score, hide_aurum_score, hide_league, avatar_url
           FROM users
