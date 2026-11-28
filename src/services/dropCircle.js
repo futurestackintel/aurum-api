@@ -1315,8 +1315,29 @@ export async function boostChallenge(challengeId, clerkId, body, db) {
 
 // ── GET CHALLENGES (Arena feed) ──────────────────────────────
 
-export async function getChallenges(limit, offset, db, status) {
+export async function getChallenges(limit, offset, db, status, type) {
   const now = nowISO();
+
+  const allowedTypes = new Set([
+    'revenue',
+    'deals_closed',
+    'growth',
+    'savings',
+    'custom',
+    'charity_brawl',
+  ]);
+
+  const normalizedType = allowedTypes.has(type) ? type : null;
+
+  const safeLimit = Math.min(
+    50,
+    Math.max(1, Number.parseInt(limit, 10) || 20)
+  );
+
+  const safeOffset = Math.max(
+    0,
+    Number.parseInt(offset, 10) || 0
+  );
 
   let statusClause;
   const params = [now];
@@ -1331,24 +1352,34 @@ export async function getChallenges(limit, offset, db, status) {
     params.push(now);
   }
 
-  params.push(limit ?? 20, offset ?? 0);
+  let typeClause = '';
+
+  if (normalizedType) {
+    typeClause = `AND c.challenge_type = ?`;
+    params.push(normalizedType);
+  }
+
+  params.push(safeLimit, safeOffset);
 
   const { results } = await db
     .prepare(`
       SELECT
         c.id, c.title, c.challenge_type as type, c.status,
-        c.pool_total_cents / 100.0  AS pool_amount,
-        c.entry_fee_cents  / 100.0  AS entry_fee,
+        c.pool_total_cents / 100.0 AS pool_amount,
+        c.entry_fee_cents / 100.0 AS entry_fee,
         c.starts_at, c.ends_at,
-        c.participant_count         AS entries,
-        COUNT(DISTINCT cgb.id)      AS gold_buttons,
+        c.participant_count AS entries,
+        COUNT(DISTINCT cgb.id) AS gold_buttons,
         MAX(CASE WHEN cb.expires_at > ? THEN 1 ELSE 0 END) AS is_boosted
       FROM challenges c
-      LEFT JOIN challenge_gold_buttons cgb ON cgb.challenge_id = c.id
-      LEFT JOIN challenge_boosts cb        ON cb.challenge_id  = c.id
+      LEFT JOIN challenge_gold_buttons cgb
+        ON cgb.challenge_id = c.id
+      LEFT JOIN challenge_boosts cb
+        ON cb.challenge_id = c.id
       WHERE c.moderation_status = 'approved'
         AND c.deleted_at IS NULL
         AND ${statusClause}
+        ${typeClause}
       GROUP BY c.id
       ORDER BY is_boosted DESC, gold_buttons DESC, c.created_at DESC
       LIMIT ? OFFSET ?
@@ -1357,98 +1388,6 @@ export async function getChallenges(limit, offset, db, status) {
     .all();
 
   return results;
-}
-
-// ── GET SINGLE CHALLENGE ─────────────────────────────────────
-// Public visitors can only view approved, non-deleted challenges.
-// Creators can view their own unpublished challenges.
-// Admins can view unpublished challenges for moderation.
-// Participant lists are not exposed on unpublished challenges.
-
-export async function getChallengeById(
-  challengeId,
-  db,
-  viewerClerkId = null,
-  viewerIsAdmin = false
-) {
-  try {
-    const challenge = await db
-      .prepare(`
-        SELECT
-          c.*,
-          c.pool_total_cents / 100.0 AS pool_amount,
-          c.entry_fee_cents / 100.0 AS entry_fee,
-          c.participant_count AS entries
-        FROM challenges c
-        WHERE c.id = ?
-          AND c.deleted_at IS NULL
-      `)
-      .bind(challengeId)
-      .first();
-
-    if (!challenge) return null;
-
-    let isCreator = false;
-
-    if (viewerClerkId) {
-      const internalUserId = await resolveUserId(viewerClerkId, db);
-      isCreator = Boolean(
-        internalUserId &&
-        internalUserId === challenge.creator_id
-      );
-    }
-
-    const isApproved =
-      challenge.moderation_status === 'approved';
-
-    // Unpublished challenges are private to their creator and admins.
-    if (!isApproved && !isCreator && !viewerIsAdmin) {
-      return null;
-    }
-
-    // Never expose participants on unpublished challenges to creators.
-    // Admins retain access for moderation purposes.
-    let entryList = [];
-
-    if (isApproved || viewerIsAdmin) {
-      const result = await db
-        .prepare(`
-          SELECT
-            ce.user_id,
-            ce.score,
-            ce.created_at,
-            u.username,
-            u.league
-          FROM challenge_entries ce
-          JOIN users u ON u.id = ce.user_id
-          WHERE ce.challenge_id = ?
-          ORDER BY ce.score DESC
-        `)
-        .bind(challengeId)
-        .all();
-
-      entryList = result.results ?? [];
-    }
-
-    const { results: goldButtons } = await db
-      .prepare(`
-        SELECT COUNT(*) AS count
-        FROM challenge_gold_buttons
-        WHERE challenge_id = ?
-      `)
-      .bind(challengeId)
-      .all();
-
-     return {
-      ...challenge,
-      is_creator: isCreator,
-      entry_list: entryList,
-      gold_buttons: goldButtons[0]?.count ?? 0,
-    };
-  } catch (err) {
-    console.error('getChallengeById error:', err);
-    throw err;
-  }
 }
 
 // ── FIX 7: EXPIRE CHALLENGES ──────────────────────────────────
