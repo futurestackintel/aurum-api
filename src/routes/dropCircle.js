@@ -28,6 +28,8 @@ import {
   giveGoldButton,
   boostChallenge,
   reviewChallenge,
+  updateChallenge,
+  cancelChallenge,
 } from '../services/dropCircle.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { streakMiddleware }          from '../services/streak.js';
@@ -66,6 +68,54 @@ export async function handleChallengeRoutes(path, method, request, env) {
       return jsonResponse({ error: 'Unable to create challenge. Please try again.' }, 500);
     }
   }
+
+	
+  // ── PATCH /api/challenges/:id — creator edit ─────────────
+  const editMatch = path.match(/^\/api\/challenges\/([^/]+)$/);
+
+  if (editMatch && method === 'PATCH') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const body = await request.json();
+      const result = await updateChallenge(
+        editMatch[1],
+        user.id,
+        body,
+        db
+      );
+
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Update challenge error:', err);
+      return jsonResponse({ error: 'Unable to update challenge.' }, 500);
+    }
+  }
+
+  // ── POST /api/challenges/:id/cancel — creator cancellation
+  const cancelMatch = path.match(/^\/api\/challenges\/([^/]+)\/cancel$/);
+
+  if (cancelMatch && method === 'POST') {
+    const user = await requireAuth(request, env);
+    if (user.error) return jsonResponse({ error: user.error }, 401);
+
+    try {
+      const result = await cancelChallenge(
+        cancelMatch[1],
+        user.id,
+        db
+      );
+
+      if (result.error) return jsonResponse({ error: result.error }, 400);
+      return jsonResponse(result);
+    } catch (err) {
+      console.error('Cancel challenge error:', err);
+      return jsonResponse({ error: 'Unable to cancel challenge.' }, 500);
+    }
+  }
+
 
     // ── GET /api/challenges/:id ─────────────────────────────
   const singleMatch = path.match(/^\/api\/challenges\/([^/]+)$/);
