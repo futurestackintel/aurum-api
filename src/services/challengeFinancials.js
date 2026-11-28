@@ -949,8 +949,10 @@ return {
             END,
             ?
           FROM challenges c
-          WHERE c.id = ?
+           WHERE c.id = ?
             AND c.status = 'open'
+            AND c.moderation_status = 'approved'
+            AND c.deleted_at IS NULL
             AND c.ends_at > ?
             AND c.financial_status IN (
               'pending',
@@ -1049,9 +1051,11 @@ return {
     pool_funded_minor = pool_funded_minor + ?,
     financial_status = 'funded',
     updated_at = ?
-  WHERE id = ?
-    AND status = 'open'
-    AND ends_at > ?
+     WHERE id = ?
+     AND status = 'open'
+     AND moderation_status = 'approved'
+     AND deleted_at IS NULL
+     AND ends_at > ?
     AND financial_status IN (
       'pending',
       'funding',
