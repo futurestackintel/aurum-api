@@ -828,6 +828,19 @@ window.ArenaPage = {
     }
   },
 
+	  formatChallengeMoney(amount, currencyCode = 'USD') {
+    const value = Number(amount || 0);
+
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: currencyCode,
+      }).format(value);
+    } catch {
+      return `${currencyCode} ${value.toFixed(2)}`;
+    }
+  },
+
   detailHTML(ch) {
   const typeIcons = {
       revenue: '💰',
@@ -874,14 +887,14 @@ window.ArenaPage = {
         gap:var(--space-3);margin-bottom:var(--space-5);">
         <div class="card card-sm" style="text-align:center;">
           <p class="mono" style="font-size:var(--text-xl);color:var(--color-gold);">
-            ${AURUM.formatAmount(ch.pool_amount || 0)}
+            ${this.formatChallengeMoney(ch.pool_amount, ch.currency_code)}
           </p>
           <p style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
             color:var(--color-text-muted);">Pool</p>
         </div>
         <div class="card card-sm" style="text-align:center;">
           <p class="mono" style="font-size:var(--text-xl);color:var(--color-text);">
-            ${AURUM.formatAmount(ch.entry_fee || 0)}
+            ${this.formatChallengeMoney(ch.entry_fee, ch.currency_code)}
           </p>
           <p style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
             color:var(--color-text-muted);">Entry</p>
@@ -1102,7 +1115,7 @@ window.ArenaPage = {
           data-challenge-id="${ch.id}"
           data-entry-fee="${ch.entry_fee}"
           ${ch.user_joined ? 'disabled' : ''}>
-          ${ch.user_joined ? 'Already Entered ✦' : 'Enter — ' + AURUM.formatAmount(ch.entry_fee || 0)}
+          ${ch.user_joined ? 'Already Entered ✦' : 'Enter — ' + this.formatChallengeMoney(ch.entry_fee, ch.currency_code)}
         </button>
       ` : ''}
     `;
@@ -1280,7 +1293,7 @@ window.ArenaPage = {
           this.loadChallenges('active');
         } catch (err) {
           AURUM.showToast(err.message || 'Entry failed.', 'error');
-          btn.textContent = 'Enter — ' + AURUM.formatAmount(ch.entry_fee || 0);
+          btn.textContent = 'Enter — ' + this.formatChallengeMoney(ch.entry_fee, ch.currency_code);
           btn.disabled    = false;
         }
       });
@@ -3458,18 +3471,47 @@ if (startInput && startsAtDate <= new Date()) {
   /* --------------------------------------------------
      STATS BAR
   -------------------------------------------------- */
-  updateStats(challenges) {
-    const active   = challenges.filter(c => c.status === 'open');
-    const ending   = active.filter(c => {
-      const h = this.hoursLeft(c.ends_at);
-      return h <= 24 && h > 0;
-    });
-    const totalPool = active.reduce((s, c) => s + (c.pool_amount || 0), 0);
+    updateStats(challenges) {
+    const active = challenges.filter(c => c.status === 'open');
 
-    const poolEl   = document.getElementById('arena-total-pool');
+    const ending = active.filter(c => {
+      const hours = this.hoursLeft(c.ends_at);
+      return hours <= 24 && hours > 0;
+    });
+
+    const currencies = [
+      ...new Set(
+        active
+          .map(c => c.currency_code)
+          .filter(Boolean)
+      ),
+    ];
+
+    let poolDisplay = '—';
+
+    if (currencies.length === 1) {
+      const currency = currencies[0];
+
+      const totalPool = active
+        .filter(c => c.currency_code === currency)
+        .reduce(
+          (sum, challenge) => sum + Number(challenge.pool_amount || 0),
+          0
+        );
+
+      poolDisplay = this.formatChallengeMoney(
+        totalPool,
+        currency
+      );
+    } else if (currencies.length > 1) {
+      poolDisplay = 'Multiple currencies';
+    }
+
+    const poolEl = document.getElementById('arena-total-pool');
     const activeEl = document.getElementById('arena-active');
     const endingEl = document.getElementById('arena-ending');
-    if (poolEl)   poolEl.textContent   = AURUM.formatAmount(totalPool);
+
+    if (poolEl) poolEl.textContent = poolDisplay;
     if (activeEl) activeEl.textContent = active.length;
     if (endingEl) endingEl.textContent = ending.length;
   },
