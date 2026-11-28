@@ -50,6 +50,24 @@ export async function handleSearchRoutes(path, method, request, env) {
           ORDER BY p.created_at DESC
           LIMIT 10
         `).bind(q).all(),
+				db.prepare(`
+  SELECT
+    id, title, description, challenge_type, status,
+    starts_at, ends_at, entry_fee_minor, currency_code,
+    participant_count, max_participants
+  FROM challenges
+  WHERE (title LIKE '%' || ? || '%'
+      OR description LIKE '%' || ? || '%')
+    AND moderation_status = 'approved'
+    AND deleted_at IS NULL
+    AND status IN ('open', 'active', 'completed')
+  ORDER BY
+    CASE WHEN status = 'open' THEN 0
+         WHEN status = 'active' THEN 1
+         ELSE 2 END,
+    created_at DESC
+  LIMIT 10
+`).bind(q, q).all(),
       ]);
 
       const users = usersResult.results.map(u => ({
@@ -74,7 +92,21 @@ export async function handleSearchRoutes(path, method, request, env) {
         author_username: p.username,
       }));
 
-      return jsonResponse({ users, crews, posts });
+			const challenges = challengesResult.results.map(c => ({
+  id: c.id,
+  title: c.title,
+  description: c.description,
+  challenge_type: c.challenge_type,
+  status: c.status,
+  starts_at: c.starts_at,
+  ends_at: c.ends_at,
+  entry_fee_minor: c.entry_fee_minor,
+  currency_code: c.currency_code,
+  participant_count: c.participant_count,
+  max_participants: c.max_participants,
+}));
+
+      return jsonResponse({ users, crews, posts, challenges });
     } catch (err) {
       console.error('Universal search error:', err);
       return jsonResponse({ error: 'Unable to search. Please try again.' }, 500);
