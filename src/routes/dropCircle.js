@@ -43,8 +43,16 @@ export async function handleChallengeRoutes(path, method, request, env) {
       const url    = new URL(request.url);
       const limit  = parseInt(url.searchParams.get('limit')  ?? '20');
       const offset = parseInt(url.searchParams.get('offset') ?? '0');
-      const status = url.searchParams.get('status') ?? undefined; // 'open' | 'upcoming' | 'completed'
-      const challenges = await getChallenges(limit, offset, db, status);
+      const status = url.searchParams.get('status') ?? undefined;
+      const type = url.searchParams.get('type') ?? undefined;
+
+      const challenges = await getChallenges(
+        limit,
+        offset,
+        db,
+        status,
+        type
+      );
       return jsonResponse({ challenges });
     } catch (err) {
       console.error('Get challenges error:', err);
