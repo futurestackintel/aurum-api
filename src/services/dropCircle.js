@@ -1400,6 +1400,73 @@ export async function getChallenges(limit, offset, db, status, type) {
   return results;
 }
 
+// ── GET SINGLE CHALLENGE ─────────────────────────────────────
+
+export async function getChallengeById(
+  challengeId,
+  db,
+  viewerClerkId = null,
+  viewerIsAdmin = false
+) {
+  try {
+    const challenge = await db.prepare(`
+      SELECT
+        c.*,
+        fc.minor_unit_exponent
+      FROM challenges c
+      JOIN financial_currencies fc
+        ON fc.currency_code = c.currency_code
+      WHERE c.id = ?
+        AND c.deleted_at IS NULL
+    `).bind(challengeId).first();
+
+    if (!challenge) return null;
+
+    let isCreator = false;
+
+    if (viewerClerkId) {
+      const internalUserId = await resolveUserId(viewerClerkId, db);
+
+      isCreator = Boolean(
+        internalUserId &&
+        internalUserId === challenge.creator_id
+      );
+    }
+
+    const isApproved =
+      challenge.moderation_status === 'approved';
+
+    if (!isApproved && !isCreator && !viewerIsAdmin) {
+      return null;
+    }
+
+    const exponent = validateMinorUnitExponent(
+      challenge.minor_unit_exponent
+    );
+
+    const entryFeeMinor = Number(challenge.entry_fee_minor || 0);
+    const poolMinor = Number(challenge.pool_funded_minor || 0);
+
+    const goldButtons = await db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM challenge_gold_buttons
+      WHERE challenge_id = ?
+    `).bind(challengeId).first();
+
+    return {
+      ...challenge,
+      entry_fee: fromMinorUnits(entryFeeMinor, exponent),
+      pool_amount: fromMinorUnits(poolMinor, exponent),
+      is_creator: isCreator,
+      is_admin: Boolean(viewerIsAdmin),
+      gold_buttons: goldButtons?.count ?? 0,
+    };
+  } catch (err) {
+    console.error('getChallengeById error:', err);
+    throw err;
+  }
+}
+
 // ── FIX 7: EXPIRE CHALLENGES ──────────────────────────────────
 
 export async function expireChallenges(db) {
