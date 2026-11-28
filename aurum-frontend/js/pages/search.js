@@ -11,7 +11,12 @@ function escapeHTML(str) {
 window.SearchPage = {
   currentTab: 'users',
   requestId: 0,
-  lastResults: { users: [], crews: [], posts: [] },
+  lastResults: {
+  users: [],
+  crews: [],
+  posts: [],
+  challenges: [],
+},
 
   init(containerId) {
     const el = document.getElementById(containerId);
@@ -23,12 +28,15 @@ window.SearchPage = {
         </div>
         <div class="search-input-wrap">
           <svg class="search-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="search-input" placeholder="Search users, crews, posts..." class="search-input" />
+          <input type="text" id="search-input"
+  placeholder="Search users, crews, posts, challenges..."
+  class="search-input" />
         </div>
         <div class="search-tabs">
           <button class="search-tab active" data-tab="users">Users</button>
           <button class="search-tab" data-tab="crews">Crews</button>
           <button class="search-tab" data-tab="posts">Posts</button>
+					<button class="search-tab" data-tab="challenges">Challenges</button>
         </div>
         <div id="search-results" class="search-results"></div>
       </div>
@@ -67,6 +75,15 @@ window.SearchPage = {
       if (btn) { this.messageUser(btn.dataset.userId, btn.dataset.username, btn.dataset.avatar); return; }
       const profile = e.target.closest('.search-profile-btn');
       if (profile) { App.openPublicProfile(profile.dataset.username); return; }
+			const challenge = e.target.closest('.search-challenge-open');
+if (challenge) {
+  const challengeId = challenge.dataset.challengeId;
+  App.navigate('arena');
+  setTimeout(() => {
+    window.ArenaPage?.openChallengeDetail(challengeId);
+  }, 150);
+  return;
+}
       const row = e.target.closest('.search-post-open, .search-crew-open');
       if (row) activateRow(row);
     });
@@ -158,6 +175,23 @@ window.SearchPage = {
           </div>
         </div>
       `).join('');
+			} else if (this.currentTab === 'challenges') {
+  resultsEl.innerHTML = items.map((c, i) => `
+    <div class="search-result-row search-challenge-open"
+      data-challenge-id="${escapeHTML(c.id)}"
+      role="button" tabindex="0"
+      style="animation-delay:${i * 40}ms">
+      <div class="search-result-icon">⚔️</div>
+      <div class="search-result-body">
+        <span class="search-result-title">${escapeHTML(c.title)}</span>
+        <span class="search-result-sub">
+          ${escapeHTML(c.challenge_type || 'Challenge')}
+          · ${escapeHTML(c.status)}
+          · ${Number(c.participant_count || 0)} participants
+        </span>
+      </div>
+    </div>
+  `).join('');
     }
   },
 };
