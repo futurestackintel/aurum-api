@@ -9,8 +9,8 @@
 //                        and proof_description (TEXT), separately
 //   joined_at        -> real column is created_at
 // This was silently breaking joinChallenge, submitProof,
-// getChallengeById's entry list, resolveChallenge's entry query,
-// and freeMonthlyEntry's entry insert. Fixed below.
+// getChallengeById's entry list, and resolveChallenge's entry query.
+// Fixed below.
 // ============================================================
 
 import { addScoreEvent } from './aurumScore.js';
@@ -1130,52 +1130,93 @@ export async function getChallenges(limit, offset, db, status) {
 }
 
 // ── GET SINGLE CHALLENGE ─────────────────────────────────────
-// FIX: entry_list query used ce.joined_at, which doesn't exist —
-// real column is ce.created_at. This is what was throwing
-// "no such column: ce.joined_at" and breaking the three-dots
-// challenge detail view.
+// Public visitors can only view approved, non-deleted challenges.
+// Creators can view their own unpublished challenges.
+// Admins can view unpublished challenges for moderation.
+// Participant lists are not exposed on unpublished challenges.
 
-export async function getChallengeById(challengeId, db) {
+export async function getChallengeById(
+  challengeId,
+  db,
+  viewerClerkId = null,
+  viewerIsAdmin = false
+) {
   try {
     const challenge = await db
       .prepare(`
         SELECT
           c.*,
           c.pool_total_cents / 100.0 AS pool_amount,
-          c.entry_fee_cents  / 100.0 AS entry_fee,
-          c.participant_count        AS entries
+          c.entry_fee_cents / 100.0 AS entry_fee,
+          c.participant_count AS entries
         FROM challenges c
         WHERE c.id = ?
+          AND c.deleted_at IS NULL
       `)
       .bind(challengeId)
       .first();
 
     if (!challenge) return null;
 
-    const { results: entryList } = await db
-      .prepare(`
-        SELECT ce.user_id, ce.score, ce.created_at, u.username, u.league
-        FROM challenge_entries ce
-        JOIN users u ON u.id = ce.user_id
-        WHERE ce.challenge_id = ?
-        ORDER BY ce.score DESC
-      `)
-      .bind(challengeId)
-      .all();
+    let isCreator = false;
+
+    if (viewerClerkId) {
+      const internalUserId = await resolveUserId(viewerClerkId, db);
+      isCreator = Boolean(
+        internalUserId &&
+        internalUserId === challenge.creator_id
+      );
+    }
+
+    const isApproved =
+      challenge.moderation_status === 'approved';
+
+    // Unpublished challenges are private to their creator and admins.
+    if (!isApproved && !isCreator && !viewerIsAdmin) {
+      return null;
+    }
+
+    // Never expose participants on unpublished challenges to creators.
+    // Admins retain access for moderation purposes.
+    let entryList = [];
+
+    if (isApproved || viewerIsAdmin) {
+      const result = await db
+        .prepare(`
+          SELECT
+            ce.user_id,
+            ce.score,
+            ce.created_at,
+            u.username,
+            u.league
+          FROM challenge_entries ce
+          JOIN users u ON u.id = ce.user_id
+          WHERE ce.challenge_id = ?
+          ORDER BY ce.score DESC
+        `)
+        .bind(challengeId)
+        .all();
+
+      entryList = result.results ?? [];
+    }
 
     const { results: goldButtons } = await db
-      .prepare(`SELECT COUNT(*) as count FROM challenge_gold_buttons WHERE challenge_id = ?`)
+      .prepare(`
+        SELECT COUNT(*) AS count
+        FROM challenge_gold_buttons
+        WHERE challenge_id = ?
+      `)
       .bind(challengeId)
       .all();
 
     return {
       ...challenge,
-      entry_list:   entryList,
+      entry_list: entryList,
       gold_buttons: goldButtons[0]?.count ?? 0,
     };
   } catch (err) {
     console.error('getChallengeById error:', err);
-    return null;
+    throw err;
   }
 }
 
