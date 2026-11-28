@@ -87,8 +87,20 @@ if (challenge) {
       const row = e.target.closest('.search-post-open, .search-crew-open');
       if (row) activateRow(row);
     });
-    results.addEventListener('keydown', (e) => {
+        results.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
+
+      const challenge = e.target.closest('.search-challenge-open');
+      if (challenge) {
+        e.preventDefault();
+        const challengeId = challenge.dataset.challengeId;
+        App.navigate('arena');
+        setTimeout(() => {
+          window.ArenaPage?.openChallengeDetail(challengeId);
+        }, 150);
+        return;
+      }
+
       const row = e.target.closest('.search-post-open, .search-crew-open');
       if (!row) return;
       e.preventDefault();
@@ -165,9 +177,29 @@ if (challenge) {
           </div>
         </div>
       `).join('');
+        } else if (this.currentTab === 'challenges') {
+      resultsEl.innerHTML = items.map((c, i) => `
+        <div class="search-result-row search-challenge-open"
+          data-challenge-id="${escapeHTML(c.id)}"
+          role="button" tabindex="0"
+          style="animation-delay:${i * 40}ms">
+          <div class="search-result-icon">⚔️</div>
+          <div class="search-result-body">
+            <span class="search-result-title">${escapeHTML(c.title)}</span>
+            <span class="search-result-sub">
+              ${escapeHTML(c.challenge_type || 'Challenge')}
+              · ${escapeHTML(c.status)}
+              · ${Number(c.participant_count || 0)} participants
+            </span>
+          </div>
+        </div>
+      `).join('');
     } else {
       resultsEl.innerHTML = items.map((p, i) => `
-        <div class="search-result-row search-result-row-post search-post-open" data-post-id="${escapeHTML(p.id)}" role="button" tabindex="0" style="animation-delay:${i * 40}ms">
+        <div class="search-result-row search-result-row-post search-post-open"
+          data-post-id="${escapeHTML(p.id)}"
+          role="button" tabindex="0"
+          style="animation-delay:${i * 40}ms">
           <span class="search-result-quote">&ldquo;</span>
           <div class="search-result-body">
             <span class="search-result-title">${escapeHTML(p.author_username)}</span>
@@ -175,23 +207,5 @@ if (challenge) {
           </div>
         </div>
       `).join('');
-			} else if (this.currentTab === 'challenges') {
-  resultsEl.innerHTML = items.map((c, i) => `
-    <div class="search-result-row search-challenge-open"
-      data-challenge-id="${escapeHTML(c.id)}"
-      role="button" tabindex="0"
-      style="animation-delay:${i * 40}ms">
-      <div class="search-result-icon">⚔️</div>
-      <div class="search-result-body">
-        <span class="search-result-title">${escapeHTML(c.title)}</span>
-        <span class="search-result-sub">
-          ${escapeHTML(c.challenge_type || 'Challenge')}
-          · ${escapeHTML(c.status)}
-          · ${Number(c.participant_count || 0)} participants
-        </span>
-      </div>
-    </div>
-  `).join('');
     }
-  },
 };
