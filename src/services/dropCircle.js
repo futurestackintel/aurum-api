@@ -280,7 +280,7 @@ export async function createChallenge(clerkId, body, db) {
       updated_at
     )
         VALUES (
-     ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0,
       'draft', ?, ?, 'pending',
       ?, ?, 0, 'pending', ?, ?
     )
