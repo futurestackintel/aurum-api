@@ -10,8 +10,6 @@
 // POST /api/challenges/:id/resolve            — admin: resolve winner
 // POST /api/challenges/:id/gold               — give gold button (Feature 1)
 // POST /api/challenges/:id/boost              — boost challenge (Feature 2)
-// POST /api/challenges/free-entry             — free monthly entry (Feature 7)
-//
 // Finding 7: streakMiddleware(...) is now awaited. Previously it was
 // called without await inside a try/catch — if it's async and throws,
 // the rejection happened outside the catch and could surface as an
@@ -69,19 +67,50 @@ export async function handleChallengeRoutes(path, method, request, env) {
     }
   }
 
-  // ── GET /api/challenges/:id ─────────────────────────────
+    // ── GET /api/challenges/:id ─────────────────────────────
   const singleMatch = path.match(/^\/api\/challenges\/([^/]+)$/);
   if (singleMatch && method === 'GET') {
     try {
-      const challenge = await getChallengeById(singleMatch[1], db);
-      if (!challenge) return jsonResponse({ error: 'Challenge not found' }, 404);
+      let viewer = null;
+      let viewerIsAdmin = false;
+
+      // Public access remains available, but supplied credentials
+      // must be valid rather than silently treated as anonymous.
+      if (request.headers.get('Authorization')) {
+        viewer = await requireAuth(request, env);
+
+        if (viewer.error) {
+          return jsonResponse({ error: viewer.error }, 401);
+        }
+
+        const adminIds = (env.ADMIN_USER_IDS ?? '')
+          .split(',')
+          .map(id => id.trim())
+          .filter(Boolean);
+
+        viewerIsAdmin = adminIds.includes(viewer.id);
+      }
+
+      const challenge = await getChallengeById(
+        singleMatch[1],
+        db,
+        viewer?.id ?? null,
+        viewerIsAdmin
+      );
+
+      if (!challenge) {
+        return jsonResponse({ error: 'Challenge not found' }, 404);
+      }
+
       return jsonResponse({ challenge });
     } catch (err) {
       console.error('Get challenge error:', err);
-      return jsonResponse({ error: 'Unable to load challenge. Please try again.' }, 500);
+      return jsonResponse(
+        { error: 'Unable to load challenge. Please try again.' },
+        500
+      );
     }
   }
-
     // ── POST /api/challenges/:id/join ───────────────────────
   const joinMatch = path.match(/^\/api\/challenges\/([^/]+)\/join$/);
   if (joinMatch && method === 'POST') {
