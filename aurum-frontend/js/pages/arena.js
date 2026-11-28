@@ -188,6 +188,7 @@ window.ArenaPage = {
                 <option value="growth">Best Growth %</option>
                 <option value="savings">Most Saved</option>
                 <option value="charity_brawl">Charity Brawl</option>
+				<option value="custom">Custom Competition</option>
               </select>
             </div>
             <div class="input-group">
@@ -197,6 +198,38 @@ window.ArenaPage = {
                 rows="3"
                 style="resize:none;font-family:var(--font-body);"></textarea>
             </div>
+			<div class="input-group">
+  <label class="input-label">Competition Rules</label>
+  <textarea class="input" id="ch-rules"
+    placeholder="Explain the rules, requirements, judging expectations and what counts as valid evidence..."
+    rows="4"
+    maxlength="10000"
+    style="resize:vertical;font-family:var(--font-body);"></textarea>
+</div>
+
+<div class="input-group">
+  <label class="input-label">Verification Method</label>
+  <select class="input" id="ch-verification">
+    <option value="proof_upload">Evidence / Proof Required</option>
+    <option value="admin_verified">AURUM Admin Verification</option>
+    <option value="honor_system">Honor System</option>
+  </select>
+</div>
+
+<div class="input-group">
+  <label class="input-label">Start Date (optional)</label>
+  <input class="input" id="ch-starts-at" type="datetime-local" />
+  <small style="color:var(--color-text-muted);">
+    Leave blank to start immediately after approval.
+  </small>
+</div>
+
+<div class="input-group">
+  <label class="input-label">Maximum Participants (optional)</label>
+  <input class="input" id="ch-max-entries"
+    type="number" min="1" max="100000"
+    placeholder="Leave blank for unlimited participants" />
+</div>
             <div class="input-group">
               <label class="input-label">Entry Fee</label>
               <select class="input" id="ch-fee">
@@ -3310,49 +3343,114 @@ promoteBtn.style.display =
   /* --------------------------------------------------
      CREATE CHALLENGE
   -------------------------------------------------- */
-  async submitChallenge() {
-    const title       = document.getElementById('ch-title')?.value.trim();
-    const type        = document.getElementById('ch-type')?.value;
+    async submitChallenge() {
+    const title = document.getElementById('ch-title')?.value.trim();
+    const type = document.getElementById('ch-type')?.value;
     const description = document.getElementById('ch-description')?.value.trim();
-    const fee         = document.getElementById('ch-fee')?.value;
-    const duration    = document.getElementById('ch-duration')?.value;
-    const btn         = document.getElementById('btn-submit-challenge');
+    const rules = document.getElementById('ch-rules')?.value.trim();
+    const fee = document.getElementById('ch-fee')?.value;
+    const duration = document.getElementById('ch-duration')?.value;
+    const verificationMethod =
+      document.getElementById('ch-verification')?.value;
+    const startInput =
+      document.getElementById('ch-starts-at')?.value;
+    const maxEntriesInput =
+      document.getElementById('ch-max-entries')?.value.trim();
+    const btn = document.getElementById('btn-submit-challenge');
 
     if (!title) {
-      AURUM.showToast('Add a challenge title.', 'error'); return;
+      AURUM.showToast('Add a challenge title.', 'error');
+      return;
     }
 
-    btn.textContent = 'Launching...';
-    btn.disabled    = true;
+    if (!rules) {
+      AURUM.showToast('Competition rules are required.', 'error');
+      return;
+    }
+
+    if (rules.length > 10000) {
+      AURUM.showToast('Competition rules are too long.', 'error');
+      return;
+    }
+
+    const startsAtDate = startInput
+      ? new Date(startInput)
+      : new Date();
+
+    if (Number.isNaN(startsAtDate.getTime()) ||
+        startsAtDate <= new Date()) {
+      AURUM.showToast('Choose a future start date.', 'error');
+      return;
+    }
+
+    const maxEntries = maxEntriesInput
+      ? Number(maxEntriesInput)
+      : null;
+
+    if (
+      maxEntries !== null &&
+      (!Number.isInteger(maxEntries) ||
+        maxEntries < 1 ||
+        maxEntries > 100000)
+    ) {
+      AURUM.showToast(
+        'Maximum participants must be between 1 and 100,000.',
+        'error'
+      );
+      return;
+    }
+
+    btn.textContent = 'Submitting...';
+    btn.disabled = true;
 
     try {
       const endsAt = new Date(
-        Date.now() + parseInt(duration, 10) * 60 * 60 * 1000
+        startsAtDate.getTime() +
+        parseInt(duration, 10) * 60 * 60 * 1000
       ).toISOString();
 
       await AURUM.ArenaAPI.createChallenge({
         title,
         type,
         description: description || null,
-        entry_fee:   fee,
-        ends_at:     endsAt,
+        rules,
+        verification_method: verificationMethod,
+        entry_fee: fee,
+        starts_at: startsAtDate.toISOString(),
+        ends_at: endsAt,
+        max_entries: maxEntries,
       });
+
       document.getElementById('create-modal').style.display = 'none';
-      document.getElementById('ch-title').value = '';
-      document.getElementById('ch-description').value = '';
+
+      [
+        'ch-title',
+        'ch-description',
+        'ch-rules',
+        'ch-starts-at',
+        'ch-max-entries',
+      ].forEach(id => {
+        const field = document.getElementById(id);
+        if (field) field.value = '';
+      });
+
       AURUM.showToast(
-  'Challenge submitted for review. You’ll be notified when approved.',
-  'default'
-);
+        'Challenge submitted for review. You’ll be notified when approved.',
+        'default'
+      );
+
       this.loadChallenges('active');
     } catch (err) {
-      AURUM.showToast(err.message || 'Failed to create challenge.', 'error');
+      AURUM.showToast(
+        err.message || 'Failed to create challenge.',
+        'error'
+      );
     } finally {
       btn.textContent = 'Launch';
-      btn.disabled    = false;
+      btn.disabled = false;
     }
   },
-
+	
   /* --------------------------------------------------
      STATS BAR
   -------------------------------------------------- */
