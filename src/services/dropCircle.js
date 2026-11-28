@@ -341,7 +341,7 @@ export async function reviewChallenge(
       return { error: 'Cannot approve a challenge that has already ended' };
     }
 
-    await db.prepare(`
+const updateResult = await db.prepare(`
       UPDATE challenges
       SET status = 'open',
           moderation_status = 'approved',
@@ -351,6 +351,12 @@ export async function reviewChallenge(
         AND deleted_at IS NULL
     `).bind(nowISO(), challengeId).run();
 
+    if (updateResult.meta?.changes !== 1) {
+      return {
+        error: 'This challenge has already been reviewed',
+      };
+    }
+
     return {
       reviewed: true,
       decision: 'approved',
@@ -359,7 +365,7 @@ export async function reviewChallenge(
     };
   }
 
-  await db.prepare(`
+    const updateResult = await db.prepare(`
     UPDATE challenges
     SET status = 'draft',
         moderation_status = 'rejected',
@@ -368,6 +374,12 @@ export async function reviewChallenge(
       AND moderation_status = 'pending'
       AND deleted_at IS NULL
   `).bind(nowISO(), challengeId).run();
+
+  if (updateResult.meta?.changes !== 1) {
+    return {
+      error: 'This challenge has already been reviewed',
+    };
+  }
 
   return {
     reviewed: true,
